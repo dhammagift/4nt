@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MN 76  — Parallel Translation</title>
+<link rel="icon" type="image/png" href="../../favicon.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ── THEME TOKENS ── */
+:root{
+  --bg:#faf8f4;--border:#ddd6c8;
+  --text:#1a1612;--muted:#6b6055;--accent:#5c3d1e;
+  --sec-bg:#f0ebe0;--sec-border:#c8b89a;
+  --line:#c8b89a;
+  --sidebar-bg:#f2ece0;
+  --toc-hover:#e8dfc8;--toc-act:#e0d4b8;
+  --key:#9c8060;
+  --pali-bg:#f5f0e8;  --pali-text:#2c1e0f;
+  --sujato-bg:#eef4f0;--sujato-text:#0d2b1e;
+  --than-bg:#eef0f8;  --than-text:#0d1a3a;
+  --bar-bg:#ede5d4;   --bar-col-hover:#e4d9c4;--bar-drag:#d4c8a8;
+  --rtc-bg:#f8f4ee;
+  --header-bg:#5c3d1e;--header-text:#f5ede0;
+  --sw:240px;
+  --hh:128px;
+  --ch:32px;
+  --fs:15px;
+  --toc-scale:1;
+}
+[data-theme="dark"]{
+  --bg:#1a1612;--border:#3a3028;
+  --text:#e8dfc8;--muted:#9a8878;--accent:#c8a060;
+  --sec-bg:#231e18;--sec-border:#4a3c2c;
+  --line:#4a3c2c;
+  --sidebar-bg:#1c1810;
+  --toc-hover:#2a2418;--toc-act:#322a1c;
+  --key:#9a7850;
+  --pali-bg:#221c12;  --pali-text:#e0d0a8;
+  --sujato-bg:#121c18;--sujato-text:#b0d0c0;
+  --than-bg:#121520;  --than-text:#a8b8d8;
+  --bar-bg:#201a12;   --bar-col-hover:#2a2218;--bar-drag:#3a3020;
+  --rtc-bg:#1e1810;
+  --header-bg:#241c10;--header-text:#e8d8b8;
+}
+
+body{
+  font-family:Georgia,serif;
+  background:var(--bg);color:var(--text);
+  line-height:1.75;font-size:var(--fs);
+  transition:background .2s,color .2s;
+}
+
+/* ── MAIN HEADER ── */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:300;
+  background:var(--header-bg);color:var(--header-text);
+  padding:.6rem 1.2rem .5rem;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);
+}
+header h1{font-size:1.05rem;font-weight:normal;letter-spacing:.02em}
+.crumbs{font-size:.63rem;font-family:sans-serif;margin-bottom:.15rem;opacity:.85}
+.crumbs a{color:var(--header-text);text-decoration:none}
+.crumbs a:hover{text-decoration:underline}
+.crumbs .sep-c{margin:0 .3rem;opacity:.55}
+.crumbs .cur{opacity:.95}
+header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
+
+.hc{display:flex;gap:.3rem;margin-top:.38rem;flex-wrap:wrap;align-items:center}
+.btn{
+  padding:.2rem .5rem;border-radius:4px;
+  border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.1);color:var(--header-text);
+  cursor:pointer;font-size:.67rem;font-family:inherit;transition:background .15s;
+  white-space:nowrap;
+}
+.btn:hover{background:rgba(255,255,255,.2)}
+.btn.on{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+.sep{width:1px;height:14px;background:rgba(255,255,255,.2);margin:0 .1rem;flex-shrink:0}
+
+/* icon buttons in header */
+.icon-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:4px;
+  border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.1);color:var(--header-text);
+  cursor:pointer;font-size:.85rem;transition:background .15s;
+  flex-shrink:0;
+}
+.icon-btn:hover{background:rgba(255,255,255,.2)}
+.icon-btn.on{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+
+/* ⚙ settings popover */
+.settings-wrap{position:relative;display:flex;align-items:center}
+.settings-pop{position:absolute;top:115%;right:0;z-index:500;display:none;
+  min-width:13rem;padding:.5rem .6rem;background:var(--bg);color:var(--text);
+  border:1px solid var(--sec-border);border-radius:6px;
+  box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.settings-pop.show{display:block}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+  padding:.28rem 0}
+.set-row + .set-row{border-top:1px solid var(--border)}
+.set-lbl{font-size:.7rem;font-family:sans-serif;color:var(--text);white-space:nowrap}
+.set-ctl{display:flex;align-items:center;gap:.2rem}
+.settings-pop .icon-btn{width:auto;min-width:26px;padding:0 .4rem;
+  color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
+.settings-pop .icon-btn:hover{background:var(--toc-hover)}
+
+/* 🦘 quick-jump in header */
+.jump{position:relative;display:flex;align-items:center;gap:.25rem}
+.jump-input{width:7.5rem;padding:.18rem .45rem;border:1px solid rgba(255,255,255,.25);
+  border-radius:4px;background:rgba(255,255,255,.12);color:var(--header-text);
+  font-family:monospace;font-size:.72rem}
+.jump-input::placeholder{color:var(--header-text);opacity:.45}
+.jump-input:focus{outline:none;border-color:rgba(255,255,255,.55);
+  background:rgba(255,255,255,.18);color:var(--header-text)}
+.jump-input.bad{border-color:#e08080;background:rgba(176,48,48,.3)}
+.jump-msg{position:absolute;top:115%;left:0;background:#b03030;color:#fff;
+  font-family:sans-serif;font-size:.68rem;padding:.25rem .55rem;border-radius:4px;
+  white-space:nowrap;display:none;z-index:400}
+.jump-msg.show{display:block}
+.jump-hist{position:absolute;top:115%;left:0;min-width:8rem;max-height:50vh;overflow-y:auto;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:5px;box-shadow:0 4px 12px rgba(0,0,0,.3);display:none;z-index:400}
+.jump-hist.show{display:block}
+.jump-hist div{padding:.28rem .55rem;font-family:monospace;font-size:.78rem;cursor:pointer}
+.jump-hist div:hover{background:var(--toc-hover)}
+
+/* ── COLUMN BAR ── */
+#colBar{
+  position:fixed;top:var(--hh);left:var(--sw);right:0;
+  height:var(--ch);z-index:250;
+  display:flex;background:var(--bar-bg);
+  border-bottom:2px solid var(--sec-border);
+  box-shadow:0 2px 6px rgba(0,0,0,.1);
+  transition:background .2s;
+}
+#colBar.sidebar-hidden{left:0}
+.bar-gutter{width:22px;flex-shrink:0;border-right:1px solid var(--border);background:var(--rtc-bg)}
+.bar-cols{display:flex;flex:1;min-width:0}
+.bar-col{
+  flex:1;display:flex;align-items:center;justify-content:space-between;
+  padding:0 .45rem 0 .5rem;
+  border-right:1px solid var(--border);
+  cursor:grab;user-select:none;
+  transition:background .12s;gap:.25rem;min-width:0;
+}
+.bar-col:last-child{border-right:none}
+.bar-col:hover{background:var(--bar-col-hover)}
+.bar-col.drag-over{background:var(--bar-drag);outline:2px dashed var(--accent)}
+.bar-col.dragging{opacity:.4;cursor:grabbing}
+.bar-col-inner{display:flex;align-items:center;gap:.28rem;flex:1;min-width:0;overflow:hidden}
+.bar-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.bar-label{font-size:.67rem;font-family:sans-serif;color:var(--text);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-grip{font-size:.55rem;color:var(--muted);opacity:.55;flex-shrink:0}
+.bar-warn{margin-left:.25rem;cursor:help;font-size:.8rem;flex-shrink:0}
+.bar-col-actions{display:flex;align-items:center;gap:.18rem;flex-shrink:0}
+.bar-sel{
+  background:var(--bg);border:1px solid var(--border);border-radius:3px;
+  color:var(--text);font-size:.64rem;font-family:Georgia,serif;font-weight:600;
+  cursor:pointer;outline:none;padding:.1rem .18rem;flex:1;min-width:0;max-width:160px;
+  transition:background .2s,color .2s,border-color .2s;
+}
+.bar-sel:focus{border-color:var(--accent)}
+.bar-rm{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:.82rem;padding:0 .12rem;line-height:1;transition:color .12s;flex-shrink:0;
+}
+.bar-rm:hover{color:var(--accent)}
+.add-col-btn{
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  width:26px;height:100%;
+  background:var(--rtc-bg);border-left:1px solid var(--border);
+  cursor:pointer;color:var(--accent);font-size:1rem;font-weight:bold;
+  transition:background .12s;
+}
+.add-col-btn:hover{background:var(--toc-hover)}
+.add-col-btn.disabled{opacity:.3;cursor:not-allowed;pointer-events:none}
+
+/* ── LAYOUT ── */
+.shell{display:flex;margin-top:calc(var(--hh) + var(--ch))}
+
+/* ── SIDEBAR ── */
+/* sticky "Contents" bar sits above the scrollable TOC list */
+.toc-bar{
+  position:fixed;top:var(--hh);left:0;z-index:210;
+  width:var(--sw);
+  display:flex;align-items:center;
+  background:var(--bar-bg);
+  border-right:1px solid var(--sec-border);
+  border-bottom:2px solid var(--sec-border);
+  padding:.3rem .5rem .3rem .8rem;
+  gap:.3rem;
+  transition:transform .22s ease,background .2s;
+}
+.toc-bar.hidden{transform:translateX(-100%)}
+.toc-bar-label{
+  font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;flex:1;
+}
+.toc-bar-btn{
+  flex-shrink:0;width:20px;height:20px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--sec-border);border-radius:3px;
+  background:var(--bg);color:var(--accent);
+  cursor:pointer;font-size:.85rem;font-family:monospace;font-weight:bold;
+  line-height:1;transition:background .12s,border-color .12s;
+}
+.toc-bar-btn:hover{background:var(--toc-hover);border-color:var(--accent)}
+
+.sidebar{
+  width:var(--sw);flex-shrink:0;
+  position:fixed;left:0;bottom:0;
+  /* TOC text base — scaled relative to the main reading font via --toc-scale,
+     so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
+     the reading panes. tocScale=1 reproduces the original rem appearance. */
+  font-size:calc(var(--fs) * var(--toc-scale));
+  overflow-y:auto;overflow-x:hidden;
+  background:var(--sidebar-bg);
+  border-right:1px solid var(--sec-border);z-index:200;
+  transition:transform .22s ease,background .2s;
+}
+.sidebar.hidden{transform:translateX(-100%)}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+
+.content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
+.content.full{margin-left:0}
+.ts{display:flex;align-items:center;padding:.3rem .55rem .3rem .45rem;cursor:pointer;
+  user-select:none;border-left:3px solid transparent;transition:background .1s}
+.ts:hover{background:var(--toc-hover)}
+.ts.act{background:var(--toc-act);border-left-color:var(--accent)}
+.tr-wrap{overflow:hidden;border-left:1px solid var(--line);margin-left:22px}
+.tr{display:flex;align-items:center;padding:.16rem .55rem .16rem 1rem;cursor:pointer;
+  user-select:none;border-left:3px solid transparent;transition:background .1s}
+.tr:hover{background:var(--toc-hover)}
+.tr.act{background:var(--toc-act);border-left-color:#a07030}
+.tog{flex-shrink:0;width:14px;height:14px;display:flex;align-items:center;
+  justify-content:center;border:1px solid var(--sec-border);border-radius:2px;
+  background:var(--bg);font-size:9px;font-family:monospace;font-weight:bold;
+  color:var(--accent);margin-right:5px;transition:background .2s,border-color .2s}
+.ts .tl{font-size:.67em;font-family:sans-serif;color:var(--text);font-weight:600;flex:1;line-height:1.3}
+/* group TOC rows: title doesn't grow, so the round subtree buttons hug the title */
+.ts.tsg .tl{flex:0 1 auto}
+.tr .tl{font-size:.57em;font-family:sans-serif;color:var(--muted);flex:1}
+.tn{font-size:.54em;color:var(--muted);margin-left:3px;flex-shrink:0;font-family:sans-serif}
+/* TOC subtree buttons: smaller than the main-pane variant, sized near the .tog
+   single-node toggle (14px). Label-free here, sat just after the toggle. */
+.ts .subt-btn{width:13px;height:13px;font-size:9px}
+/* nested inside .tr .tl (.57em), so em compounds: .93 * .57 ≈ .53 of the sidebar base */
+.tr-pali{display:block;font-size:.93em;font-family:Georgia,serif;color:var(--key);
+  font-style:italic;line-height:1.3;margin-top:.1rem;opacity:.75;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+
+/* ── SECTION ── */
+.sb{margin-bottom:.25rem}
+.sh{display:flex;align-items:center;background:var(--sec-bg);border:1px solid var(--sec-border);
+  border-radius:5px;cursor:pointer;user-select:none;padding:.42rem .8rem .42rem .5rem;
+  margin-bottom:2px;transition:background .12s,border-color .2s;
+  scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
+.sh:hover{filter:brightness(.97)}
+.mt{width:18px;height:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--sec-border);border-radius:3px;background:var(--bg);
+  margin-right:.5rem;font-size:11px;font-family:monospace;font-weight:bold;color:var(--accent)}
+.sl{font-size:.76rem;font-family:sans-serif;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--accent);font-weight:600}
+.sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
+
+/* ── TABLE ── */
+.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+.rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
+  border-top:none;margin-bottom:2px;table-layout:fixed}
+.rt tr{border-bottom:1px solid var(--border)}
+.rt tr:last-child{border-bottom:none}
+.rt tr:hover td{filter:brightness(.97)}
+/* Nested collapse groups (AN/SN vagga → sutta). MN/DN never emit these. */
+.grp{margin-bottom:.15rem}
+.gh{display:flex;align-items:center;gap:.3rem;cursor:pointer;padding:.28rem .5rem;
+  background:var(--sec-bg);border:1px solid var(--sec-border);border-radius:5px;margin-bottom:.2rem}
+.gh:hover{filter:brightness(.97)}
+.gl{font-size:.7rem;font-family:sans-serif;letter-spacing:.04em;text-transform:uppercase;
+  font-weight:700;color:var(--accent);flex:0 1 auto;line-height:1.3}
+.gbody{margin-left:.45rem;padding-left:.4rem;border-left:2px solid var(--line)}
+.gh[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
+/* Per-node (subtree) collapse/expand-all controls — ROUND buttons, distinct from
+   the SQUARE single-node toggle (.mt / .tog). Only emitted on groups with
+   collapsible children (vaggas AND suttas; see hasCollapsibleChildren). Main-content
+   variant carries a small "all" label; the TOC variant (below, under .ts) is
+   label-free for space. */
+.subt{display:inline-flex;align-items:center;gap:.12rem;margin:0 .3rem 0 .1rem;flex-shrink:0}
+.subt-btn{width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;
+  justify-content:center;border:1px solid var(--sec-border);border-radius:50%;
+  background:var(--bg);color:var(--accent);cursor:pointer;font-size:11px;
+  font-family:monospace;font-weight:bold;line-height:1;padding:0;
+  transition:background .12s,border-color .12s}
+.subt-btn:hover{background:var(--toc-hover);border-color:var(--accent)}
+.subt-lbl{font-size:.55rem;color:var(--muted);font-family:sans-serif;margin-right:.25rem;
+  letter-spacing:.02em}
+.rtc{width:22px;padding:0;vertical-align:top;border-right:1px solid var(--border);
+  background:var(--rtc-bg);transition:background .2s}
+td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
+  transition:background .2s,color .2s}
+.seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
+  margin-bottom:.12rem;letter-spacing:.04em}
+html[data-seg="on"] .seg{display:block}
+.ec{opacity:.25}
+.ct.grw{white-space:pre-wrap}
+.dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
+[data-theme="dark"] .dw{background:rgba(255,200,80,.30)}
+tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
+
+/* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
+/* Footnote marker. The glyph is raised via position:relative+top (NOT
+   vertical-align:super) so it does NOT grow the line box — text rows keep their
+   height. A transparent, absolutely-positioned ::after enlarges the tap / click
+   / tooltip zone far past the glyph — including the strip directly UNDER the
+   marker and a margin on either side — with zero layout impact (it's out of
+   flow). Clicks and :hover on the overlay register on the marker. This beats a
+   padded box or &nbsp; (no line-height change, no stray selectable chars, and a
+   real vertical hit area for touch). Tune the ::after insets to resize the target. */
+.fnico{cursor:pointer;color:var(--accent);font-weight:700;font-size:.85em;
+  user-select:none;position:relative;top:-.4em;margin:0 .1em;line-height:1;
+  border-radius:5px;transition:background .15s}
+.fnico:hover{background:var(--toc-hover)}
+.fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
+.fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
+#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
+  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
+  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
+  transform:translateX(100%);transition:transform .22s ease;
+  display:flex;flex-direction:column}
+#fnPane.show{transform:translateX(0)}
+.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
+  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+.fn-head .fn-title{font-size:.85rem;color:var(--text);
+  display:flex;align-items:baseline;gap:.5em;min-width:0}
+.fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
+.fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
+.fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
+/* all-mode: one block per noted segment; transparent left border reserves space
+   so the focused (active) block's accent border doesn't shift the others. */
+.fn-all-block{padding:.35rem 0 .8rem .6rem;border-left:3px solid transparent;
+  border-bottom:1px solid var(--border)}
+.fn-all-block:last-child{border-bottom:none}
+.fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
+.fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
+.fn-tl{font-weight:600}                                  /* translator label */
+.fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis}               /* segment ref */
+/* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
+   overriding the heavier .fn-head button rule below */
+.fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
+.fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
+.fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
+  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
+  font-family:sans-serif;transition:background .2s}
+.fn-head button:hover{background:var(--toc-hover)}
+.fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
+  border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
+  transition:background .2s}
+.fn-warn-btn:hover{background:var(--toc-hover)}
+.fn-warn{margin:0;padding:.7rem 1.1rem;font-size:.92rem;line-height:1.55;
+  color:var(--text);background:rgba(200,60,60,.13);
+  border-bottom:1px solid var(--border)}
+[data-theme="dark"] .fn-warn{background:rgba(255,90,90,.16)}
+/* flex:1 + min-height:0 lets the body fill the remaining pane height and scroll
+   internally (a flex item won't shrink below content size without min-height:0),
+   so long notes get a scrollbar while the header + warning banner stay pinned. */
+.fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
+  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  white-space:pre-wrap;user-select:text}
+.fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
+  text-decoration:underline}
+.fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+@media (max-width:640px){
+  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
+    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%)}
+  #fnPane.show{transform:translateY(0)}
+}
+</style>
+</head>
+<body>
+
+<header id="mainHeader">
+<nav class="crumbs"><a href="../../index.html">🏠</a><span class="sep-c">›</span><a href="../index.html">MN</a><span class="sep-c">›</span><span class="cur">MN 76</span></nav>
+  <h1>MN 76</h1>
+  <p>Pāli · Sujato — parallel line-by-line</p>
+  <div class="hc">
+    <!-- Sidebar toggle -->
+    <button class="icon-btn on" id="tocBtn" title="Toggle table of contents" onclick="toggleSidebar()">☰</button>
+    <span class="sep"></span>
+    <!-- Collapse / Expand -->
+    <button class="btn on" id="bA" onclick="toggleAll(false)">− Collapse all</button>
+    <button class="btn" id="bE" onclick="toggleAll(true)">+ Expand all</button>
+    <span class="sep"></span>
+    <!-- ⚙ Settings (font size, theme; sidebar text size added in Phase 2) -->
+    <div class="settings-wrap">
+      <button class="icon-btn" id="settingsBtn" title="Settings" onclick="toggleSettings()">⚙</button>
+      <div class="settings-pop" id="settingsPop">
+        <div class="set-row">
+          <span class="set-lbl">Text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease font size" onclick="adjustFont(-1)">A−</button>
+            <button class="icon-btn" title="Increase font size" onclick="adjustFont(+1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl">Sidebar text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease sidebar text size" onclick="adjustTocScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase sidebar text size" onclick="adjustTocScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl">Theme</span>
+          <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+        </div>
+      </div>
+    </div>
+    <span>&emsp;&emsp;</span>
+    <!-- 🦘 quick-jump -->
+    <div class="jump">
+      <button class="icon-btn" id="jumpBtn"
+              title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). MN and DN only for now.">🦘</button>
+      <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
+             title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
+             autocomplete="off" spellcheck="false">
+      <div class="jump-msg" id="jumpMsg"></div>
+      <div class="jump-hist" id="jumpHist"></div>
+    </div>
+    <!-- Back to top -->
+    <button class="icon-btn" id="topBtn" title="Back to top"
+            onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
+  </div>
+</header>
+
+<!-- STICKY COLUMN LABEL BAR -->
+<div id="colBar">
+  <div class="bar-gutter"></div>
+  <div class="bar-cols" id="barCols"></div>
+  <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
+</div>
+
+<!-- STICKY TOC HEADER BAR -->
+<div class="toc-bar" id="tocBar">
+  <span class="toc-bar-label">Contents</span>
+  <button class="toc-bar-btn" id="tocCollapseBtn" title="Collapse all sections in table of contents" onclick="tocCollapseAll()">−</button>
+  <button class="toc-bar-btn" id="tocExpandBtn" title="Expand all sections in table of contents" onclick="tocExpandAll()">+</button>
+</div>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar">
+    <div id="toc"></div>
+  </nav>
+  <div class="content" id="main"></div>
+</div>
+
+<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
+<aside id="fnPane" aria-hidden="true">
+  <div class="fn-head">
+    <span class="fn-title" id="fnTitle">Footnote</span>
+    <!-- Footnote navigation (current translator's notes, in segment order). -->
+    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
+    <span class="fn-spacer"></span>
+    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
+         full warning banner below. Shown only when the note is a Sujato note. -->
+    <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
+    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
+  </div>
+  <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
+  <div class="fn-body" id="fnBody"></div>
+</aside>
+
+<script>
+const TREE=[{"id": "0", "label": "Middle Discourses 76", "rows": [{"key": "mn76:0.1", "pali": "Majjhima Nikāya 76", "sujato": "Middle Discourses 76"}, {"key": "mn76:0.2", "pali": "Sandakasutta", "sujato": "With Sandaka"}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn76:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "mn76:1.2", "pali": "ekaṁ samayaṁ bhagavā kosambiyaṁ viharati ghositārāme.", "sujato": "At one time the Buddha was staying near Kosambī, in Ghosita’s Monastery."}]}, {"id": "2", "label": "Now at that time the wanderer Sandaka…", "rows": [{"key": "mn76:2.1", "pali": "Tena kho pana samayena sandako paribbājako pilakkhaguhāyaṁ paṭivasati\nmahatiyā paribbājakaparisāya saddhiṁ pañcamattehi paribbājakasatehi.", "sujato": "Now at that time the wanderer Sandaka was residing at the cave of the wavy\nleaf fig tree together with a large assembly of around five hundred wanderers."}]}, {"id": "3", "label": "Then in the late afternoon, Venerable Ānanda…", "rows": [{"key": "mn76:3.1", "pali": "Atha kho āyasmā ānando sāyanhasamayaṁ paṭisallānā vuṭṭhito bhikkhū āmantesi:", "sujato": "Then in the late afternoon, Venerable Ānanda came out of retreat and addressed the mendicants:"}, {"key": "mn76:3.2", "pali": "“āyāmāvuso, yena devakatasobbho tenupasaṅkamissāma guhādassanāyā”ti.", "sujato": "“Come, reverends, let’s go to the Devakata Pool to see the cave.”"}, {"key": "mn76:3.3", "pali": "“Evamāvuso”ti kho te bhikkhū āyasmato ānandassa paccassosuṁ.", "sujato": "“Yes, reverend,” they replied."}, {"key": "mn76:3.4", "pali": "Atha kho āyasmā ānando sambahulehi bhikkhūhi saddhiṁ yena devakatasobbho tenupasaṅkami.", "sujato": "Then Ānanda together with several mendicants went to the Devakata Pool."}]}, {"id": "4", "label": "Now at that time, Sandaka and the…", "rows": [{"key": "mn76:4.1", "pali": "Tena kho pana samayena sandako paribbājako mahatiyā paribbājakaparisāya saddhiṁ nisinno\nhoti unnādiniyā uccāsaddamahāsaddāya anekavihitaṁ tiracchānakathaṁ kathentiyā, seyyathidaṁ—", "sujato": "Now at that time, Sandaka and the large assembly of wanderers were sitting together making an uproar, a colossal racket.\nThey engaged in all kinds of low talk, such as"}, {"key": "mn76:4.2", "pali": "rājakathaṁ corakathaṁ mahāmattakathaṁ senākathaṁ bhayakathaṁ yuddhakathaṁ annakathaṁ\npānakathaṁ vatthakathaṁ sayanakathaṁ mālākathaṁ gandhakathaṁ ñātikathaṁ yānakathaṁ gāmakathaṁ\nnigamakathaṁ nagarakathaṁ janapadakathaṁ itthikathaṁ sūrakathaṁ visikhākathaṁ kumbhaṭṭhānakathaṁ\npubbapetakathaṁ nānattakathaṁ lokakkhāyikaṁ samuddakkhāyikaṁ itibhavābhavakathaṁ iti vā.", "sujato": "talk about kings, bandits, and chief ministers;\ntalk about armies, threats, and wars;\ntalk about food, drink, clothes, and beds;\ntalk about garlands and fragrances;\ntalk about family, vehicles, villages, towns, cities, and countries;\ntalk about women and heroes;\nstreet talk and well talk;\ntalk about the departed;\nmotley talk;\ntales of land and sea;\nand talk about being reborn in this or that state of existence."}, {"key": "mn76:4.3", "pali": "Addasā kho sandako paribbājako āyasmantaṁ ānandaṁ dūratova āgacchantaṁ.", "sujato": "Sandaka saw Ānanda coming off in the distance,"}, {"key": "mn76:4.4", "pali": "Disvāna sakaṁ parisaṁ saṇṭhāpesi:", "sujato": "and hushed his own assembly,"}, {"key": "mn76:4.5", "pali": "“appasaddā bhonto hontu, mā bhonto saddamakattha;", "sujato": "“Be quiet, good fellows, don’t make a sound."}, {"key": "mn76:4.6", "pali": "ayaṁ samaṇassa gotamassa sāvako āgacchati samaṇo ānando.", "sujato": "The ascetic Ānanda, a disciple of the ascetic Gotama, is coming."}, {"key": "mn76:4.7", "pali": "Yāvatā kho pana samaṇassa gotamassa sāvakā kosambiyaṁ paṭivasanti, ayaṁ tesaṁ aññataro samaṇo ānando.", "sujato": "He is included among the disciples of the ascetic Gotama, who is residing near Kosambī."}, {"key": "mn76:4.8", "pali": "Appasaddakāmā kho pana te āyasmanto appasaddavinītā appasaddassa vaṇṇavādino;", "sujato": "Such venerables like the quiet, are educated to be quiet, and praise the quiet."}, {"key": "mn76:4.9", "pali": "appeva nāma appasaddaṁ parisaṁ viditvā upasaṅkamitabbaṁ maññeyyā”ti.", "sujato": "Hopefully if he sees that our assembly is quiet he’ll see fit to approach.”"}, {"key": "mn76:4.10", "pali": "Atha kho te paribbājakā tuṇhī ahesuṁ.", "sujato": "Then those wanderers fell silent."}]}, {"id": "5", "label": "Then Venerable Ānanda went up to the…", "rows": [{"key": "mn76:5.1", "pali": "Atha kho āyasmā ānando yena sandako paribbājako tenupasaṅkami.", "sujato": "Then Venerable Ānanda went up to the wanderer Sandaka,"}, {"key": "mn76:5.2", "pali": "Atha kho sandako paribbājako āyasmantaṁ ānandaṁ etadavoca:", "sujato": "who said to him,"}, {"key": "mn76:5.3", "pali": "“etu kho bhavaṁ ānando, svāgataṁ bhoto ānandassa.", "sujato": "“Come, worthy Ānanda!\nWelcome, worthy Ānanda!"}, {"key": "mn76:5.4", "pali": "Cirassaṁ kho bhavaṁ ānando imaṁ pariyāyamakāsi yadidaṁ idhāgamanāya.", "sujato": "It’s been a long time since you took the opportunity to come here."}, {"key": "mn76:5.5", "pali": "Nisīdatu bhavaṁ ānando, idamāsanaṁ paññattan”ti.", "sujato": "Please sit down, here, a seat is ready.”"}, {"key": "mn76:5.6", "pali": "Nisīdi kho āyasmā ānando paññatte āsane.", "sujato": "Ānanda sat down on the seat spread out,"}, {"key": "mn76:5.7", "pali": "Sandakopi kho paribbājako aññataraṁ nīcaṁ āsanaṁ gahetvā ekamantaṁ nisīdi.", "sujato": "while Sandaka took a low seat and sat to one side."}, {"key": "mn76:5.8", "pali": "Ekamantaṁ nisinnaṁ kho sandakaṁ paribbājakaṁ āyasmā ānando etadavoca:", "sujato": "Ānanda said to Sandaka,"}, {"key": "mn76:5.9", "pali": "“kāya nuttha, sandaka, etarahi kathāya sannisinnā, kā ca pana vo antarākathā vippakatā”ti?", "sujato": "“Sandaka, what were you sitting talking about just now?\nWhat conversation was left unfinished?”"}, {"key": "mn76:5.10", "pali": "“Tiṭṭhatesā, bho ānanda, kathā yāya mayaṁ etarahi kathāya sannisinnā.", "sujato": "“Worthy Ānanda, leave aside what we were sitting talking about just now."}, {"key": "mn76:5.11", "pali": "Nesā bhoto ānandassa kathā dullabhā bhavissati pacchāpi savanāya.", "sujato": "It won’t be hard for you to hear about that later."}, {"key": "mn76:5.12", "pali": "Sādhu vata bhavantaṁyeva ānandaṁ paṭibhātu sake ācariyake dhammīkathā”ti.", "sujato": "It’d be great if the worthy Ānanda himself would give a Dhamma talk explaining his own tradition.”"}, {"key": "mn76:5.13", "pali": "“Tena hi, sandaka, suṇāhi, sādhukaṁ manasi karohi, bhāsissāmī”ti.", "sujato": "“Well then, Sandaka, listen and apply your mind well, I will speak.”"}, {"key": "mn76:5.14", "pali": "“Evaṁ, bho”ti kho sandako paribbājako āyasmato ānandassa paccassosi.", "sujato": "“Yes, worthy sir,” replied Sandaka."}, {"key": "mn76:5.15", "pali": "Āyasmā ānando etadavoca:", "sujato": "Venerable Ānanda said this:"}]}, {"id": "6", "label": "“Sandaka, these things have been explained by…", "rows": [{"key": "mn76:6.1", "pali": "“cattārome, sandaka,\ntena bhagavatā jānatā passatā arahatā sammāsambuddhena abrahmacariyavāsā\nakkhātā cattāri ca anassāsikāni brahmacariyāni akkhātāni,\nyattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya, vasanto ca nārādheyya ñāyaṁ dhammaṁ kusalan”ti.", "sujato": "“Sandaka, these things have been explained by the Blessed One,\nwho knows and sees, the perfected one, the fully awakened Buddha:\nfour ways that negate the spiritual life, and four kinds of unreliable spiritual life.\nA sensible person would, to the best of their ability, not practice such spiritual paths,\nand if they did practice them, they wouldn’t succeed in the system of the skillful teaching.”"}, {"key": "mn76:6.2", "pali": "“Katame pana te, bho ānanda, tena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāro abrahmacariyavāsā akkhātā,\nyattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya, vasanto ca nārādheyya ñāyaṁ dhammaṁ kusalan”ti?", "sujato": "“But worthy Ānanda, what are the four ways that negate the spiritual life,\nand the four kinds of unreliable spiritual life?”"}]}, {"id": "7", "label": "“Sandaka, take a certain teacher who has…", "rows": [{"key": "mn76:7.1", "pali": "“Idha, sandaka, ekacco satthā evaṁvādī hoti evaṁdiṭṭhi:", "sujato": "“Sandaka, take a certain teacher who has this doctrine and view:"}, {"key": "mn76:7.2", "pali": "‘natthi dinnaṁ, natthi yiṭṭhaṁ, natthi hutaṁ, natthi sukatadukkaṭānaṁ kammānaṁ phalaṁ vipāko,\nnatthi ayaṁ loko, natthi paroloko, natthi mātā, natthi pitā,\nnatthi sattā opapātikā,\nnatthi loke samaṇabrāhmaṇā sammaggatā sammāpaṭipannā ye imañca lokaṁ parañca lokaṁ sayaṁ abhiññā sacchikatvā pavedenti.", "sujato": "‘There’s no meaning in giving, sacrifice, or offerings.\nThere’s no fruit or result of good and bad deeds.\nThere’s no afterlife.\nThere’s no such thing as mother and father, or beings that are reborn spontaneously.\nAnd there’s no ascetic or brahmin who is rightly comported and rightly practiced,\nand who describes the afterlife after realizing it with their own insight."}, {"key": "mn76:7.3", "pali": "Cātumahābhūtiko ayaṁ puriso yadā kālaṁ karoti,\npathavī pathavīkāyaṁ anupeti anupagacchati, āpo āpokāyaṁ anupeti anupagacchati,\ntejo tejokāyaṁ anupeti anupagacchati, vāyo vāyokāyaṁ anupeti anupagacchati, ākāsaṁ indriyāni saṅkamanti.", "sujato": "This person is made up of the four principal states.\nWhen they die, the earth in their body progresses and proceeds to the substance of earth.\nThe water in their body progresses and proceeds to the substance of water.\nThe fire in their body progresses and proceeds to the substance of fire.\nThe air in their body progresses and proceeds to the substance of air.\nThe faculties are transferred to space."}, {"key": "mn76:7.4", "pali": "Āsandipañcamā purisā mataṁ ādāya gacchanti,", "sujato": "Four men with a bier carry away the corpse."}, {"key": "mn76:7.5", "pali": "yāvāḷāhanā padāni paññāyanti.", "sujato": "Their footprints show the way to the cremation ground."}, {"key": "mn76:7.6", "pali": "Kāpotakāni aṭṭhīni bhavanti.", "sujato": "The bones become bleached."}, {"key": "mn76:7.7", "pali": "Bhassantā āhutiyo;", "sujato": "Offerings dedicated to the gods end in ashes."}, {"key": "mn76:7.8", "pali": "dattupaññattaṁ yadidaṁ dānaṁ.", "sujato": "Giving is a doctrine of morons."}, {"key": "mn76:7.9", "pali": "Tesaṁ tucchā musā vilāpo ye keci atthikavādaṁ vadanti.", "sujato": "When anyone affirms a positive teaching it’s just hollow, false nonsense."}, {"key": "mn76:7.10", "pali": "Bāle ca paṇḍite ca kāyassa bhedā ucchijjanti vinassanti na honti paraṁ maraṇā’ti.", "sujato": "Both the foolish and the astute are annihilated and destroyed when their body breaks up,\nand they don’t exist after death.’"}]}, {"id": "8", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:8.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:8.2", "pali": "‘ayaṁ kho bhavaṁ satthā evaṁvādī evaṁdiṭṭhi—", "sujato": "‘This teacher has such a doctrine and view."}, {"key": "mn76:8.3", "pali": "natthi dinnaṁ, natthi yiṭṭhaṁ, natthi hutaṁ, natthi sukatadukkaṭānaṁ kammānaṁ phalaṁ vipāko,\nnatthi ayaṁ loko, natthi paroloko, natthi mātā, natthi pitā,\nnatthi sattā opapātikā,\nnatthi loke samaṇabrāhmaṇā sammaggatā sammāpaṭipannā ye imañca lokaṁ parañca lokaṁ sayaṁ abhiññā sacchikatvā pavedenti.", "sujato": ""}, {"key": "mn76:8.4", "pali": "Cātumahābhūtiko ayaṁ puriso yadā kālaṁ karoti,\npathavī pathavīkāyaṁ anupeti anupagacchati, āpo āpokāyaṁ anupeti anupagacchati,\ntejo tejokāyaṁ anupeti anupagacchati, vāyo vāyokāyaṁ anupeti anupagacchati, ākāsaṁ indriyāni saṅkamanti.", "sujato": ""}, {"key": "mn76:8.5", "pali": "Āsandipañcamā purisā mataṁ ādāya gacchanti, yāvāḷāhanā padāni paññāyanti.", "sujato": ""}, {"key": "mn76:8.6", "pali": "Kāpotakāni aṭṭhīni bhavanti.", "sujato": ""}, {"key": "mn76:8.7", "pali": "Bhassantā āhutiyo;", "sujato": ""}, {"key": "mn76:8.8", "pali": "dattupaññattaṁ yadidaṁ dānaṁ.", "sujato": ""}, {"key": "mn76:8.9", "pali": "Tesaṁ tucchā musā vilāpo ye keci atthikavādaṁ vadanti.", "sujato": ""}, {"key": "mn76:8.10", "pali": "Bāle ca paṇḍite ca kāyassa bhedā ucchijjanti vinassanti na honti paraṁ maraṇā’ti.", "sujato": ""}, {"key": "mn76:8.11", "pali": "Sace imassa bhoto satthuno saccaṁ vacanaṁ, akatena me ettha kataṁ, avusitena me ettha vusitaṁ.", "sujato": "If what that teacher says is true, both I who have not accomplished this and one who has accomplished it"}, {"key": "mn76:8.12", "pali": "Ubhopi mayaṁ ettha samasamā sāmaññaṁ pattā, yo cāhaṁ na vadāmi ‘ubho kāyassa bhedā ucchijjissāma,\nvinassissāma, na bhavissāma paraṁ maraṇā’ti.", "sujato": "have attained exactly the same level.\nYet I’m not one who says that both of us are annihilated and destroyed when our body breaks up,\nand we don’t exist after death."}, {"key": "mn76:8.13", "pali": "Atirekaṁ kho panimassa bhoto satthuno naggiyaṁ muṇḍiyaṁ ukkuṭikappadhānaṁ kesamassulocanaṁ,\nyohaṁ puttasambādhasayanaṁ ajjhāvasanto kāsikacandanaṁ paccanubhonto mālāgandhavilepanaṁ dhārento\njātarūparajataṁ sādiyanto iminā bhotā satthārā samasamagatiko bhavissāmi abhisamparāyaṁ.", "sujato": "But it’s superfluous for this teacher to go nude, bald, persisting in squatting, tearing out their hair and beard.\nFor I’m living at home with my children, using sandalwood imported from Kāsi,\nwearing garlands, fragrance, and makeup, and accepting gold and currency.\nYet I’ll have exactly the same destiny in the next life as this teacher."}, {"key": "mn76:8.14", "pali": "Sohaṁ kiṁ jānanto kiṁ passanto imasmiṁ satthari brahmacariyaṁ carissāmi?", "sujato": "What do I know or see that I should lead the spiritual life under this teacher?"}, {"key": "mn76:8.15", "pali": "‘So abrahmacariyavāso ayan’ti—", "sujato": "This negates the spiritual life.’"}, {"key": "mn76:8.16", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "9", "label": "This is the first way that negates…", "rows": [{"key": "mn76:9.1", "pali": "Ayaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena paṭhamo\nabrahmacariyavāso akkhāto yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the first way that negates the spiritual life."}]}, {"id": "10", "label": "Furthermore, take a certain teacher who has…", "rows": [{"key": "mn76:10.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā evaṁvādī hoti evaṁdiṭṭhi:", "sujato": "Furthermore, take a certain teacher who has this doctrine and view:"}, {"key": "mn76:10.2", "pali": "‘karoto kārayato chindato chedāpayato pacato pācāpayato socayato socāpayato\nkilamato kilamāpayato phandato phandāpayato pāṇamatipātayato adinnaṁ\nādiyato sandhiṁ chindato nillopaṁ harato ekāgārikaṁ karoto paripanthe\ntiṭṭhato paradāraṁ gacchato musā bhaṇato karoto na karīyati pāpaṁ.", "sujato": "‘The one who acts does nothing wrong when they punish, mutilate, torture,\naggrieve, oppress, intimidate, or when they encourage others to do the same.\nNothing bad is done when they kill, steal, break into houses, plunder wealth,\nsteal from isolated buildings, commit highway robbery, commit adultery, and lie."}, {"key": "mn76:10.3", "pali": "Khurapariyantena cepi cakkena yo imissā pathaviyā pāṇe ekaṁ maṁsakhalaṁ ekaṁ maṁsapuñjaṁ kareyya,\nnatthi tatonidānaṁ pāpaṁ, natthi pāpassa āgamo.", "sujato": "If you were to reduce all the living creatures of this earth to one heap and mass of flesh with a razor-edged chakram,\nno evil comes of that, and no outcome of evil."}, {"key": "mn76:10.4", "pali": "Dakkhiṇañcepi gaṅgāya tīraṁ gaccheyya hananto ghātento chindanto chedāpento pacanto pacāpento,\nnatthi tatonidānaṁ pāpaṁ, natthi pāpassa āgamo.", "sujato": "If you were to go along the south bank of the Ganges killing, mutilating, and torturing,\nand encouraging others to do the same, no evil comes of that, and no outcome of evil."}, {"key": "mn76:10.5", "pali": "Uttarañcepi gaṅgāya tīraṁ gaccheyya dadanto dāpento yajanto yajāpento, natthi tatonidānaṁ puññaṁ, natthi puññassa āgamo.", "sujato": "If you were to go along the north bank of the Ganges giving and sacrificing and encouraging others to do the same,\nno merit comes of that, and no outcome of merit."}, {"key": "mn76:10.6", "pali": "Dānena damena saṁyamena saccavajjena natthi puññaṁ, natthi puññassa āgamo’ti.", "sujato": "In giving, self-control, restraint, and truthfulness there is no merit or outcome of merit.’"}]}, {"id": "11", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:11.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:11.2", "pali": "‘ayaṁ kho bhavaṁ satthā evaṁvādī evaṁdiṭṭhi—", "sujato": "‘This teacher has such a doctrine and view."}, {"key": "mn76:11.3", "pali": "karoto kārayato chindato chedāpayato pacato pācāpayato socato socāpayato kilamato kilamāpayato\nphandato phandāpayato pāṇamatipātayato adinnaṁ ādiyato sandhiṁ chindato nillopaṁ harato\nekāgārikaṁ karoto paripanthe tiṭṭhato paradāraṁ gacchato musā bhaṇato karoto na karīyati pāpaṁ\nkhurapariyantena cepi cakkena yo imissā pathaviyā pāṇe ekaṁ maṁsakhalaṁ ekaṁ maṁsapuñjaṁ kareyya,\nnatthi tatonidānaṁ pāpaṁ, natthi pāpassa āgamo.", "sujato": ""}, {"key": "mn76:11.4", "pali": "Dakkhiṇañcepi gaṅgāya tīraṁ gaccheyya hananto ghātento chindanto chedāpento pacanto pacāpento,\nnatthi tatonidānaṁ pāpaṁ, natthi pāpassa āgamo.", "sujato": ""}, {"key": "mn76:11.5", "pali": "Uttarañcepi gaṅgāya tīraṁ gaccheyya dadanto dāpento yajanto yajāpento, natthi tatonidānaṁ puññaṁ, natthi puññassa āgamo.", "sujato": ""}, {"key": "mn76:11.6", "pali": "Dānena damena saṁyamena saccavajjena natthi puññaṁ, natthi puññassa āgamo’ti.", "sujato": ""}, {"key": "mn76:11.7", "pali": "Sace imassa bhoto satthuno saccaṁ vacanaṁ, akatena me ettha kataṁ, avusitena me ettha vusitaṁ.", "sujato": "If what that teacher says is true, both I who have not accomplished this and one who has accomplished it"}, {"key": "mn76:11.8", "pali": "Ubhopi mayaṁ ettha samasamā sāmaññaṁ pattā, yo cāhaṁ na vadāmi ‘ubhinnaṁ kurutaṁ na karīyati pāpan’ti.", "sujato": "have attained exactly the same level.\nYet I’m not one who says that when both of us act, nothing wrong is done."}, {"key": "mn76:11.9", "pali": "Atirekaṁ kho panimassa bhoto satthuno naggiyaṁ muṇḍiyaṁ ukkuṭikappadhānaṁ kesamassulocanaṁ,\nyohaṁ puttasambādhasayanaṁ ajjhāvasanto kāsikacandanaṁ paccanubhonto mālāgandhavilepanaṁ dhārento\njātarūparajataṁ sādiyanto iminā bhotā satthārā samasamagatiko bhavissāmi abhisamparāyaṁ.", "sujato": "But it’s superfluous for this teacher to go nude, bald, persisting in squatting, tearing out their hair and beard.\nFor I’m living at home with my children, using sandalwood imported from Kāsi,\nwearing garlands, fragrance, and makeup, and accepting gold and currency.\nYet I’ll have exactly the same destiny in the next life as this teacher."}, {"key": "mn76:11.10", "pali": "Sohaṁ kiṁ jānanto kiṁ passanto imasmiṁ satthari brahmacariyaṁ carissāmi?", "sujato": "What do I know or see that I should lead the spiritual life under this teacher?"}, {"key": "mn76:11.11", "pali": "‘So abrahmacariyavāso ayan’ti", "sujato": "This negates the spiritual life.’"}, {"key": "mn76:11.12", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "12", "label": "This is the second way that negates…", "rows": [{"key": "mn76:12.1", "pali": "Ayaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena dutiyo\nabrahmacariyavāso akkhāto yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the second way that negates the spiritual life."}]}, {"id": "13", "label": "Furthermore, take a certain teacher who has…", "rows": [{"key": "mn76:13.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā evaṁvādī hoti evaṁdiṭṭhi:", "sujato": "Furthermore, take a certain teacher who has this doctrine and view:"}, {"key": "mn76:13.2", "pali": "‘natthi hetu, natthi paccayo sattānaṁ saṅkilesāya;", "sujato": "‘There is no cause or reason for the corruption of sentient beings."}, {"key": "mn76:13.3", "pali": "ahetū appaccayā sattā saṅkilissanti;", "sujato": "Sentient beings are corrupted without cause or reason."}, {"key": "mn76:13.4", "pali": "natthi hetu, natthi paccayo sattānaṁ visuddhiyā;", "sujato": "There’s no cause or reason for the purification of sentient beings."}, {"key": "mn76:13.5", "pali": "ahetū appaccayā sattā visujjhanti;", "sujato": "Sentient beings are purified without cause or reason."}, {"key": "mn76:13.6", "pali": "natthi balaṁ, natthi vīriyaṁ, natthi purisathāmo, natthi purisaparakkamo;", "sujato": "There is no power, no energy, no human strength or vigor."}, {"key": "mn76:13.7", "pali": "sabbe sattā sabbe pāṇā sabbe bhūtā sabbe jīvā avasā abalā avīriyā\nniyatisaṅgatibhāvapariṇatā chasvevābhijātīsu sukhadukkhaṁ paṭisaṁvedentī’ti.", "sujato": "All sentient beings, all living creatures, all beings, all souls lack control, power, and energy.\nMolded by destiny, circumstance, and nature, they experience pleasure and pain in the six classes of rebirth.’"}]}, {"id": "14", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:14.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:14.2", "pali": "‘ayaṁ kho bhavaṁ satthā evaṁvādī evaṁdiṭṭhi—", "sujato": "‘This teacher has such a doctrine and view."}, {"key": "mn76:14.3", "pali": "natthi hetu, natthi paccayo sattānaṁ saṅkilesāya, ahetū appaccayā sattā saṅkilissanti.", "sujato": ""}, {"key": "mn76:14.4", "pali": "Natthi hetu natthi paccayo sattānaṁ visuddhiyā, ahetū appaccayā sattā visujjhanti.", "sujato": ""}, {"key": "mn76:14.5", "pali": "Natthi balaṁ, natthi vīriyaṁ, natthi purisathāmo, natthi purisaparakkamo,\nsabbe sattā sabbe pāṇā sabbe bhūtā sabbe jīvā avasā abalā avīriyā\nniyatisaṅgatibhāvapariṇatā chasvevābhijātīsu sukhadukkhaṁ paṭisaṁvedentī’ti.", "sujato": ""}, {"key": "mn76:14.6", "pali": "Sace imassa bhoto satthuno saccaṁ vacanaṁ, akatena me ettha kataṁ, avusitena me ettha vusitaṁ.", "sujato": "If what that teacher says is true, both I who have not accomplished this and one who has accomplished it"}, {"key": "mn76:14.7", "pali": "Ubhopi mayaṁ ettha samasamā sāmaññaṁ pattā, yo cāhaṁ na vadāmi ‘ubho ahetū appaccayā visujjhissāmā’ti.", "sujato": "have attained exactly the same level.\nYet I’m not one who says that both of us are purified without cause or reason."}, {"key": "mn76:14.8", "pali": "Atirekaṁ kho panimassa bhoto satthuno naggiyaṁ muṇḍiyaṁ ukkuṭikappadhānaṁ kesamassulocanaṁ,\nyohaṁ puttasambādhasayanaṁ ajjhāvasanto kāsikacandanaṁ paccanubhonto mālāgandhavilepanaṁ dhārento\njātarūparajataṁ sādiyanto iminā bhotā satthārā samasamagatiko bhavissāmi abhisamparāyaṁ.", "sujato": "But it’s superfluous for this teacher to go nude, bald, persisting in squatting, tearing out their hair and beard.\nFor I’m living at home with my children, using sandalwood imported from Kāsi,\nwearing garlands, fragrance, and makeup, and accepting gold and currency.\nYet I’ll have exactly the same destiny in the next life as this teacher."}, {"key": "mn76:14.9", "pali": "Sohaṁ kiṁ jānanto kiṁ passanto imasmiṁ satthari brahmacariyaṁ carissāmi?", "sujato": "What do I know or see that I should lead the spiritual life under this teacher?"}, {"key": "mn76:14.10", "pali": "‘So abrahmacariyavāso ayan’ti—", "sujato": "This negates the spiritual life.’"}, {"key": "mn76:14.11", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "15", "label": "This is the third way that negates…", "rows": [{"key": "mn76:15.1", "pali": "Ayaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena tatiyo\nabrahmacariyavāso akkhāto yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the third way that negates the spiritual life."}]}, {"id": "16", "label": "Furthermore, take a certain teacher who has…", "rows": [{"key": "mn76:16.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā evaṁvādī hoti evaṁdiṭṭhi:", "sujato": "Furthermore, take a certain teacher who has this doctrine and view:"}, {"key": "mn76:16.2", "pali": "‘sattime kāyā akaṭā akaṭavidhā animmitā animmātā vañjhā kūṭaṭṭhā esikaṭṭhāyiṭṭhitā,", "sujato": "‘There are these seven substances that are not made, not derived, not created,\nwithout a creator, barren, steady as a mountain peak, standing firm like a pillar."}, {"key": "mn76:16.3", "pali": "te na iñjanti na vipariṇamanti na aññamaññaṁ byābādhenti nālaṁ aññamaññassa sukhāya vā dukkhāya vā sukhadukkhāya vā.", "sujato": "They don’t move or deteriorate or obstruct each other.\nThey’re unable to cause pleasure, pain, or both pleasure and pain to each other."}, {"key": "mn76:16.4", "pali": "Katame satta?", "sujato": "What seven?"}, {"key": "mn76:16.5", "pali": "Pathavīkāyo āpokāyo tejokāyo vāyokāyo sukhe dukkhe jīve sattame—", "sujato": "The substances of earth, water, fire, air;\npleasure, pain, and the soul is the seventh."}, {"key": "mn76:16.6", "pali": "ime sattakāyā akaṭā akaṭavidhā animmitā animmātā vañjhā kūṭaṭṭhā esikaṭṭhāyiṭṭhitā.", "sujato": "These seven substances are not made, not derived, not created, without a creator,\nbarren, steady as a mountain peak, standing firm like a pillar."}, {"key": "mn76:16.7", "pali": "Te na iñjanti na vipariṇamanti na aññamaññaṁ byābādhenti.\nNālaṁ aññamaññassa sukhāya vā dukkhāya vā sukhadukkhāya vā.", "sujato": "They don’t move or deteriorate or obstruct each other.\nThey’re unable to cause pleasure, pain, or both pleasure and pain to each other."}, {"key": "mn76:16.8", "pali": "Tattha natthi hantā vā ghātetā vā sotā vā sāvetā vā viññātā vā viññāpetā vā.", "sujato": "And here there is no-one who kills or who makes others kill;\nno-one who learns or who educates others;\nno-one who understands or who helps others understand."}, {"key": "mn76:16.9", "pali": "Yopi tiṇhena satthena sīsaṁ chindati, na koci kañci jīvitā voropeti.", "sujato": "If you chop off someone’s head with a sharp sword, you don’t take anyone’s life."}, {"key": "mn76:16.10", "pali": "Sattannaṁ tveva kāyānamantarena satthaṁ vivaramanupatati.", "sujato": "The sword simply passes through the gap between the seven substances."}, {"key": "mn76:16.11", "pali": "Cuddasa kho panimāni yonipamukhasatasahassāni saṭṭhi ca satāni cha\nca satāni pañca ca kammuno satāni pañca ca kammāni tīṇi ca kammāni,\nkamme ca aḍḍhakamme ca,\ndvaṭṭhipaṭipadā, dvaṭṭhantarakappā, chaḷābhijātiyo, aṭṭha purisabhūmiyo, ekūnapaññāsa ājīvakasate,\nekūnapaññāsa paribbājakasate, ekūnapaññāsa nāgāvāsasate, vīse indriyasate,\ntiṁse nirayasate, chattiṁsa rajodhātuyo, satta saññīgabbhā, satta asaññīgabbhā,\nsatta nigaṇṭhigabbhā, satta devā, satta mānusā, satta pesācā, satta sarā, satta pavuṭā,\nsatta papātā, satta papātasatāni, satta supinā, satta supinasatāni, cullāsīti mahākappino satasahassāni,\nyāni bāle ca paṇḍite ca sandhāvitvā saṁsaritvā dukkhassantaṁ karissanti.", "sujato": "There are 1.4 million main wombs, and 6,000, and 600;\n500 deeds, and five, and three;\ndeeds and half-deeds;\n62 paths of practice, 62 sub-eons, six classes of rebirth, and eight stages in a person’s life;\n4,900 Ājīvaka ascetics, 4,900 wanderers, and 4,900 dragon abodes;\n2,000 lordships, 3,000 hells, and 36 realms of dusky sky;\nseven percipient embryos, seven non-percipient embryos, seven knotless embryos, seven gods,\nseven mental heavens, seven goblins, seven streams, seven castoff incarnations and 700 castoff incarnations,\nseven downfalls and 700 downfalls, seven dreams and 700 dreams,\nand 8.4 million great eons—through all of which the foolish\nand the astute transmigrate before making an end of suffering."}, {"key": "mn76:16.12", "pali": "Tattha natthi imināhaṁ sīlena vā vatena vā tapena vā brahmacariyena vā aparipakkaṁ vā kammaṁ paripācessāmi,\nparipakkaṁ vā kammaṁ phussa phussa byantiṁ karissāmīti.", "sujato": "And here there is no such thing as this:\n“By this precept or observance or fervent austerity or spiritual\npractice I shall force unripened deeds to bear their fruit,\nor eliminate old deeds by experiencing their results little by little”—for that cannot be."}, {"key": "mn76:16.13", "pali": "Hevaṁ natthi doṇamite sukhadukkhe pariyantakate saṁsāre, natthi hāyanavaḍḍhane, natthi ukkaṁsāvakaṁse.", "sujato": "Pleasure and pain are allotted.\nTransmigration lasts only for a limited period, so there’s no increase or decrease, no getting better or worse."}, {"key": "mn76:16.14", "pali": "Seyyathāpi nāma suttaguḷe khitte nibbeṭhiyamānameva paleti;", "sujato": "It’s like how, when you toss a ball of string, it rolls away unraveling."}, {"key": "mn76:16.15", "pali": "evameva bāle ca paṇḍite ca sandhāvitvā saṁsaritvā dukkhassantaṁ karissantī’ti.", "sujato": "In the same way, after transmigrating the foolish and the astute will make an end of suffering.’"}]}, {"id": "17", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:17.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:17.2", "pali": "‘ayaṁ kho bhavaṁ satthā evaṁvādī evaṁdiṭṭhi—", "sujato": "‘This teacher has such a doctrine and view."}, {"key": "mn76:17.3", "pali": "sattime kāyā akaṭā akaṭavidhā animmitā animmātā vañjhā kūṭaṭṭhā esikaṭṭhāyiṭṭhitā.", "sujato": ""}, {"key": "mn76:17.4", "pali": "Te na iñjanti na vipariṇamanti na aññamaññaṁ byābādhenti.", "sujato": ""}, {"key": "mn76:17.5", "pali": "Nālaṁ aññamaññassa sukhāya vā dukkhāya vā sukhadukkhāya vā.", "sujato": ""}, {"key": "mn76:17.6", "pali": "Katame satta?", "sujato": ""}, {"key": "mn76:17.7", "pali": "Pathavīkāyo āpokāyo tejokāyo vāyokāyo sukhe dukkhe jīve sattame—", "sujato": ""}, {"key": "mn76:17.8", "pali": "ime satta kāyā akaṭā akaṭavidhā animmitā animmātā vañjhā kūṭaṭṭhā esikaṭṭhāyiṭṭhitā.", "sujato": ""}, {"key": "mn76:17.9", "pali": "Te na iñjanti na vipariṇamanti na aññamaññaṁ byābādhenti.", "sujato": ""}, {"key": "mn76:17.10", "pali": "Nālaṁ aññamaññassa sukhāya vā dukkhāya vā sukhadukkhāya vā.", "sujato": ""}, {"key": "mn76:17.11", "pali": "Tattha natthi hantā vā ghātetā vā sotā vā sāvetā vā viññātā vā viññāpetā vā.", "sujato": ""}, {"key": "mn76:17.12", "pali": "Yopi tiṇhena satthena sīsaṁ chindati, na koci kañci jīvitā voropeti.", "sujato": ""}, {"key": "mn76:17.13", "pali": "Sattannaṁ tveva kāyānamantarena satthaṁ vivaramanupatati.", "sujato": ""}, {"key": "mn76:17.14", "pali": "Cuddasa kho panimāni yonipamukhasatasahassāni saṭṭhi ca satāni cha\nca satāni pañca ca kammuno satāni pañca ca kammāni tīṇi ca kammāni,\nkamme ca aḍḍhakamme ca,\ndvaṭṭhipaṭipadā, dvaṭṭhantarakappā, chaḷābhijātiyo, aṭṭha purisabhūmiyo, ekūnapaññāsa ājīvakasate,\nekūnapaññāsa paribbājakasate, ekūnapaññāsa nāgāvāsasate, vīse indriyasate,\ntiṁse nirayasate, chattiṁsa rajodhātuyo, satta saññīgabbhā, satta asaññīgabbhā,\nsatta nigaṇṭhigabbhā, satta devā, satta mānusā, satta pesācā, satta sarā, satta pavuṭā,\nsatta papātā, satta papātasatāni, satta supinā, satta supinasatāni, cullāsīti mahākappino satasahassāni,\nyāni bāle ca paṇḍite ca sandhāvitvā saṁsaritvā dukkhassantaṁ karissanti.", "sujato": ""}, {"key": "mn76:17.15", "pali": "Tattha natthi imināhaṁ sīlena vā vatena vā tapena vā brahmacariyena vā aparipakkaṁ vā kammaṁ paripācessāmi,\nparipakkaṁ vā kammaṁ phussa phussa byantiṁ karissāmīti,\nhevaṁ natthi doṇamite sukhadukkhe pariyantakate saṁsāre, natthi hāyanavaḍḍhane, natthi ukkaṁsāvakaṁse.", "sujato": ""}, {"key": "mn76:17.16", "pali": "Seyyathāpi nāma suttaguḷe khitte nibbeṭhiyamānameva paleti;", "sujato": ""}, {"key": "mn76:17.17", "pali": "evameva bāle ca paṇḍite ca sandhāvitvā saṁsaritvā dukkhassantaṁ karissantī’ti.", "sujato": ""}, {"key": "mn76:17.18", "pali": "Sace pana imassa bhoto satthuno saccaṁ vacanaṁ, akatena me ettha kataṁ, avusitena me ettha vusitaṁ.", "sujato": "If what that teacher says is true, both I who have not accomplished this and one who has accomplished it"}, {"key": "mn76:17.19", "pali": "Ubhopi mayaṁ ettha samasamā sāmaññaṁ pattā, yo cāhaṁ na vadāmi ‘ubho sandhāvitvā saṁsaritvā dukkhassantaṁ karissāmā’ti.", "sujato": "have attained exactly the same level.\nYet I’m not one who says that after transmigrating both of us will make an end of suffering."}, {"key": "mn76:17.20", "pali": "Atirekaṁ kho panimassa bhoto satthuno naggiyaṁ muṇḍiyaṁ ukkuṭikappadhānaṁ kesamassulocanaṁ,\nyohaṁ puttasambādhasayanaṁ ajjhāvasanto kāsikacandanaṁ paccanubhonto mālāgandhavilepanaṁ dhārento\njātarūparajataṁ sādiyanto iminā bhotā satthārā samasamagatiko bhavissāmi abhisamparāyaṁ.", "sujato": "But it’s superfluous for this teacher to go nude, bald, persisting in squatting, tearing out their hair and beard.\nFor I’m living at home with my children, using sandalwood imported from Kāsi,\nwearing garlands, fragrance, and makeup, and accepting gold and currency.\nYet I’ll have exactly the same destiny in the next life as this teacher."}, {"key": "mn76:17.21", "pali": "Sohaṁ kiṁ jānanto kiṁ passanto imasmiṁ satthari brahmacariyaṁ carissāmi?", "sujato": "What do I know or see that I should lead the spiritual life under this teacher?"}, {"key": "mn76:17.22", "pali": "‘So abrahmacariyavāso ayan’ti—", "sujato": "This negates the spiritual life.’"}, {"key": "mn76:17.23", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "18", "label": "This is the fourth way that negates…", "rows": [{"key": "mn76:18.1", "pali": "Ayaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena catuttho\nabrahmacariyavāso akkhāto yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the fourth way that negates the spiritual life."}]}, {"id": "19", "label": "These are the four ways that negate…", "rows": [{"key": "mn76:19.1", "pali": "Ime kho te, sandaka,\ntena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāro abrahmacariyavāsā\nakkhātā yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalan”ti.", "sujato": "These are the four ways that negate the spiritual life that have been explained by the Blessed One,\nwho knows and sees, the perfected one, the fully awakened Buddha.\nA sensible person would, to the best of their ability, not practice such spiritual paths,\nand if they did practice them, they wouldn’t succeed in the system of the skillful teaching.”"}]}, {"id": "20", "label": "“It’s incredible, worthy Ānanda, it’s amazing,", "rows": [{"key": "mn76:20.1", "pali": "“Acchariyaṁ, bho ānanda, abbhutaṁ, bho ānanda.", "sujato": "“It’s incredible, worthy Ānanda, it’s amazing,"}, {"key": "mn76:20.2", "pali": "Yāvañcidaṁ tena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāro abrahmacariyavāsāva\nsamānā ‘abrahmacariyavāsā’ti akkhātā yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalanti.", "sujato": "how these four ways that negate the spiritual life have been explained by the Buddha."}, {"key": "mn76:20.3", "pali": "Katamāni pana tāni, bho ānanda,\ntena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāri anassāsikāni\nbrahmacariyāni akkhātāni yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalan”ti?", "sujato": "But worthy Ānanda, what are the four kinds of unreliable spiritual life?”"}]}, {"id": "21", "label": "“Sandaka, take a certain teacher who claims…", "rows": [{"key": "mn76:21.1", "pali": "“Idha, sandaka, ekacco satthā sabbaññū sabbadassāvī aparisesaṁ ñāṇadassanaṁ paṭijānāti:", "sujato": "“Sandaka, take a certain teacher who claims to be all-knowing and all-seeing,\nto know and see everything without exception, thus:"}, {"key": "mn76:21.2", "pali": "‘carato ca me tiṭṭhato ca suttassa ca jāgarassa ca satataṁ samitaṁ ñāṇadassanaṁ paccupaṭṭhitan’ti.", "sujato": "‘Knowledge and vision are constantly and continually present to me, while walking, standing, sleeping, and waking.’"}, {"key": "mn76:21.3", "pali": "So suññampi agāraṁ pavisati, piṇḍampi na labhati, kukkuropi ḍaṁsati,\ncaṇḍenapi hatthinā samāgacchati, caṇḍenapi assena samāgacchati,\ncaṇḍenapi goṇena samāgacchati, itthiyāpi purisassapi nāmampi gottampi pucchati,\ngāmassapi nigamassapi nāmampi maggampi pucchati.", "sujato": "They enter an empty house;\nthey get no almsfood;\na dog bites them;\nthey encounter a wild elephant, a wild horse, and a wild cow;\nthey ask the name and clan of a woman or man;\nthey ask the name and path to a village or town."}, {"key": "mn76:21.4", "pali": "So ‘kimidan’ti puṭṭho samāno ‘suññaṁ me agāraṁ pavisitabbaṁ ahosi’, tena pāvisiṁ;\n‘piṇḍampi aladdhabbaṁ ahosi’, tena nālatthaṁ;\n‘kukkurena ḍaṁsitabbaṁ ahosi’, tenamhi daṭṭho;\n‘caṇḍena hatthinā samāgantabbaṁ ahosi’, tena samāgamiṁ;\n‘caṇḍena assena samāgantabbaṁ ahosi’, tena samāgamiṁ;\n‘caṇḍena goṇena samāgantabbaṁ ahosi’, tena samāgamiṁ;\n‘itthiyāpi purisassapi nāmampi gottampi pucchitabbaṁ ahosi’, tena pucchiṁ;\n‘gāmassapi nigamassapi nāmampi maggampi pucchitabbaṁ ahosi’, tena pucchinti.", "sujato": "When asked,\n‘Why is this?’ they answer:\n‘I had to enter an empty house, that’s why I entered it.\nI had to get no almsfood, that’s why I got none.\nI had to get bitten by a dog, that’s why I was bitten.\nI had to encounter a wild elephant, a wild horse, and a wild cow, that’s why I encountered them.\nI had to ask the name and clan of a woman or man, that’s why I asked.\nI had to ask the name and path to a village or town, that’s why I asked.’"}]}, {"id": "22", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:22.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:22.2", "pali": "‘ayaṁ kho bhavaṁ satthā sabbaññū sabbadassāvī aparisesaṁ ñāṇadassanaṁ paṭijānāti …pe…\n‘gāmassapi nigamassapi nāmampi maggampi pucchitabbaṁ ahosi, tena pucchin’ti.", "sujato": "‘This teacher makes such a claim, but they answer in such a way."}, {"key": "mn76:22.3", "pali": "So ‘anassāsikaṁ idaṁ brahmacariyan’ti—", "sujato": "This spiritual life is unreliable.’"}, {"key": "mn76:22.4", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "23", "label": "This is the first kind of unreliable…", "rows": [{"key": "mn76:23.1", "pali": "Idaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena paṭhamaṁ\nanassāsikaṁ brahmacariyaṁ akkhātaṁ yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the first kind of unreliable spiritual life."}]}, {"id": "24", "label": "Furthermore, take another teacher who is an…", "rows": [{"key": "mn76:24.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā anussaviko hoti anussavasacco.", "sujato": "Furthermore, take another teacher who is an oral transmitter, who takes oral transmission to be the truth."}, {"key": "mn76:24.2", "pali": "So anussavena itihitihaparamparāya piṭakasampadāya dhammaṁ deseti.", "sujato": "They teach by oral transmission, by the lineage of testament, by canonical authority."}, {"key": "mn76:24.3", "pali": "Anussavikassa kho pana, sandaka, satthuno anussavasaccassa sussutampi hoti dussutampi hoti tathāpi hoti aññathāpi hoti.", "sujato": "But when a teacher takes oral transmission to be the truth,\nsome of that is well learned, some poorly learned, some true, and some otherwise."}]}, {"id": "25", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:25.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:25.2", "pali": "‘ayaṁ kho bhavaṁ satthā anussaviko anussavasacco so anussavena itihitihaparamparāya piṭakasampadāya dhammaṁ deseti.", "sujato": "‘This teacher takes oral transmission to be the truth.\nHe teaches by oral transmission, by the lineage of testament, by canonical authority."}, {"key": "mn76:25.3", "pali": "Anussavikassa kho pana satthuno anussavasaccassa sussutampi hoti dussutampi hoti tathāpi hoti aññathāpi hoti’.", "sujato": "But when a teacher takes oral transmission to be the truth,\nsome of that is well learned, some poorly learned, some true, and some otherwise."}, {"key": "mn76:25.4", "pali": "So ‘anassāsikaṁ idaṁ brahmacariyan’ti—", "sujato": "This spiritual life is unreliable.’"}, {"key": "mn76:25.5", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "26", "label": "This is the second kind of unreliable…", "rows": [{"key": "mn76:26.1", "pali": "Idaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena dutiyaṁ\nanassāsikaṁ brahmacariyaṁ akkhātaṁ yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the second kind of unreliable spiritual life."}]}, {"id": "27", "label": "Furthermore, take another teacher who relies on…", "rows": [{"key": "mn76:27.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā takkī hoti vīmaṁsī.", "sujato": "Furthermore, take another teacher who relies on logic and inquiry."}, {"key": "mn76:27.2", "pali": "So takkapariyāhataṁ vīmaṁsānucaritaṁ sayampaṭibhānaṁ dhammaṁ deseti.", "sujato": "They teach what they have worked out by logic, following a line of inquiry, expressing their own perspective."}, {"key": "mn76:27.3", "pali": "Takkissa kho pana, sandaka, satthuno vīmaṁsissa sutakkitampi hoti duttakkitampi hoti tathāpi hoti aññathāpi hoti.", "sujato": "But when a teacher relies on logic and inquiry, some of that is well reasoned,\nsome poorly reasoned, some true, and some otherwise."}]}, {"id": "28", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:28.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:28.2", "pali": "‘ayaṁ kho bhavaṁ satthā takkī vīmaṁsī.", "sujato": "‘This teacher relies on logic and inquiry."}, {"key": "mn76:28.3", "pali": "So takkapariyāhataṁ vīmaṁsānucaritaṁ sayampaṭibhānaṁ dhammaṁ deseti.", "sujato": "They teach what they have worked out by logic, following a line of inquiry, expressing their own perspective."}, {"key": "mn76:28.4", "pali": "Takkissa kho pana satthuno vīmaṁsissa sutakkitampi hoti duttakkitampi hoti tathāpi hoti aññathāpi hoti’.", "sujato": "But when a teacher relies on logic and inquiry, some of that is well reasoned,\nsome poorly reasoned, some true, and some otherwise."}, {"key": "mn76:28.5", "pali": "So ‘anassāsikaṁ idaṁ brahmacariyan’ti—", "sujato": "This spiritual life is unreliable.’"}, {"key": "mn76:28.6", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "29", "label": "This is the third kind of unreliable…", "rows": [{"key": "mn76:29.1", "pali": "Idaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena tatiyaṁ\nanassāsikaṁ brahmacariyaṁ akkhātaṁ yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the third kind of unreliable spiritual life."}]}, {"id": "30", "label": "Furthermore, take another teacher who is dull…", "rows": [{"key": "mn76:30.1", "pali": "Puna caparaṁ, sandaka, idhekacco satthā mando hoti momūho.", "sujato": "Furthermore, take another teacher who is dull and stupid."}, {"key": "mn76:30.2", "pali": "So mandattā momūhattā tattha tattha pañhaṁ puṭṭho samāno vācāvikkhepaṁ āpajjati amarāvikkhepaṁ:", "sujato": "Because of that, whenever they’re asked a question, they resort to verbal flip-flops and endless flip-flops:"}, {"key": "mn76:30.3", "pali": "‘evantipi me no, tathātipi me no, aññathātipi me no, notipi me no, no notipi me no’ti.", "sujato": "‘I don’t say it’s like this.\nI don’t say it’s like that.\nI don’t say it’s otherwise.\nI don’t say it’s not so.\nAnd I don’t deny it’s not so.’"}]}, {"id": "31", "label": "A sensible person reflects on this matter…", "rows": [{"key": "mn76:31.1", "pali": "Tatra, sandaka, viññū puriso iti paṭisañcikkhati:", "sujato": "A sensible person reflects on this matter in this way:"}, {"key": "mn76:31.2", "pali": "‘ayaṁ kho bhavaṁ satthā mando momūho.", "sujato": "‘This teacher is dull and stupid."}, {"key": "mn76:31.3", "pali": "So mandattā momūhattā tattha tattha pañhaṁ puṭṭho samāno vācāvikkhepaṁ āpajjati amarāvikkhepaṁ—", "sujato": "Because of that, whenever they’re asked a question, they resort to verbal flip-flops and endless flip-flops:"}, {"key": "mn76:31.4", "pali": "evantipi me no, tathātipi me no, aññathātipi me no, notipi me no, no notipi me no’ti.", "sujato": "“I don’t say it’s like this.\nI don’t say it’s like that.\nI don’t say it’s otherwise.\nI don’t say it’s not so.\nAnd I don’t deny it’s not so.”"}, {"key": "mn76:31.5", "pali": "So ‘anassāsikaṁ idaṁ brahmacariyan’ti—", "sujato": "This spiritual life is unreliable.’"}, {"key": "mn76:31.6", "pali": "iti viditvā tasmā brahmacariyā nibbijja pakkamati.", "sujato": "Realizing this, they leave disappointed."}]}, {"id": "32", "label": "This is the fourth kind of unreliable…", "rows": [{"key": "mn76:32.1", "pali": "Idaṁ kho, sandaka, tena bhagavatā jānatā passatā arahatā sammāsambuddhena catutthaṁ\nanassāsikaṁ brahmacariyaṁ akkhātaṁ yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "This is the fourth kind of unreliable spiritual life."}]}, {"id": "33", "label": "These are the four kinds of unreliable…", "rows": [{"key": "mn76:33.1", "pali": "Imāni kho tāni, sandaka,\ntena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāri anassāsikāni\nbrahmacariyāni akkhātāni yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalan”ti.", "sujato": "These are the four kinds of unreliable spiritual life that have been explained by the Blessed One,\nwho knows and sees, the perfected one, the fully awakened Buddha.\nA sensible person would, to the best of their ability, not practice such spiritual paths,\nand if they did practice them, they wouldn’t complete the system of the skillful teaching.”"}]}, {"id": "34", "label": "“It’s incredible, worthy Ānanda, it’s amazing,", "rows": [{"key": "mn76:34.1", "pali": "“Acchariyaṁ, bho ānanda, abbhutaṁ, bho ānanda.", "sujato": "“It’s incredible, worthy Ānanda, it’s amazing,"}, {"key": "mn76:34.2", "pali": "Yāvañcidaṁ tena bhagavatā jānatā passatā arahatā sammāsambuddhena cattāri anassāsikāneva brahmacariyāni\nanassāsikāni brahmacariyānīti akkhātāni yattha viññū puriso sasakkaṁ brahmacariyaṁ na vaseyya,\nvasanto ca nārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "how these four kinds of unreliable spiritual life have been explained by the Buddha."}, {"key": "mn76:34.3", "pali": "So pana, bho ānanda, satthā kiṁ vādī kiṁ akkhāyī yattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalan”ti.", "sujato": "But, worthy Ānanda, what would a teacher say and explain so that a sensible person would, to the best of their ability,\npractice such a spiritual path, and once practicing it, they would complete the system of the skillful teaching?”"}]}, {"id": "35", "label": "“Sandaka, it’s when a Realized One arises…", "rows": [{"key": "mn76:35-42.1", "pali": "“Idha, sandaka, tathāgato loke uppajjati arahaṁ sammāsambuddho vijjācaraṇasampanno\nsugato lokavidū anuttaro purisadammasārathi satthā devamanussānaṁ buddho bhagavā …pe…", "sujato": "“Sandaka, it’s when a Realized One arises in the world, perfected,\na fully awakened Buddha, accomplished in knowledge and conduct,\nholy, knower of the world, supreme guide for those fit for training, teacher of gods and humans, awakened, blessed. …"}, {"key": "mn76:35-42.2", "pali": "so ime pañca nīvaraṇe pahāya cetaso upakkilese paññāya dubbalīkaraṇe", "sujato": "He gives up these five hindrances, corruptions of the heart that weaken wisdom."}, {"key": "mn76:35-42.3", "pali": "vivicceva kāmehi vivicca akusalehi dhammehi savitakkaṁ savicāraṁ\nvivekajaṁ pītisukhaṁ paṭhamaṁ jhānaṁ upasampajja viharati.", "sujato": "Then, quite secluded from sensual pleasures, secluded from unskillful qualities,\nhe enters and remains in the first absorption,\nwhich has the rapture and bliss born of seclusion, while placing the mind and keeping it connected."}, {"key": "mn76:35-42.4", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "A sensible person would, to the best of their ability,\nlead the spiritual life with a teacher under whom they achieve such a high distinction,\nand, once practicing it, they would complete the system of the skillful teaching."}]}, {"id": "43", "label": "Furthermore, as the placing of the mind…", "rows": [{"key": "mn76:43.1", "pali": "Puna caparaṁ, sandaka, bhikkhu vitakkavicārānaṁ vūpasamā …pe… dutiyaṁ jhānaṁ upasampajja viharati.", "sujato": "Furthermore, as the placing of the mind and keeping it connected are stilled,\na mendicant … enters and remains in the second absorption …"}, {"key": "mn76:43.2", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": ""}]}, {"id": "44", "label": "third absorption …", "rows": [{"key": "mn76:44-45.1", "pali": "Puna caparaṁ, sandaka, bhikkhu pītiyā ca virāgā upekkhako ca viharati …pe… tatiyaṁ jhānaṁ upasampajja viharati.", "sujato": "third absorption …"}, {"key": "mn76:44-45.2", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": ""}]}, {"id": "46", "label": "fourth absorption.", "rows": [{"key": "mn76:46.1", "pali": "Puna caparaṁ, sandaka, bhikkhu sukhassa ca pahānā …pe… catutthaṁ jhānaṁ upasampajja viharati.", "sujato": "fourth absorption."}, {"key": "mn76:46.2", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "A sensible person would, to the best of their ability,\nlead the spiritual life under a teacher who achieves such a high distinction,\nand, once practicing it, they would complete the system of the skillful teaching."}]}, {"id": "47", "label": "When their mind has become immersed in…", "rows": [{"key": "mn76:47.1", "pali": "So evaṁ samāhite citte parisuddhe pariyodāte anaṅgaṇe vigatūpakkilese mudubhūte\nkammaniye ṭhite āneñjappatte pubbenivāsānussatiñāṇāya cittaṁ abhininnāmeti.", "sujato": "When their mind has become immersed in samādhi like this—purified, bright, flawless, rid of corruptions,\npliable, workable, steady, and imperturbable—they extend it toward recollection of past lives."}, {"key": "mn76:47.2", "pali": "So anekavihitaṁ pubbenivāsaṁ anussarati, seyyathidaṁ—ekampi jātiṁ dvepi jātiyo …pe…\niti sākāraṁ sauddesaṁ anekavihitaṁ pubbenivāsaṁ anussarati.", "sujato": "They recollect many kinds of past lives.\nThat is:\none, two, three, four, five, ten, twenty, thirty, forty, fifty, a hundred, a thousand, a hundred thousand rebirths;\nmany eons of the world contracting, many eons of the world expanding,\nmany eons of the world contracting and expanding. …\nThey recollect their many kinds of past lives, with features and details."}, {"key": "mn76:47.3", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "A sensible person would, to the best of their ability,\nlead the spiritual life with a teacher under whom they achieve such a high distinction,\nand, once practicing it, they would complete the system of the skillful teaching."}]}, {"id": "48", "label": "When their mind has become immersed in…", "rows": [{"key": "mn76:48.1", "pali": "So evaṁ samāhite citte parisuddhe pariyodāte anaṅgaṇe vigatūpakkilese mudubhūte\nkammaniye ṭhite āneñjappatte sattānaṁ cutūpapātañāṇāya cittaṁ abhininnāmeti.", "sujato": "When their mind has become immersed in samādhi like this—purified, bright, flawless, rid of corruptions, pliable,\nworkable, steady, and imperturbable—they extend it toward knowledge of the death and rebirth of sentient beings."}, {"key": "mn76:48.2", "pali": "So dibbena cakkhunā visuddhena atikkantamānusakena satte passati\ncavamāne upapajjamāne hīne paṇīte suvaṇṇe dubbaṇṇe sugate duggate …pe…\nyathākammūpage satte pajānāti.", "sujato": "With clairvoyance that is purified and superhuman,\nthey see sentient beings passing away and being reborn—inferior and superior,\nbeautiful and ugly, in a good place or a bad place. …\nThey understand how sentient beings pass on according to their deeds."}, {"key": "mn76:48.3", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalaṁ.", "sujato": "A sensible person would, to the best of their ability,\nlead the spiritual life with a teacher under whom they achieve such a high distinction,\nand, once practicing it, they would complete the system of the skillful teaching."}]}, {"id": "49", "label": "When their mind has become immersed in…", "rows": [{"key": "mn76:49.1", "pali": "So evaṁ samāhite citte parisuddhe pariyodāte anaṅgaṇe vigatūpakkilese mudubhūte\nkammaniye ṭhite āneñjappatte āsavānaṁ khayañāṇāya cittaṁ abhininnāmeti.", "sujato": "When their mind has become immersed in samādhi like this—purified, bright, flawless, rid of corruptions,\npliable, workable, steady, and imperturbable—they extend it toward knowledge of the ending of defilements."}, {"key": "mn76:49.2", "pali": "So ‘idaṁ dukkhan’ti yathābhūtaṁ pajānāti,\n‘ayaṁ dukkhasamudayo’ti yathābhūtaṁ pajānāti,\n‘ayaṁ dukkhanirodho’ti yathābhūtaṁ pajānāti,\n‘ayaṁ dukkhanirodhagāminī paṭipadā’ti yathābhūtaṁ pajānāti;", "sujato": "They truly understand:\n‘This is suffering’ …\n‘This is the origin of suffering’ …\n‘This is the cessation of suffering’ …\n‘This is the practice that leads to the cessation of suffering’."}, {"key": "mn76:49.3", "pali": "‘ime āsavā’ti yathābhūtaṁ pajānāti,\n‘ayaṁ āsavasamudayo’ti yathābhūtaṁ pajānāti,\n‘ayaṁ āsavanirodho’ti yathābhūtaṁ pajānāti,\n‘ayaṁ āsavanirodhagāminī paṭipadā’ti yathābhūtaṁ pajānāti.", "sujato": "They truly understand:\n‘These are defilements’ …\n‘This is the origin of defilements’ …\n‘This is the cessation of defilements’ …\n‘This is the practice that leads to the cessation of defilements’."}]}, {"id": "50", "label": "Knowing and seeing like this, their mind…", "rows": [{"key": "mn76:50.1", "pali": "Tassa evaṁ jānato evaṁ passato kāmāsavāpi cittaṁ vimuccati, bhavāsavāpi cittaṁ vimuccati, avijjāsavāpi cittaṁ vimuccati.", "sujato": "Knowing and seeing like this, their mind is freed from the defilements of sensuality,\ndesire to be reborn, and ignorance."}, {"key": "mn76:50.2", "pali": "Vimuttasmiṁ vimuttamiti ñāṇaṁ hoti.", "sujato": "When they’re freed, they know they’re freed."}, {"key": "mn76:50.3", "pali": "‘Khīṇā jāti, vusitaṁ brahmacariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyā’ti pajānāti.", "sujato": "They understand:\n‘Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.’"}, {"key": "mn76:50.4", "pali": "Yasmiṁ kho, sandaka,\nsatthari sāvako evarūpaṁ uḷāravisesaṁ adhigacchati tattha viññū puriso sasakkaṁ brahmacariyaṁ vaseyya,\nvasanto ca ārādheyya ñāyaṁ dhammaṁ kusalan”ti.", "sujato": "A sensible person would, to the best of their ability,\nlead the spiritual life with a teacher under whom they achieve such a high distinction,\nand, once practicing it, they would complete the system of the skillful teaching.”"}]}, {"id": "51", "label": "“But worthy Ānanda, when a mendicant is…", "rows": [{"key": "mn76:51.1", "pali": "“Yo pana so, bho ānanda,\nbhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro anuppattasadattho\nparikkhīṇabhavasaṁyojano sammadaññā vimutto paribhuñjeyya so kāme”ti?", "sujato": "“But worthy Ānanda, when a mendicant is perfected—with defilements ended,\nwho has completed the spiritual journey, done what had to be done, laid down the burden,\nachieved their heart’s goal, utterly ended the fetter of continued existence,\nand is rightly freed through enlightenment—could they still enjoy sensual pleasures?”"}, {"key": "mn76:51.2", "pali": "“Yo so, sandaka, bhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo\nohitabhāro anuppattasadattho parikkhīṇabhavasaṁyojano sammadaññāvimutto,\nabhabbo so pañcaṭṭhānāni ajjhācarituṁ.", "sujato": "“Sandaka, a mendicant who is perfected—with defilements ended,\nwho has completed the spiritual journey, done what had to be done, laid down the burden,\nachieved their heart’s goal, utterly ended the fetter of continued existence,\nand is rightly freed through enlightenment—can’t transgress in five respects."}, {"key": "mn76:51.3", "pali": "Abhabbo khīṇāsavo bhikkhu sañcicca pāṇaṁ jīvitā voropetuṁ,\nabhabbo khīṇāsavo bhikkhu adinnaṁ theyyasaṅkhātaṁ ādātuṁ, abhabbo khīṇāsavo bhikkhu methunaṁ dhammaṁ paṭisevetuṁ,\nabhabbo khīṇāsavo bhikkhu sampajānamusā bhāsituṁ,\nabhabbo khīṇāsavo bhikkhu sannidhikārakaṁ kāme paribhuñjituṁ, seyyathāpi pubbe agāriyabhūto.", "sujato": "A mendicant with defilements ended can’t deliberately take the life of a living creature,\ntake something with the intention to steal,\nhave sex, tell a deliberate lie, or store up goods for their own enjoyment like they used to as a layperson."}, {"key": "mn76:51.4", "pali": "Yo so, sandaka, bhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo\nohitabhāro anuppattasadattho parikkhīṇabhavasaṁyojano sammadaññāvimutto,\nabhabbo so imāni pañcaṭṭhānāni ajjhācaritun”ti.", "sujato": "A mendicant who is perfected can’t transgress in these five respects.”"}]}, {"id": "52", "label": "“But worthy Ānanda, when a mendicant is…", "rows": [{"key": "mn76:52.1", "pali": "“Yo pana so, bho ānanda,\nbhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro anuppattasadattho parikkhīṇabhavasaṁyojano\nsammadaññāvimutto tassa carato ceva tiṭṭhato ca suttassa ca jāgarassa ca satataṁ samitaṁ ñāṇadassanaṁ paccupaṭṭhitaṁ:", "sujato": "“But worthy Ānanda, when a mendicant is perfected,\nwould the knowledge and vision that their defilements are ended be constantly and continually present to them,\nwhile walking, standing, sleeping, and waking?”"}, {"key": "mn76:52.2", "pali": "‘khīṇā me āsavā’”ti?", "sujato": ""}, {"key": "mn76:52.3", "pali": "“Tena hi, sandaka, upamaṁ te karissāmi;", "sujato": "“Well then, Sandaka, I shall give you a simile."}, {"key": "mn76:52.4", "pali": "upamāyapidhekacce viññū purisā bhāsitassa atthaṁ ājānanti.", "sujato": "For by means of a simile some sensible people understand the meaning of what is said."}, {"key": "mn76:52.5", "pali": "Seyyathāpi, sandaka, purisassa hatthapādā chinnā;", "sujato": "Suppose there was a person whose hands and feet had been amputated."}, {"key": "mn76:52.6", "pali": "tassa carato ceva tiṭṭhato ca suttassa ca jāgarassa ca satataṁ samitaṁ jānāti:", "sujato": "Would they be aware that their hands and feet had been amputated constantly and continually,\nwhile walking, standing, sleeping, and waking?"}, {"key": "mn76:52.7", "pali": "‘chinnā me hatthapādā’ti, udāhu paccavekkhamāno jānāti:", "sujato": "Or would they be aware of it only when they checked it?”"}, {"key": "mn76:52.8", "pali": "‘chinnā me hatthapādā’”ti?", "sujato": ""}, {"key": "mn76:52.9", "pali": "“Na kho, bho ānanda, so puriso satataṁ samitaṁ jānāti:", "sujato": "“They wouldn’t be aware of it constantly,"}, {"key": "mn76:52.10", "pali": "‘chinnā me hatthapādā’ti.", "sujato": ""}, {"key": "mn76:52.11", "pali": "Api ca kho pana naṁ paccavekkhamāno jānāti:", "sujato": "only when they checked it.”"}, {"key": "mn76:52.12", "pali": "‘chinnā me hatthapādā’”ti.", "sujato": ""}, {"key": "mn76:52.13", "pali": "“Evameva kho, sandaka,\nyo so bhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro anuppattasadattho parikkhīṇabhavasaṁyojano\nsammadaññāvimutto tassa carato ceva tiṭṭhato ca suttassa ca jāgarassa ca satataṁ samitaṁ ñāṇadassanaṁ na paccupaṭṭhitaṁ:", "sujato": "“In the same way, when a mendicant is perfected,\nthe knowledge and vision that their defilements are ended is not constantly and continually present to them,\nwhile walking, standing, sleeping, and waking."}, {"key": "mn76:52.14", "pali": "‘khīṇā me āsavā’ti;", "sujato": ""}, {"key": "mn76:52.15", "pali": "api ca kho pana naṁ paccavekkhamāno jānāti:", "sujato": "Rather, they are aware of it only when they checked it.”"}, {"key": "mn76:52.16", "pali": "‘khīṇā me āsavā’”ti.", "sujato": ""}]}, {"id": "53", "label": "“But Reverend Ānanda, in this teaching and…", "rows": [{"key": "mn76:53.1", "pali": "“Kīvabahukā pana, bho ānanda, imasmiṁ dhammavinaye niyyātāro”ti?", "sujato": "“But Reverend Ānanda, in this teaching and training, how many are emancipated?”"}, {"key": "mn76:53.2", "pali": "“Na kho, sandaka, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova ye imasmiṁ dhammavinaye niyyātāro”ti.", "sujato": "“There are not just one hundred who are emancipated, Sandaka,\nor two or three or four or five hundred, but many more than that in this teaching and training.”"}, {"key": "mn76:53.3", "pali": "“Acchariyaṁ, bho ānanda, abbhutaṁ, bho ānanda.", "sujato": "“It’s incredible, worthy Ānanda, it’s amazing!"}, {"key": "mn76:53.4", "pali": "Na ca nāma sadhammokkaṁsanā bhavissati, na paradhammavambhanā,\nāyatane ca dhammadesanā tāva bahukā ca niyyātāro paññāyissanti.", "sujato": "Namely, that there’s no glorifying one’s own teaching and putting down the teaching of others.\nThe Dhamma is taught in its own field, and so many emancipated are recognized."}, {"key": "mn76:53.5", "pali": "Ime panājīvakā puttamatāya puttā attānañceva ukkaṁsenti, pare ca vambhenti tayo ceva niyyātāro paññapenti, seyyathidaṁ—", "sujato": "But these Ājīvakas, sons of she whose sons are dead, glorify themselves and put others down.\nAnd they only recognize three who have been emancipated:"}, {"key": "mn76:53.6", "pali": "nandaṁ vacchaṁ, kisaṁ saṅkiccaṁ, makkhaliṁ gosālan”ti.", "sujato": "Nanda Vaccha, Kisa Saṅkicca, and the bamboo-staffed ascetic Gosāla.”"}]}, {"id": "54", "label": "Then the wanderer Sandaka addressed his own…", "rows": [{"key": "mn76:54.1", "pali": "Atha kho sandako paribbājako sakaṁ parisaṁ āmantesi:", "sujato": "Then the wanderer Sandaka addressed his own assembly,"}, {"key": "mn76:54.2", "pali": "“carantu bhonto samaṇe gotame brahmacariyavāso.", "sujato": "“Go, good fellows.\nThe spiritual life is lived under the ascetic Gotama."}, {"key": "mn76:54.3", "pali": "Na dāni sukaraṁ amhehi lābhasakkārasiloke pariccajitun”ti.", "sujato": "It’s not easy for me to forsake possessions, honor, or popularity now.”"}, {"key": "mn76:54.4", "pali": "Iti hidaṁ sandako paribbājako sakaṁ parisaṁ uyyojesi bhagavati brahmacariyeti.", "sujato": "And that’s how the wanderer Sandaka sent his own assembly to lead the spiritual life under the Buddha."}, {"key": "mn76:54.5", "pali": "Sandakasuttaṁ niṭṭhitaṁ chaṭṭhaṁ.", "sujato": ""}]}];
+
+// ── TRANSLATIONS ──
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}];
+// Diff edition: {base, revised} translator keys, or null on regular pages. When set,
+// words in the revised column that differ from the base text are highlighted (.dw).
+const DIFF = null;
+// Footnote pane data: {translator: {seg#: [note_html, …]}}. Default {} (note-free
+// pages emit no icons). Sanitized at build time by notes.py (Sujato comments).
+const SEG_NOTES = {"sujato": {"mn76:2.1": ["Neither Sandaka nor this location appear to be known elsewhere. "], "mn76:3.2": ["Evidently an excursion for sightseeing was popular.\nAs well as simply enjoying nature,\nsuch trips give the mendicants a chance to check out possible places to stay for meditation. "], "mn76:4.7": ["This sentence is redundant as it stands.\nBut wherever this idiom occurs elsewhere, it specifies that the person is a lay disciple (<a class=\"xref\" data-ref=\"dn25:3.5\" href=\"https://suttacentral.net/dn25/en/sujato#3.5\" target=\"_blank\" rel=\"noopener\">DN 25:3.5</a>, <a class=\"xref\" data-ref=\"mn78:3.7\" href=\"https://suttacentral.net/mn78/en/sujato#3.7\" target=\"_blank\" rel=\"noopener\">MN 78:3.7</a>, <a class=\"xref\" data-ref=\"an10.93:2.7\" href=\"https://suttacentral.net/an10.93/en/sujato#2.7\" target=\"_blank\" rel=\"noopener\">AN 10.93:2.7</a>, <a class=\"xref\" data-ref=\"an10.94:3.4\" href=\"https://suttacentral.net/an10.94/en/sujato#3.4\" target=\"_blank\" rel=\"noopener\">AN 10.94:3.4</a>).\nPerhaps the text here has been corrupted and originally specified that Ānanda was a <em>monastic</em> disciple. "], "mn76:7.2": ["Attributed to Ajita of the hair blanket at <a class=\"xref\" data-ref=\"dn2:23.2\" href=\"https://suttacentral.net/dn2/en/sujato#23.2\" target=\"_blank\" rel=\"noopener\">DN 2:23.2</a>. | The denial of “mother and father” is usually interpreted as the denial of moral duty towards one’s parents.\nHowever, I think it is a doctrine of conception which denies that a child is created by the mother and father.\nRather, the child is produced by the four elements, with parents as mere instigators and incubators. "], "mn76:7.3": ["This is a materialist analysis of the person. | The word <i>kāya</i> (“substance”) is central to Jainism.\nĀcārāṅgasūtra 8.1.11 speaks of the “substances” of earth, water, fire,\nand air as being imbued with life so one should avoid damaging them. "], "mn76:10.2": ["Attributed to Pūraṇa Kassapa  at <a class=\"xref\" data-ref=\"dn2:17.2\" href=\"https://suttacentral.net/dn2/en/sujato#17.2\" target=\"_blank\" rel=\"noopener\">DN 2:17.2</a>. | This is a denial of the doctrine of kamma.\nWhile his doctrine appears to be morally nihilistic, it seems unlikely this was Pūraṇa Kassapa’s full teaching.\nHe may have subscribed to hard determinism, so that we have no choice in what we do.\nHe may also have believed that we should keep moral rules as a social contract,\nbut that this had no effect on the afterlife. | In such contexts, <i>kar-</i> means “punish, inflict” (<a class=\"xref\" data-ref=\"mn129:29.2\" href=\"https://suttacentral.net/mn129/en/sujato#29.2\" target=\"_blank\" rel=\"noopener\">MN 129:29.2</a>). "], "mn76:13.2": ["This is the first part of the view attributed to the Bamboo-staffed Ascetic Gosāla at <a class=\"xref\" data-ref=\"dn2:20.2\" href=\"https://suttacentral.net/dn2/en/sujato#20.2\" target=\"_blank\" rel=\"noopener\">DN 2:20.2</a> and to Pūraṇa Kassapa at <a class=\"xref\" data-ref=\"sn22.60:2.2\" href=\"https://suttacentral.net/sn22.60/en/sujato#2.2\" target=\"_blank\" rel=\"noopener\">SN 22.60:2.2</a>. | This denies the principle of causality and the efficacy of action.\nThe fatalistic teachings of the Ājīvikas led to them becoming popular as prognosticators. "], "mn76:13.6": ["The otherwise parallel passage has a different phrasing at <a class=\"xref\" data-ref=\"dn2:20.5\" href=\"https://suttacentral.net/dn2/en/sujato#20.5\" target=\"_blank\" rel=\"noopener\">DN 2:20.5</a>. "], "mn76:16.2": ["This combines the view attributed to Pakudha Kaccāyana (<a class=\"xref\" data-ref=\"dn2:26.2\" href=\"https://suttacentral.net/dn2/en/sujato#26.2\" target=\"_blank\" rel=\"noopener\">DN 2:26.2</a>) with the second part of Gosāla’s view (<a class=\"xref\" data-ref=\"dn2:20.7\" href=\"https://suttacentral.net/dn2/en/sujato#20.7\" target=\"_blank\" rel=\"noopener\">DN 2:20.7</a>).\nThere are several inconsistencies in the presentation of these views in Pali,\nand still more when parallels are considered.\nThese were closely-related teachers, who often practiced together for a time,\nand it is hardly surprising that they should share some views in common, or that their exact views have become confused. "], "mn76:16.8": ["Compare <a class=\"xref\" data-ref=\"an8.16:1.3\" href=\"https://suttacentral.net/an8.16/en/sujato#1.3\" target=\"_blank\" rel=\"noopener\">AN 8.16:1.3</a>. "], "mn76:16.11": ["For explanations, see my note at <a class=\"xref\" data-ref=\"dn2:20.7\" href=\"https://suttacentral.net/dn2/en/sujato#20.7\" target=\"_blank\" rel=\"noopener\">DN 2:20.7</a>. "], "mn76:20.3": ["This section deals with religious claims to truth, which sound confident but turn out to be unreliable. <i>Anassāsika</i> (“unreliable”) normally describes “conditions”, where it is a synonym of <i>anicca</i> and <i>adhuva</i> (<a class=\"xref\" data-ref=\"an7.66:2.3\" href=\"https://suttacentral.net/an7.66/en/sujato#2.3\" target=\"_blank\" rel=\"noopener\">AN 7.66:2.3</a>, <a class=\"xref\" data-ref=\"dn17:2.16.4\" href=\"https://suttacentral.net/dn17/en/sujato#2.16.4\" target=\"_blank\" rel=\"noopener\">DN 17:2.16.4</a>, <a class=\"xref\" data-ref=\"sn15.20:2.12\" href=\"https://suttacentral.net/sn15.20/en/sujato#2.12\" target=\"_blank\" rel=\"noopener\">SN 15.20:2.12</a>, <a class=\"xref\" data-ref=\"sn22.96:4.14\" href=\"https://suttacentral.net/sn22.96/en/sujato#4.14\" target=\"_blank\" rel=\"noopener\">SN 22.96:4.14</a>).\nFor its opposite <i>assāsa</i> as “certainty” see <a class=\"xref\" data-ref=\"mn11:3.2\" href=\"https://suttacentral.net/mn11/en/sujato#3.2\" target=\"_blank\" rel=\"noopener\">MN 11:3.2</a> and <a class=\"xref\" data-ref=\"mn93:6.7\" href=\"https://suttacentral.net/mn93/en/sujato#6.7\" target=\"_blank\" rel=\"noopener\">MN 93:6.7</a>. "], "mn76:21.4": ["Not only did the Buddha deny this kind of strong omniscience, he took pains to point out its absurdity. "], "mn76:24.1": ["As do some brahmins (<a class=\"xref\" data-ref=\"mn95:14.1\" href=\"https://suttacentral.net/mn95/en/sujato#14.1\" target=\"_blank\" rel=\"noopener\">MN 95:14.1</a>). "], "mn76:30.2": ["<i>Vikkhepa</i> is “ﬂip-flopping”. | <i>Amarā</i> is explained in the commentary as either “undying” or “eel-like”.\nHowever, <i>amarā</i> in the sense of “eel” is \nfound only in the commentary to this term so is probably spurious. "], "mn76:43.1": ["<i>Bhikkhu</i> here seems improbable, yet it is attested in the manuscripts. "], "mn76:53.1": ["“(Those who are) emancipated” is <i>niyyātāro</i>, a unique occurrence of an agent noun from <i>niyyāti</i>,\n“to go out”.\nThis was probably a technical term in Sandaka’s system. "], "mn76:53.5": ["The commentary takes <i>mata</i> as “dead” and the compound <i>puttamatāya</i> as genitive feminine, yielding the sense,\n“she whose sons are dead”, explaining that Sandaka thought,\n“Those Ājīvakas are surely dead;\ntheir mother is she whose sons are dead”.\nPerhaps, however,\n“she whose sons are dead” is an allusion to a child-killing <i>yakkhinī</i> such as Hārītī of Madhurā or Kālī in the commentary to <a class=\"xref\" data-ref=\"dhp5\" href=\"https://suttacentral.net/dhp5/en/sujato\" target=\"_blank\" rel=\"noopener\">Dhp 5</a>, thus having the force,\n“sons of a she-devil”.\nEither way this is a curse or slur intruding into a passage whose\nintent is to highlight the Buddha’s fair-minded treatment of others.\nA near-identical phrase is used of brutal bandits  at <a class=\"xref\" data-ref=\"ja79:1.3\" href=\"https://suttacentral.net/ja79/en/sujato#1.3\" target=\"_blank\" rel=\"noopener\">Ja 79:1.3</a>.\nThe compound is inverted at <a class=\"xref\" data-ref=\"sn5.3:2.1\" href=\"https://suttacentral.net/sn5.3/en/sujato#2.1\" target=\"_blank\" rel=\"noopener\">SN 5.3:2.1</a>, but seems to have the same meaning. "]}};
+const MAX_COLS = 6;   // single source of truth, injected by render.py
+const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
+const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+
+let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let sidebarVisible = true;
+let currentTheme = 'light';
+let currentFs = 15;
+let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
+let currentTocScale = 1;
+let showSeg = false;
+
+// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
+// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
+// the sorted set of translator keys this page offers — so saving settings on a
+// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
+// more translators (e.g. a 5-col MN sutta).
+const SETTINGS_KEY = 'debabel.viewer.v1';
+const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
+let savedColsBy = {};
+function saveSettings(){
+  try{
+    savedColsBy[PROFILE] = COLS;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(
+      {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+  }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function loadSettings(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if(!s) return;
+    if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
+    if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
+    if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
+    if(typeof s.allNotes==='boolean') allMode=s.allNotes;
+    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
+      savedColsBy = s.colsBy;
+      const c = savedColsBy[PROFILE];
+      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
+      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
+      // which would render a phantom extra column on 2-translator pages.
+      if(Array.isArray(c) && c.length){
+        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+        if(clean.length) COLS=clean.slice(0,MAX_COLS);
+      }
+    }
+  }catch(e){/* corrupted or unavailable — fall back to page defaults */}
+}
+
+// ── STATE ──
+const SO={};
+// Sidebar TOC has its OWN independent open/close state
+const SSO={};
+// Recursive index over the (possibly nested) TREE: open-state + parent chain +
+// row→leaf map. MN/DN pass a flat rows-only TREE, so this visits each paragraph
+// section once (PARENT=null) and behaves exactly as the old flat init. AN/SN nest
+// vagga → sutta → paragraph.
+const PARENT={};
+const ROW2LEAF={};
+(function indexTree(nodes, par){
+  nodes.forEach(n=>{
+    SO[n.id]=true; SSO[n.id]=true; PARENT[n.id]=par;
+    if(n.children){ indexTree(n.children, n.id); }
+    else if(n.rows){ n.rows.forEach(r=>{ ROW2LEAF[r.key]=n.id; }); }
+  });
+})(TREE, null);
+// Walk every node id (any depth) — used by collapse/expand-all.
+function walkIds(fn){ (function w(ns){ ns.forEach(n=>{ fn(n.id); if(n.children) w(n.children); }); })(TREE); }
+// Walk every DESCENDANT id of one node (not the node itself) — used by the
+// per-node (subtree) collapse/expand-all buttons. Visits group AND leaf ids.
+function walkSubtree(node, fn){ (node.children||[]).forEach(c=>{ fn(c.id); if(c.children) walkSubtree(c, fn); }); }
+// A group qualifies for the subtree collapse/expand-all buttons when at least one
+// of its children is itself COLLAPSIBLE — a sub-group (has children) OR a paragraph
+// leaf (has rows; each leaf renders its own toggle showing/hiding its segments).
+// So both a vagga (children are sutta groups) and a sutta (children are paragraph
+// leaves) qualify. A paragraph leaf is rendered by renderLeaf*, never asked.
+function hasCollapsibleChildren(node){ return !!(node.children && node.children.some(c=>c.children||c.rows)); }
+// Build the round subtree collapse/expand-all control for one group node.
+// `state` is SO (main) or SSO (TOC); `rerender` re-renders that view. Collapse
+// closes all descendants but keeps this node open; expand opens this node + all
+// descendants. stopPropagation keeps clicks off the row/header's own toggle.
+function subtControls(node, state, rerender, withLabel){
+  const wrap=mk('span','subt');
+  const mkBtn=(glyph,expand,tip)=>{
+    const b=mk('button','subt-btn'); b.type='button'; b.textContent=glyph; b.title=tip;
+    b.onclick=ev=>{
+      ev.stopPropagation();
+      if(expand){ state[node.id]=true; walkSubtree(node, id=>state[id]=true); }
+      else { walkSubtree(node, id=>state[id]=false); }
+      rerender();
+    };
+    return b;
+  };
+  wrap.appendChild(mkBtn('−',false,'Collapse all sections under this group'));
+  if(withLabel){ const l=mk('span','subt-lbl'); l.textContent='all'; wrap.appendChild(l); }
+  wrap.appendChild(mkBtn('+',true,'Expand all sections under this group'));
+  if(withLabel){ const l=mk('span','subt-lbl'); l.textContent='all'; wrap.appendChild(l); }
+  return wrap;
+}
+// Open a node and all its ancestor groups so a deep-linked row/sutta is visible.
+function expandChain(nodeId){ let id=nodeId; while(id!=null){ SO[id]=true; id=PARENT[id]; } }
+
+function getT(key){return ALL_TRANSLATIONS.find(t=>t.key===key)||ALL_TRANSLATIONS[0];}
+
+// ── DIFF (corrected edition) ──
+// Quote/apostrophe style is NOT a correction: model output normalizes curly ’/“” to
+// straight '/" — compare words with quotes unified, but render the text verbatim.
+function normWord(w){
+  return w.replace(/[‘’ʼ]/g,"'").replace(/[“”„]/g,'"');
+}
+
+// Word-level LCS diff: returns [word, changed] pairs for the revised text. Words
+// present in the base (in order, quote-insensitive) are unchanged; the rest are
+// highlighted.
+function diffWords(base, rev){
+  const bWords=(rev||'').split(/\s+/).filter(Boolean);
+  const a=(base||'').split(/\s+/).filter(Boolean).map(normWord);
+  const b=bWords.map(normWord);
+  const m=a.length, n=b.length;
+  const L=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=m-1;i>=0;i--)for(let j=n-1;j>=0;j--)
+    L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const out=[]; let i=0,j=0;
+  while(i<m&&j<n){
+    if(a[i]===b[j]){out.push([bWords[j],false]);i++;j++;}
+    else if(L[i+1][j]>=L[i][j+1]){i++;}            // base-only word: nothing to render
+    else {out.push([bWords[j],true]);j++;}
+  }
+  while(j<n){out.push([bWords[j],true]);j++;}
+  return out;
+}
+
+// Fill a .ct span with the revised text, highlighting words that differ from base.
+// DOM nodes only (no innerHTML) — text stays escaped exactly like textContent.
+function fillDiffText(ct, base, rev){
+  diffWords(base, rev).forEach((w,idx)=>{
+    if(idx) ct.appendChild(document.createTextNode(' '));
+    if(w[1]){const s=mk('span','dw'); s.textContent=w[0]; ct.appendChild(s);}
+    else ct.appendChild(document.createTextNode(w[0]));
+  });
+}
+function mk(tag,cls){const el=document.createElement(tag);if(cls)el.className=cls;return el;}
+function scrollToEl(id){const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
+
+// ── FOOTNOTE PANE (Sujato comments) ──
+// Build-sanitized note HTML (see notes.py) is injected via innerHTML — a
+// deliberate, narrow exception to the textContent-only rule, scoped to the pane
+// body (input is vendored bilara-data, not user content). In-pane cross-refs
+// (.xref) route through the 🦘 quick-jump's jumpToRef so footnotes and the jump
+// box share one navigation source of truth.
+let fnCur=null;   // "<tkey>\x1e<seg>" of the note shown now — drives toggle + active marker
+function fnMarkActive(){
+  document.querySelectorAll('.fnico.on').forEach(el=>el.classList.remove('on'));
+  if(!fnCur) return;
+  const i=fnCur.indexOf('\x1e'), k=fnCur.slice(0,i), s=fnCur.slice(i+1);
+  document.querySelectorAll('.fnico').forEach(el=>{
+    if(el.dataset.k===k && el.dataset.s===s) el.classList.add('on');
+  });
+}
+// Jump the MAIN pane to a segment's line WITHOUT closing the footnote pane —
+// reuses the TOC-row jump path (expand ancestors, re-render, scroll). renderMain
+// re-applies the open note's active marker, so the highlight survives the rebuild.
+function fnJumpToLine(seg){
+  expandChain(ROW2LEAF[seg]); renderAll(); scrollToEl('tr-'+seg); setAct('r',seg);
+}
+// Move focus to the prev/next noted segment of the CURRENT translator (segment
+// order), clamped at the ends. Pane-only — does not move the main text.
+function fnGoto(delta){
+  if(!fnCur) return;
+  const i=fnCur.indexOf('\x1e'), tkey=fnCur.slice(0,i), seg=fnCur.slice(i+1);
+  const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg), j=idx+delta;
+  if(idx<0||j<0||j>=segs.length) return;
+  openNote(tkey,segs[j]);
+}
+// Fill the pane body for the focused (tkey,seg). all-mode → every noted segment
+// of the translator as a block (each with its own ref backlink), the focused one
+// highlighted + scrolled to; single-mode → just the focused segment's notes.
+function fnFillBody(tkey,seg){
+  const body=document.getElementById('fnBody'); const notesOf=SEG_NOTES[tkey]||{};
+  if(!allMode){ body.innerHTML=(notesOf[seg]||[]).join('<hr>'); return; }
+  body.innerHTML='';
+  Object.keys(notesOf).forEach(s=>{
+    const block=mk('div','fn-all-block'); block.id='fnblk-'+s;
+    if(s===seg) block.classList.add('fn-all-active');
+    const head=mk('button','fn-seg fn-all-ref'); head.textContent=s;
+    head.title='Jump to this line in the text'; head.onclick=()=>fnJumpToLine(s);
+    const bd=mk('div','fn-all-bd'); bd.innerHTML=(notesOf[s]||[]).join('<hr>');
+    block.append(head,bd); body.appendChild(block);
+  });
+  const act=document.getElementById('fnblk-'+seg);
+  if(act) act.scrollIntoView({block:'nearest'});
+}
+function fnSyncAllBtn(){
+  const b=document.getElementById('fnAll');
+  b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
+  b.classList.toggle('on',allMode);
+}
+function fnToggleAll(){
+  allMode=!allMode; saveSettings(); fnSyncAllBtn();
+  if(!fnCur) return;
+  const i=fnCur.indexOf('\x1e'); fnFillBody(fnCur.slice(0,i),fnCur.slice(i+1));
+}
+// Open the pane in all-notes mode for a translator (the "see their N footnotes"
+// column-menu entry). Forces all-mode on; clears fnCur so it always opens.
+function openAllNotes(tkey){
+  const segs=Object.keys(SEG_NOTES[tkey]||{});
+  if(!segs.length) return;
+  if(!allMode){ allMode=true; saveSettings(); fnSyncAllBtn(); }
+  fnCur=null;
+  openNote(tkey, segs[0]);
+}
+function openNote(tkey,seg){
+  const id=tkey+'\x1e'+seg;
+  const p=document.getElementById('fnPane');
+  // Clicking the marker of the note already showing closes the pane (toggle);
+  // clicking a different marker switches to it.
+  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  fnCur=id;
+  fnFillBody(tkey,seg);
+  fnSyncAllBtn();
+  // Title bar: which translator + the segment ref. The ref is a backlink button
+  // that scrolls the main text to this line (pane stays open).
+  const title=document.getElementById('fnTitle'); title.textContent='';
+  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
+  const sg=mk('button','fn-seg'); sg.textContent=seg;
+  sg.title='Jump to this line in the text';
+  sg.onclick=()=>fnJumpToLine(seg);
+  title.append(tl,sg);
+  // Sujato-only translator caveat button; banner starts collapsed each open.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  document.getElementById('fnWarnMsg').hidden = true;
+  // prev/next enabled state within this translator's ordered note list
+  const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
+  document.getElementById('fnPrev').disabled = idx<=0;
+  document.getElementById('fnNext').disabled = idx>=segs.length-1;
+  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  fnMarkActive();
+}
+function closeNote(){
+  const p=document.getElementById('fnPane');
+  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  fnCur=null; fnMarkActive();
+}
+document.getElementById('fnCopy').onclick=()=>{
+  const t=document.getElementById('fnBody').innerText;
+  if(navigator.clipboard) navigator.clipboard.writeText(t);
+};
+document.getElementById('fnWarn').onclick=()=>{
+  const m=document.getElementById('fnWarnMsg'); m.hidden=!m.hidden;
+};
+document.getElementById('fnBody').addEventListener('click',ev=>{
+  const a=ev.target.closest('a.xref');
+  if(!a) return;
+  if(ev.metaKey||ev.ctrlKey||ev.shiftKey) return;   // let modified clicks open the href
+  // Single source of truth: jump locally when the nikāya has pages on this site
+  // (JUMP_LIMITS), else fall through so the kept href opens suttacentral. Adding
+  // a nikāya to quickjump.LIMITS + rebuilding auto-upgrades these to local.
+  const ref=a.dataset.ref, nik=(ref.match(/^[a-z]+/)||[''])[0];
+  if(nik in JUMP_LIMITS){ ev.preventDefault(); closeNote(); jumpToRef(ref); }
+});
+document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
+
+// ── SETTINGS POPOVER ──
+function toggleSettings(){
+  document.getElementById('settingsPop').classList.toggle('show');
+}
+document.addEventListener('click', function(e){
+  const pop = document.getElementById('settingsPop');
+  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+    pop.classList.remove('show');
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape'){
+    const pop = document.getElementById('settingsPop');
+    if(pop) pop.classList.remove('show');
+  }
+});
+
+// ── THEME ──
+function themeLabel(){ return currentTheme==='dark'?'☾ Dark':'☀ Light'; }
+function toggleTheme(){
+  currentTheme = currentTheme==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  document.getElementById('themeBtn').textContent = themeLabel();
+  saveSettings();
+  // Re-render to apply theme-aware cell colors
+  renderMain();
+  renderColBar();
+}
+
+// ── FONT SIZE ──
+function adjustFont(delta){
+  currentFs = Math.min(FS_MAX, Math.max(FS_MIN, currentFs + delta));
+  document.documentElement.style.setProperty('--fs', currentFs+'px');
+  // Scale rem-based header chrome by setting html font-size proportionally.
+  // (The TOC tracks --fs via the .sidebar font base, so it scales too.)
+  document.documentElement.style.fontSize = currentFs + 'px';
+  saveSettings();
+}
+
+// ── SIDEBAR TEXT SIZE (TOC font relative to the reading panes) ──
+function applyTocScale(){
+  document.documentElement.style.setProperty('--toc-scale', currentTocScale);
+}
+function adjustTocScale(delta){
+  currentTocScale = Math.min(TOC_MAX, Math.max(TOC_MIN,
+    Math.round((currentTocScale + delta) * 100) / 100));
+  applyTocScale();
+  saveSettings();
+}
+
+// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+function applySeg(){
+  if(showSeg) document.documentElement.setAttribute('data-seg','on');
+  else document.documentElement.removeAttribute('data-seg');
+  const b=document.getElementById('segBtn');
+  if(b) b.textContent = showSeg?'On':'Off';
+}
+function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+
+// ── SIDEBAR ──
+function toggleSidebar(){
+  sidebarVisible = !sidebarVisible;
+  const sb = document.getElementById('sidebar');
+  const tb = document.getElementById('tocBar');
+  const ct = document.getElementById('main');
+  const bar = document.getElementById('colBar');
+  const btn = document.getElementById('tocBtn');
+  sb.classList.toggle('hidden', !sidebarVisible);
+  tb.classList.toggle('hidden', !sidebarVisible);
+  ct.classList.toggle('full', !sidebarVisible);
+  bar.classList.toggle('sidebar-hidden', !sidebarVisible);
+  btn.classList.toggle('on', sidebarVisible);
+  saveSettings();
+  updateHeaderHeight();
+}
+
+// ── HEADER HEIGHT ──
+function updateHeaderHeight(){
+  const h = document.getElementById('mainHeader').offsetHeight;
+  document.documentElement.style.setProperty('--hh', h+'px');
+  // Position toc-bar just below main header, sidebar just below toc-bar
+  const tb = document.getElementById('tocBar');
+  const sb = document.getElementById('sidebar');
+  const tbH = tb.offsetHeight;
+  sb.style.top = (h + tbH) + 'px';
+}
+
+// ── TOC COLLAPSE / EXPAND ALL ──
+function tocCollapseAll(){
+  walkIds(id=>{ SSO[id]=false; });
+  renderTOC();
+}
+function tocExpandAll(){
+  walkIds(id=>{ SSO[id]=true; });
+  renderTOC();
+}
+
+// ── DRAG STATE ──
+let dragSrcIdx = null;
+
+// ── COLUMN BAR ──
+function renderColBar(){
+  const barCols = document.getElementById('barCols');
+  barCols.innerHTML = '';
+  const theme = currentTheme;
+
+  COLS.forEach((key, i) => {
+    const t = getT(key);
+    const colors = t[theme];
+    const col = mk('div','bar-col');
+    col.dataset.idx = i;
+    col.style.background = colors.bg;
+    col.draggable = true;
+
+    col.addEventListener('dragstart', e=>{
+      dragSrcIdx = i;
+      col.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+    });
+    col.addEventListener('dragend', ()=>{
+      col.classList.remove('dragging');
+      document.querySelectorAll('.bar-col').forEach(c=>c.classList.remove('drag-over'));
+    });
+    col.addEventListener('dragover', e=>{
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      document.querySelectorAll('.bar-col').forEach(c=>c.classList.remove('drag-over'));
+      if(dragSrcIdx!==i) col.classList.add('drag-over');
+    });
+    col.addEventListener('dragleave',()=>col.classList.remove('drag-over'));
+    col.addEventListener('drop', e=>{
+      e.preventDefault(); col.classList.remove('drag-over');
+      if(dragSrcIdx===null||dragSrcIdx===i) return;
+      const moved=COLS.splice(dragSrcIdx,1)[0];
+      COLS.splice(i,0,moved);
+      dragSrcIdx=null;
+      saveSettings();
+      renderColBar(); renderMain();
+    });
+
+    const inner=mk('div','bar-col-inner');
+    const grip=mk('span','bar-grip'); grip.textContent='⠿';
+    const dot=mk('span','bar-dot'); dot.style.background=t.dot;
+    inner.append(grip,dot);
+
+    // The translator is shown by the dropdown's selected option, so there's no
+    // separate label — the pulldown sits where the label used to.
+    const sel=document.createElement('select');
+    sel.className='bar-sel';
+    sel.style.color=colors.text;
+    // First line: "see their N footnotes" when THIS translator has notes on this
+    // sutta — an action item (opens the all-notes pane), not a swap target.
+    const noteCount=Object.keys(SEG_NOTES[key]||{}).length;
+    if(noteCount){
+      const seeOpt=document.createElement('option');
+      seeOpt.value='__seenotes__';
+      seeOpt.textContent='📖 see their '+noteCount+' footnotes';
+      sel.appendChild(seeOpt);
+    }
+    ALL_TRANSLATIONS.forEach(tr=>{
+      const opt=document.createElement('option');
+      opt.value=tr.key; opt.textContent=tr.label;
+      if(tr.key===key) opt.selected=true;
+      sel.appendChild(opt);
+    });
+    sel.onchange=()=>{
+      if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
+      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+    };
+    sel.addEventListener('mousedown',e=>e.stopPropagation());
+    inner.appendChild(sel);
+
+    if(t.warn){
+      const warn=mk('span','bar-warn'); warn.textContent='⚠️'; warn.title=t.warn;
+      inner.appendChild(warn);
+    }
+    col.appendChild(inner);
+
+    const actions=mk('div','bar-col-actions');
+    if(COLS.length>1){
+      const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.addEventListener('mousedown',e=>e.stopPropagation());
+      actions.appendChild(rm);
+    }
+    col.appendChild(actions);
+    barCols.appendChild(col);
+  });
+
+  document.getElementById('addColBtn').classList.toggle(
+    'disabled', COLS.length>=MAX_COLS || COLS.length>=ALL_TRANSLATIONS.length);
+}
+
+function addCol(){
+  if(COLS.length>=MAX_COLS) return;
+  const next=ALL_TRANSLATIONS.find(t=>!COLS.includes(t.key));
+  if(!next) return;   // every translator already shown — don't duplicate a column
+  COLS.push(next.key);
+  saveSettings();
+  renderColBar(); renderMain();
+}
+
+// ── SIDEBAR TOC (independent state: SSO) ──
+// Recurses over node.children; a node with `rows` is a paragraph leaf (the only
+// shape MN/DN emit, so their TOC is byte-for-byte the old output).
+function renderTOC(){
+  const toc=document.getElementById('toc');
+  toc.innerHTML='';
+  TREE.forEach(node=>renderNodeTOC(node, toc));
+}
+function renderNodeTOC(node, parent){
+  if(node.children){ renderGroupTOC(node, parent); }
+  else{ renderLeafTOC(node, parent); }
+}
+function renderGroupTOC(node, parent){
+  const so=SSO[node.id];
+  const gRow=mk('div','ts tsg'); gRow.dataset.sid=node.id;   // tsg: title doesn't flex-grow
+  const gTog=mk('span','tog'); gTog.textContent=so?'−':'+';
+  const gLbl=mk('span','tl'); gLbl.textContent=node.label;
+  const gN=mk('span','tn'); gN.textContent=node.children.length;
+  // Order: toggle → title → round subtree buttons (label-free) → count. Buttons
+  // hug the title text, not right-justified. Only when this group has collapsible
+  // children (vaggas AND suttas). Operates on the TOC's SSO state.
+  gRow.append(gTog,gLbl);
+  if(hasCollapsibleChildren(node)) gRow.appendChild(subtControls(node, SSO, renderTOC, false));
+  gRow.append(gN);
+  gRow.onclick=()=>{SSO[node.id]=!SSO[node.id];renderTOC();scrollToEl(node.id);setAct('s',node.id);};
+  parent.appendChild(gRow);
+  const wrap=mk('div','tr-wrap');
+  if(!so) wrap.style.display='none';
+  node.children.forEach(ch=>renderNodeTOC(ch, wrap));
+  parent.appendChild(wrap);
+}
+function renderLeafTOC(sec, parent){
+  const so=SSO[sec.id];
+  const total=sec.rows.length;
+  const sRow=mk('div','ts'); sRow.dataset.sid=sec.id;
+  const sTog=mk('span','tog'); sTog.textContent=so?'−':'+';
+  // Toggle only sidebar state, not main content
+  // Clicking anywhere on section row toggles AND scrolls
+  const sLbl=mk('span','tl'); sLbl.textContent=sec.label;
+  const sN=mk('span','tn'); sN.textContent=total;
+  sRow.append(sTog,sLbl,sN);
+  sRow.onclick=()=>{SSO[sec.id]=!SSO[sec.id];renderTOC();scrollToEl('sh-'+sec.id);setAct('s',sec.id);};
+  parent.appendChild(sRow);
+
+  const rWrap=mk('div','tr-wrap');
+  if(!so) rWrap.style.display='none';
+  sec.rows.forEach(row=>{
+    const rRow=mk('div','tr'); rRow.dataset.rk=row.key;
+    // Leaf node: visible = truncated Pāli snippet; seg # lives in the tooltip
+    // (full line) — "<seg #> — <full Sujato>". Seg # is never visible text here.
+    rRow.title = row.key + (row.sujato ? ' — ' + row.sujato : '');
+    const rLblWrap=mk('span','tl');
+    if(row.pali){
+      const snippet=mk('span','tr-pali');
+      // Trim to ~50 chars with ellipsis
+      const raw=row.pali.trim();
+      snippet.textContent=raw.length>52?raw.slice(0,50)+'…':raw+'…';
+      rLblWrap.appendChild(snippet);
+    }
+    rRow.append(rLblWrap);
+    rRow.onclick=ev=>{
+      // The target row only exists in the main pane when its section AND every
+      // ancestor group is open — expand the chain first, then scroll.
+      expandChain(sec.id); renderAll();
+      scrollToEl('tr-'+row.key);
+      setAct('r',row.key);
+    };
+    rWrap.appendChild(rRow);
+  });
+  parent.appendChild(rWrap);
+}
+
+// ── MAIN CONTENT ──
+// Recurses over node.children; a node with `rows` is a paragraph leaf rendered
+// exactly as before (so an MN page — all leaves at depth 0 — is unchanged).
+function renderMain(){
+  const main=document.getElementById('main');
+  main.innerHTML='';
+  TREE.forEach(node=>renderNodeMain(node, main));
+  fnMarkActive();   // re-highlight the open note's marker after a rebuild
+}
+function renderNodeMain(node, parent){
+  if(node.children){ renderGroupMain(node, parent); }
+  else{ renderLeafMain(node, parent); }
+}
+function renderGroupMain(node, parent){
+  const so=SO[node.id];
+  const g=mk('div','grp');
+  const gh=mk('div','gh'); gh.id=node.id;   // raw id → #an3.65 deep-link anchor
+  const gt=mk('span','mt'); gt.textContent=so?'−':'+';
+  const gl=mk('span','gl'); gl.textContent=node.label;
+  const gc=mk('span','sc-count'); gc.textContent=node.children.length;
+  // Order: square toggle → title → round subtree buttons → count. The round
+  // control sits right after the title text (the label does NOT flex-grow, so the
+  // buttons hug the title rather than being pushed to the far right). Only when
+  // this group has collapsible children (sub-groups or leaves) — vaggas AND suttas.
+  gh.append(gt,gl);
+  if(hasCollapsibleChildren(node)) gh.appendChild(subtControls(node, SO, renderAll, true));
+  gh.append(gc);
+  gh.onclick=()=>{SO[node.id]=!SO[node.id];renderAll();};
+  g.appendChild(gh);
+  if(so){
+    const body=mk('div','gbody');
+    node.children.forEach(ch=>renderNodeMain(ch, body));
+    g.appendChild(body);
+  }
+  parent.appendChild(g);
+}
+function renderLeafMain(sec, parent){
+  const theme=currentTheme;
+  const colW=(100/COLS.length).toFixed(4)+'%';
+  {
+    const so=SO[sec.id];
+    const total=sec.rows.length;
+    const sb=mk('div','sb');
+    const sh=mk('div','sh'); sh.id='sh-'+sec.id;
+    const mt=mk('span','mt'); mt.textContent=so?'−':'+';
+    const sl=mk('span','sl'); sl.textContent=sec.label;
+    const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
+    sh.append(mt,sl,sc);
+    sh.onclick=()=>{SO[sec.id]=!SO[sec.id];renderAll();};
+    sb.appendChild(sh);
+
+    if(so){
+      const rw=mk('div','rw');
+      const table=mk('table','rt');
+      sec.rows.forEach(row=>{
+        const tr=mk('tr','');
+        tr.id='tr-'+row.key;
+        // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
+        // Individual segments are leaves: no per-segment collapse toggle.
+        const rtc=mk('td','rtc'); tr.appendChild(rtc);
+        COLS.forEach(key=>{
+          const t=getT(key);
+          const colors=t[theme];
+          const txt=row[key];
+          const td=mk('td','c'+(txt?'':' ec'));
+          td.style.width=colW;
+          td.style.background=colors.bg;
+          td.style.color=colors.text;
+          td.style.fontStyle=t.italic?'italic':'normal';
+          const seg=mk('span','seg'); seg.textContent=row.key;
+          const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
+          if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
+            fillDiffText(ct, row[DIFF.base], txt);
+          } else {
+            ct.textContent=txt||'—';
+          }
+          td.append(seg,ct);
+          // Footnote icon: this translator has a note on this segment (SEG_NOTES).
+          const segNotes = SEG_NOTES[key] && SEG_NOTES[key][row.key];
+          if(segNotes && segNotes.length){
+            const fn=mk('sup','fnico'); fn.textContent='*';
+            fn.title='click to see footnote';
+            fn.dataset.k=key; fn.dataset.s=row.key;   // identify for active-marker highlight
+            fn.onclick=()=>openNote(key,row.key);
+            td.appendChild(fn);
+          }
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+      rw.appendChild(table); sb.appendChild(rw);
+    }
+    parent.appendChild(sb);
+  }
+}
+
+let activeType=null,activeId=null;
+function setAct(type,id){
+  activeType=type; activeId=id;
+  document.querySelectorAll('.ts,.tr').forEach(el=>el.classList.remove('act'));
+  let sel=null;
+  if(type==='s') sel=document.querySelector('.ts[data-sid="'+id+'"]');
+  else if(type==='r') sel=document.querySelector('.tr[data-rk="'+id+'"]');
+  if(sel){sel.classList.add('act');sel.scrollIntoView({block:'nearest'});}
+}
+
+function setupSpy(){
+  const hh=document.getElementById('mainHeader').offsetHeight;
+  const ch=document.getElementById('colBar').offsetHeight;
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(en=>{
+      if(!en.isIntersecting)return;
+      const el=en.target;
+      if(el.classList.contains('sh')) setAct('s',el.id.replace('sh-',''));
+    });
+  },{rootMargin:'-'+(hh+ch)+'px 0px -55% 0px',threshold:0});
+  document.querySelectorAll('.sh').forEach(el=>obs.observe(el));
+}
+
+function toggleAll(exp){
+  walkIds(id=>{ SO[id]=exp; });
+  document.getElementById('bA').classList.toggle('on',!exp);
+  document.getElementById('bE').classList.toggle('on',exp);
+  renderAll();
+}
+
+function renderAll(){
+  // Sidebar TOC is independent — only re-render main content here
+  renderMain();
+  setTimeout(setupSpy,50);
+}
+
+// Relative path back to the site root (injected: '../..' MN/DN, '../../..' AN)
+const JUMP_ROOT = '../..';
+// ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
+const JUMP_KEY = 'debabel.jump.v1';
+const JUMP_MAX = 20;
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_GROUPED = {"an": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
+const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
+const jumpInputEl = document.getElementById('jumpInput');
+const jumpMsgEl = document.getElementById('jumpMsg');
+const jumpHistEl = document.getElementById('jumpHist');
+function loadJumpHist(){
+  try{ const h = JSON.parse(localStorage.getItem(JUMP_KEY)); return Array.isArray(h)?h:[]; }
+  catch(e){ return []; }
+}
+function saveJumpHist(h){
+  try{ localStorage.setItem(JUMP_KEY, JSON.stringify(h.slice(0, JUMP_MAX))); }catch(e){}
+}
+function vinPage(ref){
+  // Theravāda Vinaya ref → its sub-unit PAGE id (folder under vin/tv/).
+  let m;
+  if(m=/^(pli-tv-b[iu]-pm)/.exec(ref)) return m[1];          // pātimokkha → the whole-code page
+  if(m=/^(pli-tv-b[iu]-vb-[a-z]+)/.exec(ref)) return m[1];   // vibhaṅga rule → its offense-class page
+  if(m=/^(pli-tv-pvr\d+)/.exec(ref)) return m[1];            // parivāra → its chapter page
+  if(m=/^(pli-tv-kd\d+)/.exec(ref)) return m[1];             // khandhaka page
+  return ref;
+}
+function parseJumpRef(raw){
+  // Vinaya (vin/tv): pli-tv-bu-vb-pj1 → vin/tv/pli-tv-bu-vb-pj/index.html#pli-tv-bu-vb-pj1
+  //                  pli-tv-kd1 → that page top; pli-tv-pvr1.5 → …/pli-tv-pvr1/#pli-tv-pvr1.5
+  //                  pli-tv-bu-vb-pj1:2.3 → …#tr-pli-tv-bu-vb-pj1:2.3 (segment)
+  const vt = /^\s*(pli-tv-[a-z][a-z-]*(?:\d[\d.-]*)?)\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
+  if(vt){
+    const ref = vt[1].toLowerCase(), seg = vt[2] || null;
+    return {nik: 'vin/tv', page: vinPage(ref), suttaId: ref, seg, ref: ref + (seg ? ':' + seg : '')};
+  }
+  // Flat (MN/DN):    mn125            → its page;  mn125:2.5 → #tr-mn125:2.5
+  // Grouped (AN/SN): an3.65           → an/an3/index.html#an3.65 (sutta is an anchor)
+  //                  sn22.59:3.2      → …/sn/sn22/index.html#tr-sn22.59:3.2
+  //                  an1.1-10         → …/an/an1/index.html#an1.1-10 (ranged sutta)
+  //                  an3              → the nipāta page top (bare book ref)
+  // KN (per-book):   dhp1             → kn/dhp/index.html#dhp1 (the abbr IS the page)
+  //                  ud1.1            → kn/ud/index.html#ud1.1
+  //                  ud1.1:2.3        → kn/ud/index.html#tr-ud1.1:2.3
+  //                  mil3.1.1         → kn/mil/index.html#mil3.1.1 (deep, multi-level)
+  const m = /^\s*([a-z]+(?:-[a-z]+)*)\s*(\d+)(?:\.(\d+(?:\.\d+)*(?:-\d+)?))?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
+  if(!m) return null;
+  const nik = m[1].toLowerCase(), n = parseInt(m[2], 10), sub = m[3] || null, seg = m[4] || null;
+  if(!(nik in JUMP_LIMITS)) return {err: nik.toUpperCase()+' is not available yet'};
+  if(n < 1 || n > JUMP_LIMITS[nik])
+    return {err: nik.toUpperCase()+(JUMP_GROUPED[nik]?' book':'')+' goes from 1 to '+JUMP_LIMITS[nik]};
+  if(JUMP_KN[nik]){
+    const suttaId = nik + n + (sub ? '.' + sub : '');   // dhp1 / ud1.1 / mil3.1.1
+    return {nik: 'kn', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : '')};
+  }
+  if(JUMP_GROUPED[nik]){
+    const page = nik + n;                              // folder, e.g. an/an3/
+    const suttaId = sub ? page + '.' + sub : null;     // an3.65 (null for a bare book ref)
+    return {nik, page, suttaId, seg, ref: (suttaId || page) + (seg ? ':' + seg : '')};
+  }
+  if(sub) return {err: nik.toUpperCase()+' refs look like '+nik+n+' or '+nik+n+':2.5'};
+  const base = nik + n;                                // flat: the page IS the sutta
+  return {nik, page: base, suttaId: base, seg, ref: base + (seg ? ':' + seg : '')};
+}
+function flashJumpErr(text){
+  jumpInputEl.classList.add('bad');
+  jumpMsgEl.textContent = text; jumpMsgEl.classList.add('show');
+  setTimeout(()=>{ jumpInputEl.classList.remove('bad'); jumpMsgEl.classList.remove('show'); }, 2200);
+}
+function jumpToRef(ref){
+  const r = parseJumpRef(ref);
+  if(!r || r.err){ flashJumpErr((r&&r.err) || 'Type a ref like mn125, dn16, an3.65 or sn22.59'); return; }
+  saveJumpHist([r.ref].concat(loadJumpHist().filter(x=>x!==r.ref)));
+  let hash = '';
+  if(r.seg) hash = '#tr-' + r.suttaId + ':' + r.seg;          // segment deep link
+  else if(r.suttaId && r.suttaId !== r.page) hash = '#' + r.suttaId;  // grouped sutta anchor
+  window.location.href = JUMP_ROOT + '/' + r.nik + '/' + r.page + '/index.html' + hash;
+}
+function renderJumpHist(){
+  const h = loadJumpHist();
+  jumpHistEl.innerHTML = '';
+  h.forEach(ref=>{
+    const d = document.createElement('div');
+    d.textContent = ref;
+    d.onmousedown = ev=>{ ev.preventDefault(); jumpToRef(ref); };
+    jumpHistEl.appendChild(d);
+  });
+  return h.length;
+}
+jumpInputEl.addEventListener('keydown', ev=>{
+  if(ev.key === 'Enter') jumpToRef(jumpInputEl.value);
+  else if(ev.key === 'Escape') jumpHistEl.classList.remove('show');
+});
+jumpInputEl.addEventListener('focus', ()=>{ if(renderJumpHist()) jumpHistEl.classList.add('show'); });
+jumpInputEl.addEventListener('blur', ()=>{ setTimeout(()=>jumpHistEl.classList.remove('show'), 120); });
+jumpInputEl.addEventListener('input', ()=>jumpHistEl.classList.remove('show'));
+document.getElementById('jumpBtn').onclick = ()=>{
+  jumpInputEl.focus();
+  if(renderJumpHist()) jumpHistEl.classList.toggle('show');
+};
+
+
+// ── DEEP LINK ──
+// #tr-<segment-key> (e.g. #tr-mn125:2.5) → a segment row; #<sutta-id> (e.g.
+// #an3.65) → a sutta group header. Content is JS-rendered and the target may sit
+// inside collapsed ancestor groups, so open the chain first, then scroll after
+// render. MN: tr- targets resolve to their (already-open) paragraph leaf.
+function jumpToHash(){
+  if(location.hash.length<2) return;
+  const raw=decodeURIComponent(location.hash.slice(1));
+  let nodeId=null;
+  if(raw.indexOf('tr-')===0){ nodeId=ROW2LEAF[raw.slice(3)]; }
+  else if(raw in SO){ nodeId=raw; }
+  if(nodeId!=null){ expandChain(nodeId); renderAll(); }
+  setTimeout(()=>scrollToEl(raw),80);
+}
+
+// ── INIT ──
+// Restore persisted settings, then apply them before the first render.
+loadSettings();
+document.documentElement.setAttribute('data-theme', currentTheme);
+document.getElementById('themeBtn').textContent = themeLabel();
+document.documentElement.style.setProperty('--fs', currentFs+'px');
+applyTocScale();
+applySeg();
+// Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
+document.documentElement.style.fontSize = currentFs + 'px';
+if(!sidebarVisible){
+  document.getElementById('sidebar').classList.add('hidden');
+  document.getElementById('tocBar').classList.add('hidden');
+  document.getElementById('main').classList.add('full');
+  document.getElementById('colBar').classList.add('sidebar-hidden');
+  document.getElementById('tocBtn').classList.remove('on');
+}
+updateHeaderHeight();
+window.addEventListener('resize', updateHeaderHeight);
+renderColBar();
+renderTOC();
+renderAll();
+jumpToHash();
+window.addEventListener('hashchange', jumpToHash);
+</script>
+</body>
+</html>
