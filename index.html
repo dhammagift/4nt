@@ -79,6 +79,17 @@ a.col:hover{background:var(--hover);border-color:var(--bar-border)}
 .full{font-size:.95rem;color:var(--text)}
 .col.off{opacity:.45;cursor:default}
 .col.off .full::after{content:" — coming";font-size:.75rem;color:var(--muted);font-family:sans-serif}
+/* shared footer (footer.py) + homepage positioning: full-bleed at the very bottom */
+.site-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border);
+  background:var(--head,var(--sec-bg));color:var(--muted);font-family:sans-serif;
+  font-size:.74rem;display:flex;align-items:center;justify-content:space-between;gap:1.6rem}
+.ft-logo{flex-shrink:0;display:block}
+.ft-logo img{height:64px;width:auto;border-radius:10px;display:block}
+.ft-text{flex:1;text-align:center;line-height:1.55;min-width:0}
+.ft-tagline{margin:0;color:var(--text)}
+.ft-copy{margin:.35rem 0 0;opacity:.8}
+
+.site-footer{align-self:stretch;margin:2.6rem -1rem -4rem}
 </style>
 </head>
 <body>
@@ -104,7 +115,7 @@ a.col:hover{background:var(--hover);border-color:var(--bar-border)}
   <span>&emsp;</span>
   <div class="jump" id="jump">
     <span class="nav-btn" id="jumpBtn"
-          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). MN and DN only for now.">🦘</span>
+          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). Press / to jump from anywhere.">🦘</span>
     <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
            title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
            autocomplete="off" spellcheck="false">
@@ -117,7 +128,7 @@ a.col:hover{background:var(--hover);border-color:var(--bar-border)}
 </nav>
 
 
-<img class="logo-mini" src="debabel-logo-1k.jpg" alt="s.4nt.org">
+<img class="logo-mini" src="debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side">
 <h1>s.4nt.org</h1>
 <p class="tagline">Suttas, Side by Side</p>
 <p class="sub">Up to 6 sutta translations side by side, segment aligned</p>
@@ -138,9 +149,11 @@ one segment at a time.</p>
      alt="debabel — rebuilding the tower of Dhamma, one segment at a time"
      title="debabel: the guerrilla rebuild of the tower of Dhamma — un-babbling translations one aligned segment at a time.">
 
+<footer class="site-footer" id="siteFooter"><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="./4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <script>
 const JUMP_ROOT = '.';
+const JUMP_PREFIX = '';
 // ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
@@ -150,6 +163,8 @@ const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
+const jumpClearEl = document.getElementById('jumpClear');   // null on pages without a clear button
+function syncJumpClear(){ if(jumpClearEl) jumpClearEl.hidden = !jumpInputEl.value; }
 function loadJumpHist(){
   try{ const h = JSON.parse(localStorage.getItem(JUMP_KEY)); return Array.isArray(h)?h:[]; }
   catch(e){ return []; }
@@ -230,12 +245,40 @@ function renderJumpHist(){
 }
 jumpInputEl.addEventListener('keydown', ev=>{
   if(ev.key === 'Enter') jumpToRef(jumpInputEl.value);
-  else if(ev.key === 'Escape') jumpHistEl.classList.remove('show');
+  else if(ev.key === 'Escape'){
+    jumpHistEl.classList.remove('show');
+    if(jumpInputEl.value){ jumpInputEl.value=''; syncJumpClear(); }  // clear, keep focus
+    else jumpInputEl.blur();                                          // already empty → dismiss
+  }
+});
+// Press "/" anywhere (outside a text field) to jump straight to the quick-jump box.
+document.addEventListener('keydown', ev=>{
+  if(ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target, tag = (t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault();
+  jumpInputEl.focus();
 });
 jumpInputEl.addEventListener('focus', ()=>{ if(renderJumpHist()) jumpHistEl.classList.add('show'); });
 jumpInputEl.addEventListener('blur', ()=>{ setTimeout(()=>jumpHistEl.classList.remove('show'), 120); });
-jumpInputEl.addEventListener('input', ()=>jumpHistEl.classList.remove('show'));
+jumpInputEl.addEventListener('input', ()=>{ jumpHistEl.classList.remove('show'); syncJumpClear(); });
+if(jumpClearEl) jumpClearEl.onclick = ()=>{
+  jumpInputEl.value = '';
+  syncJumpClear();
+  jumpInputEl.focus();
+};
 document.getElementById('jumpBtn').onclick = ()=>{
+  // Clicking 🦘 scaffolds a jump FROM this page: prefill the page's ref prefix
+  // (e.g. mn10: / an9.) when the box is empty, cursor at end, ready to complete.
+  // JUMP_PREFIX is '' on pages with no current sutta (homepage) → plain focus.
+  if(JUMP_PREFIX && !jumpInputEl.value){
+    jumpInputEl.value = JUMP_PREFIX;
+    jumpInputEl.focus();
+    jumpInputEl.setSelectionRange(JUMP_PREFIX.length, JUMP_PREFIX.length);
+    syncJumpClear();
+    jumpHistEl.classList.remove('show');
+    return;
+  }
   jumpInputEl.focus();
   if(renderJumpHist()) jumpHistEl.classList.toggle('show');
 };

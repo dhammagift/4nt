@@ -129,7 +129,7 @@ a{color:var(--accent)}
   <span>&emsp;</span>
   <div class="jump" id="jump">
     <span class="nav-btn" id="jumpBtn"
-          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). MN and DN only for now.">🦘</span>
+          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). Press / to jump from anywhere.">🦘</span>
     <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
            title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
            autocomplete="off" spellcheck="false">
@@ -232,6 +232,7 @@ a{color:var(--accent)}
 </div>
 <script>
 const JUMP_ROOT = '..';
+const JUMP_PREFIX = '';
 // ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
@@ -241,6 +242,8 @@ const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
+const jumpClearEl = document.getElementById('jumpClear');   // null on pages without a clear button
+function syncJumpClear(){ if(jumpClearEl) jumpClearEl.hidden = !jumpInputEl.value; }
 function loadJumpHist(){
   try{ const h = JSON.parse(localStorage.getItem(JUMP_KEY)); return Array.isArray(h)?h:[]; }
   catch(e){ return []; }
@@ -321,12 +324,40 @@ function renderJumpHist(){
 }
 jumpInputEl.addEventListener('keydown', ev=>{
   if(ev.key === 'Enter') jumpToRef(jumpInputEl.value);
-  else if(ev.key === 'Escape') jumpHistEl.classList.remove('show');
+  else if(ev.key === 'Escape'){
+    jumpHistEl.classList.remove('show');
+    if(jumpInputEl.value){ jumpInputEl.value=''; syncJumpClear(); }  // clear, keep focus
+    else jumpInputEl.blur();                                          // already empty → dismiss
+  }
+});
+// Press "/" anywhere (outside a text field) to jump straight to the quick-jump box.
+document.addEventListener('keydown', ev=>{
+  if(ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target, tag = (t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault();
+  jumpInputEl.focus();
 });
 jumpInputEl.addEventListener('focus', ()=>{ if(renderJumpHist()) jumpHistEl.classList.add('show'); });
 jumpInputEl.addEventListener('blur', ()=>{ setTimeout(()=>jumpHistEl.classList.remove('show'), 120); });
-jumpInputEl.addEventListener('input', ()=>jumpHistEl.classList.remove('show'));
+jumpInputEl.addEventListener('input', ()=>{ jumpHistEl.classList.remove('show'); syncJumpClear(); });
+if(jumpClearEl) jumpClearEl.onclick = ()=>{
+  jumpInputEl.value = '';
+  syncJumpClear();
+  jumpInputEl.focus();
+};
 document.getElementById('jumpBtn').onclick = ()=>{
+  // Clicking 🦘 scaffolds a jump FROM this page: prefill the page's ref prefix
+  // (e.g. mn10: / an9.) when the box is empty, cursor at end, ready to complete.
+  // JUMP_PREFIX is '' on pages with no current sutta (homepage) → plain focus.
+  if(JUMP_PREFIX && !jumpInputEl.value){
+    jumpInputEl.value = JUMP_PREFIX;
+    jumpInputEl.focus();
+    jumpInputEl.setSelectionRange(JUMP_PREFIX.length, JUMP_PREFIX.length);
+    syncJumpClear();
+    jumpHistEl.classList.remove('show');
+    return;
+  }
   jumpInputEl.focus();
   if(renderJumpHist()) jumpHistEl.classList.toggle('show');
 };

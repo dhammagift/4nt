@@ -26,6 +26,8 @@
   --sw:240px;
   --hh:128px;
   --ch:32px;
+  --logo-w:56px;   /* rounded-square site logo; spans both nav rows. Tunable. */
+  --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
 }
@@ -52,22 +54,42 @@ body{
   transition:background .2s,color .2s;
 }
 
-/* ── MAIN HEADER ── */
+/* ── MAIN HEADER (row 1 of the two-row sticky nav) ── */
 header{
   position:fixed;top:0;left:0;right:0;z-index:300;
   background:var(--header-bg);color:var(--header-text);
-  padding:.6rem 1.2rem .5rem;
+  /* no left padding: row-1 content starts at --nav-indent (via .nav-r1), so the
+     breadcrumb › lines up with row-2 "Contents" (same --nav-indent from viewport left) */
+  padding:.35rem .9rem .35rem 0;
   box-shadow:0 2px 10px rgba(0,0,0,.35);
 }
-header h1{font-size:1.05rem;font-weight:normal;letter-spacing:.02em}
-.crumbs{font-size:.63rem;font-family:sans-serif;margin-bottom:.15rem;opacity:.85}
+/* Site logo: rounded square pinned top-left, spanning row 1 + the column bar (row 2). */
+.site-logo{
+  position:absolute;left:.5rem;top:.4rem;z-index:301;
+  width:var(--logo-w);height:calc(var(--hh) + var(--ch) - 1.1rem);
+  border-radius:10px;overflow:hidden;display:block;
+  box-shadow:0 1px 5px rgba(0,0,0,.3);
+  opacity:.7;transition:opacity .15s;   /* subtle watermark; lights up on hover */
+}
+.site-logo:hover{opacity:1}
+.site-logo img{width:100%;height:100%;object-fit:cover;display:block}
+/* Row-1 content flows to the right of the logo. */
+.nav-r1{
+  display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;
+  margin-left:var(--nav-indent);min-height:calc(var(--logo-w) / 2);
+}
+.page-title{
+  font-size:1.02rem;font-family:Georgia,serif;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw;
+  margin:0 .9rem 0 .7rem;   /* breathing room from the breadcrumb (left) and the − All + group (right) */
+}
+.crumbs{font-size:.63rem;font-family:sans-serif;opacity:.85;
+  display:flex;align-items:center;flex-shrink:0}
 .crumbs a{color:var(--header-text);text-decoration:none}
 .crumbs a:hover{text-decoration:underline}
 .crumbs .sep-c{margin:0 .3rem;opacity:.55}
+.crumbs .sep-c:first-child{margin-left:0}  /* leading › sits at the indent, lined up with row-2 "Contents" */
 .crumbs .cur{opacity:.95}
-header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
-
-.hc{display:flex;gap:.3rem;margin-top:.38rem;flex-wrap:wrap;align-items:center}
 .btn{
   padding:.2rem .5rem;border-radius:4px;
   border:1px solid rgba(255,255,255,.25);
@@ -78,6 +100,17 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
 .btn:hover{background:rgba(255,255,255,.2)}
 .btn.on{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
 .sep{width:1px;height:14px;background:rgba(255,255,255,.2);margin:0 .1rem;flex-shrink:0}
+
+/* "− All +" collapse/expand-all (main pane): round buttons + one shared tooltip */
+.all-ctl{display:inline-flex;align-items:center;gap:.35rem;cursor:default}
+.all-ctl-lbl{font-size:.72rem;font-family:sans-serif;opacity:.9;letter-spacing:.02em}
+.hdr-circ{width:26px;height:26px;flex-shrink:0;display:inline-flex;align-items:center;
+  justify-content:center;border-radius:50%;border:1px solid rgba(255,255,255,.3);
+  background:rgba(255,255,255,.1);color:var(--header-text);cursor:pointer;
+  font-size:1rem;font-family:monospace;font-weight:bold;line-height:1;padding:0;
+  transition:background .15s,border-color .15s}
+.hdr-circ:hover{background:rgba(255,255,255,.22)}
+.hdr-circ.on{background:rgba(255,255,255,.28);border-color:rgba(255,255,255,.6)}
 
 /* icon buttons in header */
 .icon-btn{
@@ -109,9 +142,15 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
-.jump-input{width:7.5rem;padding:.18rem .45rem;border:1px solid rgba(255,255,255,.25);
+.jump-box{position:relative;display:inline-flex;align-items:center}
+.jump-input{width:7.5rem;padding:.18rem 1.4rem .18rem .45rem;border:1px solid rgba(255,255,255,.25);
   border-radius:4px;background:rgba(255,255,255,.12);color:var(--header-text);
   font-family:monospace;font-size:.72rem}
+/* clear (✕) inside the input's right edge — shown only when the box has text */
+.jump-clear{position:absolute;right:.2rem;top:50%;transform:translateY(-50%);
+  border:none;background:transparent;color:var(--header-text);opacity:.5;
+  cursor:pointer;font-size:.78rem;line-height:1;padding:.12rem .22rem;border-radius:3px}
+.jump-clear:hover{opacity:1;background:rgba(255,255,255,.15)}
 .jump-input::placeholder{color:var(--header-text);opacity:.45}
 .jump-input:focus{outline:none;border-color:rgba(255,255,255,.55);
   background:rgba(255,255,255,.18);color:var(--header-text)}
@@ -136,7 +175,14 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
   box-shadow:0 2px 6px rgba(0,0,0,.1);
   transition:background .2s;
 }
-#colBar.sidebar-hidden{left:0}
+/* Sidebar hidden: the bar spans full width (opaque, so no text scrolls behind row 2),
+   but its content is padded right to stay clear of the logo. */
+#colBar.sidebar-hidden{left:0;padding-left:calc(var(--logo-w) + 1rem)}
+/* ☰ sidebar toggle relocated into the column bar (row 2), left of the first column. */
+#colBar #tocBtn{flex-shrink:0;align-self:center;margin:0 .3rem;
+  border-color:var(--sec-border);background:var(--bg);color:var(--accent)}
+#colBar #tocBtn:hover{background:var(--toc-hover)}
+#colBar #tocBtn.on{background:var(--toc-act);border-color:var(--accent)}
 .bar-gutter{width:22px;flex-shrink:0;border-right:1px solid var(--border);background:var(--rtc-bg)}
 .bar-cols{display:flex;flex:1;min-width:0}
 .bar-col{
@@ -191,7 +237,8 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
   background:var(--bar-bg);
   border-right:1px solid var(--sec-border);
   border-bottom:2px solid var(--sec-border);
-  padding:.3rem .5rem .3rem .8rem;
+  /* left padding clears the logo AND lines "Contents" up with the row-1 breadcrumb › */
+  padding:.3rem .5rem .3rem var(--nav-indent);
   gap:.3rem;
   transition:transform .22s ease,background .2s;
 }
@@ -201,9 +248,9 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
   color:var(--muted);font-weight:600;font-family:sans-serif;flex:1;
 }
 .toc-bar-btn{
-  flex-shrink:0;width:20px;height:20px;
+  flex-shrink:0;width:22px;height:22px;
   display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--sec-border);border-radius:3px;
+  border:1px solid var(--sec-border);border-radius:50%;
   background:var(--bg);color:var(--accent);
   cursor:pointer;font-size:.85rem;font-family:monospace;font-weight:bold;
   line-height:1;transition:background .12s,border-color .12s;
@@ -228,6 +275,19 @@ header p{font-size:.63rem;opacity:.6;margin-top:.05rem}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
+
+/* ── STATIC PAGE FOOTER ── shared appearance from footer.py + viewer positioning */
+.site-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border);
+  background:var(--head,var(--sec-bg));color:var(--muted);font-family:sans-serif;
+  font-size:.74rem;display:flex;align-items:center;justify-content:space-between;gap:1.6rem}
+.ft-logo{flex-shrink:0;display:block}
+.ft-logo img{height:64px;width:auto;border-radius:10px;display:block}
+.ft-text{flex:1;text-align:center;line-height:1.55;min-width:0}
+.ft-tagline{margin:0;color:var(--text)}
+.ft-copy{margin:.35rem 0 0;opacity:.8}
+
+.site-footer{margin-left:var(--sw);transition:margin-left .22s}  /* aligns with content column */
+.site-footer.full{margin-left:0}
 .ts{display:flex;align-items:center;padding:.3rem .55rem .3rem .45rem;cursor:pointer;
   user-select:none;border-left:3px solid transparent;transition:background .1s}
 .ts:hover{background:var(--toc-hover)}
@@ -385,18 +445,38 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <body>
 
 <header id="mainHeader">
-<nav class="crumbs"><a href="../../../index.html">🏠</a><span class="sep-c">›</span><a href="../index.html">Vin</a><span class="sep-c">›</span><span class="cur">Kosambakakkhandhaka — The chapter on division in the Sangha</span></nav>
-  <h1>Vin · Kosambakakkhandhaka · The chapter on division in the Sangha </h1>
-  <p>Pāli · Brahmali — parallel line-by-line</p>
-  <div class="hc">
-    <!-- Sidebar toggle -->
-    <button class="icon-btn on" id="tocBtn" title="Toggle table of contents" onclick="toggleSidebar()">☰</button>
-    <span class="sep"></span>
-    <!-- Collapse / Expand -->
-    <button class="btn on" id="bA" onclick="toggleAll(false)">− Collapse all</button>
-    <button class="btn" id="bE" onclick="toggleAll(true)">+ Expand all</button>
-    <span class="sep"></span>
-    <!-- ⚙ Settings (font size, theme; sidebar text size added in Phase 2) -->
+  <!-- Site logo doubles as the breadcrumb home link; spans both nav rows. -->
+  <a class="site-logo" href="../../../index.html" title="Home — s.4nt.org">
+    <img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org home — Suttas, Side by Side">
+  </a>
+  <!-- Row 1: breadcrumbs → Pāli title (English tooltip) → collapse/expand → 🦘 jump → 🔝 → ⚙ -->
+  <div class="nav-r1">
+    <nav class="crumbs"><span class="sep-c">›</span><a href="../index.html" title="Theravāda Vinaya">Vin</a><span class="sep-c">›</span><span class="cur">Kosambakakkhandhaka — The chapter on division in the Sangha</span></nav>
+    <span class="page-title" title="The chapter on division in the Sangha ">Kosambakakkhandhaka</span>
+    <!-- Collapse / Expand all (main content) — round buttons, one shared tooltip -->
+    <span class="all-ctl" title="− collapse or + expand all sections of entire document in main pane">
+      <button class="hdr-circ on" id="bA" onclick="toggleAll(false)">−</button>
+      <span class="all-ctl-lbl">All</span>
+      <button class="hdr-circ" id="bE" onclick="toggleAll(true)">+</button>
+    </span>
+    <span>&emsp;&emsp;</span>
+    <!-- 🦘 quick-jump -->
+    <div class="jump">
+      <button class="icon-btn" id="jumpBtn" title="Jump to any sutta:&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• Click 🦘 to fill in this page's prefix, then type the rest&#10;• Click the box to see your recent jumps&#10;• Press / from anywhere to jump here">🦘</button>
+      <span class="jump-box">
+        <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
+               title="Jump to any sutta:&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• Click 🦘 to fill in this page's prefix, then type the rest&#10;• Click the box to see your recent jumps&#10;• Press / from anywhere to jump here"
+               autocomplete="off" spellcheck="false">
+        <button class="jump-clear" id="jumpClear" title="Clear input" hidden>✕</button>
+      </span>
+      <div class="jump-msg" id="jumpMsg"></div>
+      <div class="jump-hist" id="jumpHist"></div>
+    </div>
+    <!-- Back to top -->
+    <button class="icon-btn" id="topBtn" title="Back to top"
+            onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
+    <span>&emsp;&emsp;</span>
+    <!-- ⚙ Settings (double-space right of 🔝) -->
     <div class="settings-wrap">
       <button class="icon-btn" id="settingsBtn" title="Settings" onclick="toggleSettings()">⚙</button>
       <div class="settings-pop" id="settingsPop">
@@ -424,25 +504,12 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
         </div>
       </div>
     </div>
-    <span>&emsp;&emsp;</span>
-    <!-- 🦘 quick-jump -->
-    <div class="jump">
-      <button class="icon-btn" id="jumpBtn"
-              title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). MN and DN only for now.">🦘</button>
-      <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
-             title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
-             autocomplete="off" spellcheck="false">
-      <div class="jump-msg" id="jumpMsg"></div>
-      <div class="jump-hist" id="jumpHist"></div>
-    </div>
-    <!-- Back to top -->
-    <button class="icon-btn" id="topBtn" title="Back to top"
-            onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
   </div>
 </header>
 
-<!-- STICKY COLUMN LABEL BAR -->
+<!-- STICKY COLUMN LABEL BAR (row 2) — ☰ sidebar toggle sits left of the first translator -->
 <div id="colBar">
+  <button class="icon-btn on" id="tocBtn" title="Toggle table of contents" onclick="toggleSidebar()">☰</button>
   <div class="bar-gutter"></div>
   <div class="bar-cols" id="barCols"></div>
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
@@ -461,6 +528,9 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   </nav>
   <div class="content" id="main"></div>
 </div>
+
+<!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. -->
@@ -824,9 +894,11 @@ function toggleSidebar(){
   const ct = document.getElementById('main');
   const bar = document.getElementById('colBar');
   const btn = document.getElementById('tocBtn');
+  const ft = document.getElementById('siteFooter');
   sb.classList.toggle('hidden', !sidebarVisible);
   tb.classList.toggle('hidden', !sidebarVisible);
   ct.classList.toggle('full', !sidebarVisible);
+  if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
   saveSettings();
@@ -1164,6 +1236,7 @@ function renderAll(){
 
 // Relative path back to the site root (injected: '../..' MN/DN, '../../..' AN)
 const JUMP_ROOT = '../../..';
+const JUMP_PREFIX = 'pli-tv-kd10';   // this page's ref prefix, prefilled by the 🦘 button
 // ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
@@ -1173,6 +1246,8 @@ const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
+const jumpClearEl = document.getElementById('jumpClear');   // null on pages without a clear button
+function syncJumpClear(){ if(jumpClearEl) jumpClearEl.hidden = !jumpInputEl.value; }
 function loadJumpHist(){
   try{ const h = JSON.parse(localStorage.getItem(JUMP_KEY)); return Array.isArray(h)?h:[]; }
   catch(e){ return []; }
@@ -1253,12 +1328,40 @@ function renderJumpHist(){
 }
 jumpInputEl.addEventListener('keydown', ev=>{
   if(ev.key === 'Enter') jumpToRef(jumpInputEl.value);
-  else if(ev.key === 'Escape') jumpHistEl.classList.remove('show');
+  else if(ev.key === 'Escape'){
+    jumpHistEl.classList.remove('show');
+    if(jumpInputEl.value){ jumpInputEl.value=''; syncJumpClear(); }  // clear, keep focus
+    else jumpInputEl.blur();                                          // already empty → dismiss
+  }
+});
+// Press "/" anywhere (outside a text field) to jump straight to the quick-jump box.
+document.addEventListener('keydown', ev=>{
+  if(ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target, tag = (t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault();
+  jumpInputEl.focus();
 });
 jumpInputEl.addEventListener('focus', ()=>{ if(renderJumpHist()) jumpHistEl.classList.add('show'); });
 jumpInputEl.addEventListener('blur', ()=>{ setTimeout(()=>jumpHistEl.classList.remove('show'), 120); });
-jumpInputEl.addEventListener('input', ()=>jumpHistEl.classList.remove('show'));
+jumpInputEl.addEventListener('input', ()=>{ jumpHistEl.classList.remove('show'); syncJumpClear(); });
+if(jumpClearEl) jumpClearEl.onclick = ()=>{
+  jumpInputEl.value = '';
+  syncJumpClear();
+  jumpInputEl.focus();
+};
 document.getElementById('jumpBtn').onclick = ()=>{
+  // Clicking 🦘 scaffolds a jump FROM this page: prefill the page's ref prefix
+  // (e.g. mn10: / an9.) when the box is empty, cursor at end, ready to complete.
+  // JUMP_PREFIX is '' on pages with no current sutta (homepage) → plain focus.
+  if(JUMP_PREFIX && !jumpInputEl.value){
+    jumpInputEl.value = JUMP_PREFIX;
+    jumpInputEl.focus();
+    jumpInputEl.setSelectionRange(JUMP_PREFIX.length, JUMP_PREFIX.length);
+    syncJumpClear();
+    jumpHistEl.classList.remove('show');
+    return;
+  }
   jumpInputEl.focus();
   if(renderJumpHist()) jumpHistEl.classList.toggle('show');
 };
@@ -1295,6 +1398,7 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
 window.addEventListener('resize', updateHeaderHeight);
