@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Help — s.4nt.org</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#faf8f4;--border:#ddd6c8;--text:#1a1612;--muted:#6b6055;--accent:#5c3d1e;
+  --sec-bg:#f0ebe0;--sec-border:#c8b89a;--line:#c8b89a;--sidebar-bg:#f2ece0;
+  --toc-hover:#e8dfc8;--toc-act:#e0d4b8;--key:#9c8060;--head:#f0ebe0;
+  --header-bg:#5c3d1e;--header-text:#f5ede0;
+  --hh:50px;--sw:248px;
+}
+[data-theme="dark"]{
+  --bg:#1a1612;--border:#3a3028;--text:#e8dfc8;--muted:#9a8878;--accent:#c8a060;
+  --sec-bg:#231e18;--sec-border:#4a3c2c;--line:#4a3c2c;--sidebar-bg:#1c1810;
+  --toc-hover:#2a2418;--toc-act:#322a1c;--key:#9a7850;--head:#2a2418;
+  --header-bg:#241c10;--header-text:#e8d8b8;
+}
+html{font-size:15px}
+body{font-family:Georgia,serif;background:var(--bg);color:var(--text);
+  line-height:1.7;transition:background .2s,color .2s}
+
+/* ── HEADER (mirrors the sutta viewer's dark nav) ── */
+header{position:fixed;top:0;left:0;right:0;height:var(--hh);z-index:300;
+  display:flex;align-items:stretch;background:var(--header-bg);color:var(--header-text);
+  box-shadow:0 2px 10px rgba(0,0,0,.35)}
+.site-logo{flex-shrink:0;width:var(--hh);height:var(--hh);display:block;overflow:hidden;
+  opacity:.75;transition:opacity .15s;border-right:1px solid rgba(0,0,0,.2)}
+.site-logo:hover{opacity:1}
+.site-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.nav-r1{flex:1;display:flex;align-items:center;gap:.4rem;padding:0 .7rem;min-width:0}
+.page-title{font-size:1rem;letter-spacing:.02em;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin:0 .3rem}
+.icon-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;
+  border-radius:4px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);
+  color:var(--header-text);cursor:pointer;font-size:.9rem;transition:background .15s;
+  flex-shrink:0;text-decoration:none}
+.icon-btn:hover{background:rgba(255,255,255,.2)}
+.icon-btn.on{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+
+/* ⚙ settings popover (light card on the dark header) */
+.settings-wrap{position:relative;display:flex;align-items:center}
+.settings-pop{position:absolute;top:120%;right:0;z-index:500;display:none;min-width:12rem;
+  padding:.5rem .6rem;background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.settings-pop.show{display:block}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.3rem 0}
+.set-row + .set-row{border-top:1px solid var(--border)}
+.set-lbl{font-size:.78rem;font-family:sans-serif;color:var(--text);white-space:nowrap}
+.set-ctl{display:flex;align-items:center;gap:.25rem}
+.settings-pop .icon-btn{width:auto;min-width:28px;padding:0 .45rem;color:var(--text);
+  border-color:var(--sec-border);background:var(--sec-bg)}
+.settings-pop .icon-btn:hover{background:var(--toc-hover)}
+
+/* 🦘 quick-jump */
+.jump{position:relative;display:flex;align-items:center;gap:.25rem}
+.jump-box{position:relative;display:inline-flex;align-items:center}
+.jump-input{width:7rem;padding:.2rem .45rem;border:1px solid rgba(255,255,255,.25);
+  border-radius:4px;background:rgba(255,255,255,.12);color:var(--header-text);
+  font-family:monospace;font-size:.74rem}
+.jump-input::placeholder{color:var(--header-text);opacity:.45}
+.jump-input:focus{outline:none;border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.18)}
+.jump-input.bad{border-color:#e08080;background:rgba(176,48,48,.3)}
+.jump-msg{position:absolute;top:115%;left:0;background:#b03030;color:#fff;font-family:sans-serif;
+  font-size:.7rem;padding:.25rem .55rem;border-radius:4px;white-space:nowrap;display:none;z-index:400}
+.jump-msg.show{display:block}
+.jump-hist{position:absolute;top:115%;left:0;min-width:8rem;max-height:50vh;overflow-y:auto;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);border-radius:5px;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);display:none;z-index:400}
+.jump-hist.show{display:block}
+.jump-hist div{padding:.28rem .55rem;font-family:monospace;font-size:.78rem;cursor:pointer}
+.jump-hist div:hover{background:var(--toc-hover)}
+
+/* ── SIDEBAR + TOC ── */
+.sidebar{position:fixed;top:var(--hh);left:0;bottom:0;width:var(--sw);z-index:200;
+  overflow-y:auto;overflow-x:hidden;background:var(--sidebar-bg);
+  border-right:1px solid var(--sec-border);transition:transform .22s ease,background .2s}
+.sidebar.hidden{transform:translateX(-100%)}
+.sidebar::-webkit-scrollbar{width:5px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+.toc-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:.3rem;
+  padding:.4rem .6rem;background:var(--sec-bg);border-bottom:1px solid var(--sec-border)}
+.toc-bar-label{flex:1;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif}
+.toc-bar-btn{flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;
+  justify-content:center;border:1px solid var(--sec-border);border-radius:50%;background:var(--bg);
+  color:var(--accent);cursor:pointer;font-size:.85rem;font-family:monospace;font-weight:bold;line-height:1}
+.toc-bar-btn:hover{background:var(--toc-hover);border-color:var(--accent)}
+.toc{padding:.5rem .55rem 2rem;font-family:sans-serif}
+.toc-tree,.toc-tree ul{list-style:none;margin:0;padding:0}
+.toc-tree ul{padding-left:.7rem;border-left:1px solid var(--line);margin-left:.3rem}
+.toc-tree li{margin:.06rem 0}
+.toc-tree a{display:block;padding:.2rem .4rem;border-radius:4px;text-decoration:none;
+  color:var(--text);font-size:.78rem;line-height:1.3}
+.toc-tree a.toc-leaf{color:var(--muted);font-size:.75rem}
+.toc-tree a:hover{background:var(--toc-hover);color:var(--accent)}
+.toc-node > summary{list-style:none;cursor:pointer;display:flex;align-items:center}
+.toc-node > summary::-webkit-details-marker{display:none}
+.toc-node > summary::before{content:"▸";color:var(--accent);font-size:.7rem;width:.9rem;
+  flex-shrink:0;transition:transform .12s;text-align:center}
+.toc-node[open] > summary::before{transform:rotate(90deg)}
+.toc-node > summary a{flex:1}
+
+/* ── CONTENT (the guide prose) ── */
+.guide{margin-left:var(--sw);margin-top:var(--hh);padding:2rem 2rem 1rem;
+  max-width:52rem;transition:margin-left .22s}
+.guide.full{margin-left:0}
+.guide h1{font-size:1.7rem;font-weight:normal;letter-spacing:.02em;color:var(--accent);
+  margin:0 0 .6rem;line-height:1.3}
+.guide h2{font-size:1.25rem;font-weight:normal;color:var(--accent);margin:2rem 0 .6rem;
+  padding-bottom:.25rem;border-bottom:1px solid var(--border)}
+.guide h3{font-size:1.02rem;color:var(--text);margin:1.4rem 0 .4rem}
+.guide p{margin:.7rem 0}
+.guide ul,.guide ol{margin:.6rem 0 .6rem 1.4rem}
+.guide li{margin:.3rem 0}
+.guide a{color:var(--accent);text-decoration:none}
+.guide a:hover{text-decoration:underline}
+.guide code{font-family:ui-monospace,Consolas,monospace;font-size:.86em;background:var(--head);
+  padding:.08em .35em;border-radius:4px}
+.guide hr{border:none;border-top:1px solid var(--border);margin:1.8rem 0}
+.guide blockquote{margin:1rem 0;padding:.4rem 1rem;border-left:3px solid var(--sec-border);
+  color:var(--muted);font-style:italic}
+.guide table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}
+.guide th,.guide td{border:1px solid var(--border);padding:.45rem .7rem;text-align:left;vertical-align:top}
+.guide th{background:var(--head);font-weight:600}
+.guide :target{scroll-margin-top:calc(var(--hh) + 12px)}
+.guide h1,.guide h2,.guide h3{scroll-margin-top:calc(var(--hh) + 12px)}
+
+/* shared footer (footer.py) + viewer-style positioning (aligns with content) */
+.site-footer{padding:1.4rem 1.8rem;border-top:1px solid var(--border);
+  background:var(--head,var(--sec-bg));color:var(--muted);font-family:sans-serif;
+  font-size:.74rem;display:flex;align-items:center;justify-content:space-between;gap:1.6rem}
+.ft-logo{flex-shrink:0;display:block}
+.ft-logo img{height:64px;width:auto;border-radius:10px;display:block}
+.ft-text{flex:1;text-align:center;line-height:1.55;min-width:0}
+.ft-tagline{margin:0;color:var(--text)}
+.ft-links{margin:.45rem 0 0;display:flex;justify-content:center;flex-wrap:wrap;
+  gap:.3rem .9rem;font-family:sans-serif}
+.ft-links a{color:var(--accent);text-decoration:none}
+.ft-links a:hover{text-decoration:underline}
+.ft-copy{margin:.45rem 0 0;opacity:.8}
+
+.site-footer{margin-left:var(--sw);transition:margin-left .22s}
+.site-footer.full{margin-left:0}
+
+@media (max-width:820px){
+  .guide{padding:1.4rem 1.1rem 1rem}
+}
+</style>
+</head>
+<body>
+
+<header id="mainHeader">
+  <a class="site-logo" href="index.html" title="Home — s.4nt.org">
+    <img src="debabel-logo-1k.jpg" alt="s.4nt.org home — Suttas, Side by Side">
+  </a>
+  <div class="nav-r1">
+    <button class="icon-btn" id="tocBtn" title="Toggle table of contents" onclick="toggleHelpSidebar()">☰</button>
+    <span class="page-title">Help — Reading Guide</span>
+    <span style="flex:1"></span>
+    <div class="jump" id="jump">
+      <button class="icon-btn" id="jumpBtn" title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter">🦘</button>
+      <span class="jump-box">
+        <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
+               autocomplete="off" spellcheck="false">
+      </span>
+      <div class="jump-msg" id="jumpMsg"></div>
+      <div class="jump-hist" id="jumpHist"></div>
+    </div>
+    <button class="icon-btn" id="topBtn" title="Back to top"
+            onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
+    <div class="settings-wrap">
+      <button class="icon-btn" id="siteSettingsBtn" title="Settings" onclick="siteToggleSettings()">⚙</button>
+      <div class="settings-pop" id="siteSettingsPop">
+        <div class="set-row">
+          <span class="set-lbl">Text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease font size" onclick="siteAdjustFont(-1)">A−</button>
+            <button class="icon-btn" title="Increase font size" onclick="siteAdjustFont(+1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl">Theme</span>
+          <button class="icon-btn" id="siteThemeBtn" title="Toggle dark / light mode" onclick="siteToggleTheme()">☀ Light</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="sidebar" id="sidebar">
+  <div class="toc-bar">
+    <span class="toc-bar-label">Contents</span>
+    <button class="toc-bar-btn" title="Collapse all" onclick="tocSetAll(false)">−</button>
+    <button class="toc-bar-btn" title="Expand all" onclick="tocSetAll(true)">+</button>
+  </div>
+  <div class="toc"><ul class="toc-tree"><li><a class="toc-leaf" href="#what-youre-looking-at">What you're looking at</a></li><li><details class="toc-node" open><summary><a href="#the-columns">The columns</a></summary><ul class="toc-tree"><li><a class="toc-leaf" href="#switching-translations">Switching translations</a></li><li><a class="toc-leaf" href="#reordering-columns">Reordering columns</a></li><li><a class="toc-leaf" href="#adding-and-removing-columns">Adding and removing columns</a></li></ul></details></li><li><details class="toc-node" open><summary><a href="#navigation">Navigation</a></summary><ul class="toc-tree"><li><a class="toc-leaf" href="#table-of-contents">Table of contents</a></li><li><a class="toc-leaf" href="#quick-jump-box">Quick-jump box</a></li><li><a class="toc-leaf" href="#in-text-navigation">In-text navigation</a></li></ul></details></li><li><details class="toc-node" open><summary><a href="#footnotes">Footnotes</a></summary><ul class="toc-tree"><li><a class="toc-leaf" href="#slide-out-translator-footnotes-directly">slide out translator footnotes directly</a></li></ul></details></li><li><a class="toc-leaf" href="#display-settings">⚙ Display settings</a></li><li><a class="toc-leaf" href="#the-sutta-index">The sutta index</a></li><li><a class="toc-leaf" href="#reading-offline">Reading offline</a></li><li><details class="toc-node" open><summary><a href="#translations-available">Translations available</a></summary><ul class="toc-tree"><li><a class="toc-leaf" href="#proofreading-verbatim-diff">proofreading, verbatim diff</a></li></ul></details></li><li><a class="toc-leaf" href="#tips-for-comparative-study">Tips for comparative study</a></li><li><a class="toc-leaf" href="#about">About</a></li><li><a class="toc-leaf" href="#legal">Legal</a></li></ul></div>
+</nav>
+
+<main class="content guide" id="main">
+<h1 id="s4ntorg-suttas-side-by-side-help">s.4nt.org — Suttas, Side by Side · Help</h1>
+<p>A reading guide for the parallel sutta viewer at <strong>s.4nt.org</strong>.</p>
+<hr>
+<h2 id="what-youre-looking-at">What you're looking at</h2>
+<p>Each sutta page displays the original Pāli alongside one or more English translations in <strong>side-by-side columns</strong>,<br>
+aligned segment by segment.<br>
+The columns scroll together, so the same passage is always at the same height across all translations.</p>
+<hr>
+<h2 id="the-columns">The columns</h2>
+<h3 id="switching-translations">Switching translations</h3>
+<p>Each column has a <strong>dropdown at the top</strong> showing the current translator's name.<br>
+Click it to swap that column for a different translation — for example,<br>
+switch the right column from Sujato to Thanissaro, or back to Pāli.</p>
+<h3 id="reordering-columns">Reordering columns</h3>
+<p>Columns can be <strong>dragged left or right</strong>.<br>
+Grab the small grip icon (⠿) in a column header and drag it to the position you want.<br>
+The reading layout adjusts instantly.</p>
+<h3 id="adding-and-removing-columns">Adding and removing columns</h3>
+<ul>
+<li>Click the <strong>+</strong> button at the far right of the column bar to add a new column.</li>
+<li>Click the <strong>×</strong> on any column header to remove it.</li>
+</ul>
+<p>A typical starting layout is Pāli + one English translation.<br>
+You can expand to three (or more) columns to compare multiple translators directly.</p>
+<hr>
+<h2 id="navigation">Navigation</h2>
+<h3 id="table-of-contents">Table of contents</h3>
+<p>The <strong>☰ button</strong> (top left) opens and closes the table of contents sidebar.<br>
+It shows every section of the sutta — you can click any entry to jump there instantly.</p>
+<p>Within the sidebar:
+- The <strong>−</strong> and <strong>+</strong> buttons at the top collapse or expand all sections at once.
+- Individual sections can be folded with the small triangle button beside each heading.</p>
+<h3 id="quick-jump-box">Quick-jump box</h3>
+<p>The <strong>search box</strong> in the top bar (labelled with a placeholder like <code>mn10, dn16…</code>) accepts:</p>
+<ul>
+<li>A sutta ID — <code>mn10</code>, <code>dn22</code> — to jump to a different sutta entirely.</li>
+<li>A segment reference — <code>mn10:2.5</code> — to jump directly to that verse within the current page.</li>
+<li>Press <strong>Enter</strong> to jump. Your jump history is saved and shown as a dropdown.</li>
+</ul>
+<h3 id="in-text-navigation">In-text navigation</h3>
+<p>Click any <strong>section heading</strong> in the main text to scroll it into view.<br>
+Each row also has a subtle highlight on hover so you can track which verse the translator notes refer to.</p>
+<hr>
+<h2 id="footnotes">Footnotes</h2>
+<p>Many translations include translator notes.<br>
+They appear as small <strong>superscript markers</strong> (¹ ² …)<br>
+inline in the text.</p>
+<p><strong>Click a marker</strong> to open the footnote panel at the bottom of the page.<br>
+From there you can:</p>
+<ul>
+<li>Read the note alongside the relevant text.</li>
+<li>Click the note's <strong>reference line</strong> (the segment ID at the top) to scroll the main text to that verse.</li>
+<li>Navigate between notes with the <strong>◀ ▶</strong> buttons.</li>
+<li>Press <strong>all</strong> to switch to "show-all" mode, which displays every note for the sutta in a single scrollable list below the text — useful for reading footnotes as a continuous commentary.</li>
+<li><strong>Copy</strong> copies the note text to the clipboard.</li>
+<li><strong>✕</strong> closes the panel.</li>
+</ul>
+<h3 id="slide-out-translator-footnotes-directly">slide out translator footnotes directly</h3>
+<p>Under each translator column header pull down menu, 
+if footnotes are available for that translator's translation,
+the first pull down menu option will say,<br>
+'see their footnotes'.
+If you don't see that option, it means they don't have footnotes for that sutta.</p>
+<hr>
+<h2 id="display-settings">⚙ Display settings</h2>
+<p>Click the <strong>⚙ Settings</strong> button (top right) to open the settings panel.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>☾ Dark / ☀️ Light</strong></td>
+<td>Toggle between dark and light reading themes. Your choice is remembered.</td>
+</tr>
+<tr>
+<td><strong>A+ / A−</strong></td>
+<td>Increase or decrease the reading font size.</td>
+</tr>
+<tr>
+<td>sidebar text size</td>
+<td>controls the font size of left sidebar table of contents</td>
+</tr>
+<tr>
+<td><strong>SC segment refs</strong></td>
+<td>Show or hide the SuttaCentral segment reference numbers (e.g. <code>mn10:2.5</code>) alongside each verse — useful for citing passages or cross-referencing with suttacentral.net.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="the-sutta-index">The sutta index</h2>
+<p>The <strong>index page</strong> lists all suttas in the collection with:</p>
+<ul>
+<li>The sutta number, title, and vagga (chapter group).</li>
+<li>Translation badges showing which translations are available for each sutta.</li>
+<li>A 🔒 icon on suttas that have been proofread and locked.</li>
+</ul>
+<p>Click any row to open that sutta's parallel viewer.</p>
+<hr>
+<h2 id="reading-offline">Reading offline</h2>
+<p>Every sutta page is <strong>fully self-contained</strong> — all text and styling is embedded in the HTML file.<br>
+If you save a page to your computer (<code>File → Save Page As…</code> in your browser), it will open and work completely offline, with no internet connection required.</p>
+<hr>
+<h2 id="translations-available">Translations available</h2>
+<table>
+<thead>
+<tr>
+<th>Translator</th>
+<th>About</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pāli</strong></td>
+<td>The original text, from SuttaCentral's Mahāsaṅgīti edition</td>
+</tr>
+<tr>
+<td><strong>Bhikkhu Sujato</strong></td>
+<td>aligned pāḷi + eng. from SuttaCentral (CC0)</td>
+</tr>
+<tr>
+<td><strong>Bhikkhu Thanissaro</strong></td>
+<td>American English, from dhammatalks.org</td>
+</tr>
+<tr>
+<td><strong>Bhikkhu Bodhi</strong></td>
+<td>some licensed for public use by wisdom pub</td>
+</tr>
+<tr>
+<td><strong>Bhikkhu Brahmali</strong></td>
+<td>Tv Vinaya aligned pāḷi + eng. from SuttaCentral</td>
+</tr>
+<tr>
+<td><strong>PTS</strong></td>
+<td>from licensed digitized PTS on buddhadust.net</td>
+</tr>
+</tbody>
+</table>
+<p>Additional translations are added as alignments are completed.</p>
+<h3 id="proofreading-verbatim-diff">proofreading, verbatim diff</h3>
+<p>The segment line by line alignment with SC pāḷi numbering is done by AI.,
+and <strong>Verbatim</strong> validation is confirmed and automated against the original digital source translations.
+(Verbatim excludes white space padding for visual display,<br>
+and some punctuation character normalization for quotes, apostrophes, etc.)</p>
+<hr>
+<h2 id="tips-for-comparative-study">Tips for comparative study</h2>
+<ul>
+<li><strong>Two translations + Pāli</strong> is a productive default: 3 or more is more fun. Pāli column lets you check the original word when both translators differ. </li>
+<li><strong>Reorder columns with drag and drop</strong> 
+Especially when you have the right panel footnotes slideout,<br>
+you probably want to drag the author to the left of that slide out so you can read both at the same time.</li>
+<li><strong>Segment numbers on</strong> (<code>SC segment refs</code>) makes it easy to note a verse number and find the same passage on suttacentral.net for commentaries or other translations.</li>
+<li><strong>Footnote "all" mode</strong> works well for studying a short sutta in depth — you get the notes as a continuous commentary alongside the text.</li>
+<li>If you are comparing two English translations and want Pāli close at hand but less prominent, put Pāli in the middle and shrink it by making the browser window narrower — the outer columns stay readable while Pāli serves as an anchor reference.</li>
+</ul>
+<hr>
+<h2 id="about">About</h2>
+<p><strong>s.4nt.org</strong> presents the discourses of the Pāli Canon — the earliest record of the Buddha's teaching —<br>
+with the original Pāli and one or more English translations side by side,<br>
+aligned segment by segment, so the same passage sits at the same height across every column.</p>
+<p>The site is a project of the <strong>Early Buddhism Meditation Preservation Society</strong> (EBMPS), at <a href="https://4nt.org">4nt.org</a>. </p>
+<p>The pages are produced by a custom tool that re-aligns existing translations to SuttaCentral's segmented Pāli text one segment at a time —<br>
+"un-babbling" them back into a single, comparable structure.<br>
+Each page is fully self-contained:<br>
+saved to disk, it works offline with no server and no tracking.</p>
+<p>See <a href="#what-youre-looking-at">What you're looking at</a> above for how to use the viewer.</p>
+<hr>
+<h2 id="legal">Legal</h2>
+<p><strong>The texts.</strong> Each translation is shown under its own terms:</p>
+<ul>
+<li><strong>Pāli</strong> — SuttaCentral's Mahāsaṅgīti edition, dedicated to the public domain (CC0).</li>
+<li><strong>Bhikkhu Sujato</strong> — translations from SuttaCentral, dedicated to the public domain (CC0).</li>
+<li><strong>Bhikkhu Thanissaro</strong> — reproduced for free distribution in accordance with the translator's terms; not for sale or commercial use.</li>
+</ul>
+<p>Copyright in each translation remains with its respective author or source;<br>
+it is presented here for study and free distribution only.</p>
+<p><strong>The site.</strong> The debabel software and the original site material (layout, alignment data,<br>
+this guide) are produced by the Early Buddhism Meditation Preservation Society and offered for non-commercial use.</p>
+<p><strong>Contact.</strong> For corrections, licensing questions, or to report an error,<br>
+write to the Early Buddhism Meditation Preservation Society via <a href="https://4nt.org">4nt.org</a>.</p>
+<blockquote>
+<p>These statements are a good-faith summary, not legal advice; the licence under which each source text is distributed governs in case of any conflict.</p>
+</blockquote>
+</main>
+
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="./index.html" title="s.4nt.org — home"><img src="./debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="./help.html">Help</a><a href="./help.html#about">About</a><a href="./help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="./4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+
+<script>
+const JUMP_ROOT = '.';
+const JUMP_PREFIX = '';
+// ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
+const JUMP_KEY = 'debabel.jump.v1';
+const JUMP_MAX = 20;
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_GROUPED = {"an": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
+const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
+const jumpInputEl = document.getElementById('jumpInput');
+const jumpMsgEl = document.getElementById('jumpMsg');
+const jumpHistEl = document.getElementById('jumpHist');
+const jumpClearEl = document.getElementById('jumpClear');   // null on pages without a clear button
+function syncJumpClear(){ if(jumpClearEl) jumpClearEl.hidden = !jumpInputEl.value; }
+function loadJumpHist(){
+  try{ const h = JSON.parse(localStorage.getItem(JUMP_KEY)); return Array.isArray(h)?h:[]; }
+  catch(e){ return []; }
+}
+function saveJumpHist(h){
+  try{ localStorage.setItem(JUMP_KEY, JSON.stringify(h.slice(0, JUMP_MAX))); }catch(e){}
+}
+function vinPage(ref){
+  // Theravāda Vinaya ref → its sub-unit PAGE id (folder under vin/tv/).
+  let m;
+  if(m=/^(pli-tv-b[iu]-pm)/.exec(ref)) return m[1];          // pātimokkha → the whole-code page
+  if(m=/^(pli-tv-b[iu]-vb-[a-z]+)/.exec(ref)) return m[1];   // vibhaṅga rule → its offense-class page
+  if(m=/^(pli-tv-pvr\d+)/.exec(ref)) return m[1];            // parivāra → its chapter page
+  if(m=/^(pli-tv-kd\d+)/.exec(ref)) return m[1];             // khandhaka page
+  return ref;
+}
+function parseJumpRef(raw){
+  // Vinaya (vin/tv): pli-tv-bu-vb-pj1 → vin/tv/pli-tv-bu-vb-pj/index.html#pli-tv-bu-vb-pj1
+  //                  pli-tv-kd1 → that page top; pli-tv-pvr1.5 → …/pli-tv-pvr1/#pli-tv-pvr1.5
+  //                  pli-tv-bu-vb-pj1:2.3 → …#tr-pli-tv-bu-vb-pj1:2.3 (segment)
+  const vt = /^\s*(pli-tv-[a-z][a-z-]*(?:\d[\d.-]*)?)\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
+  if(vt){
+    const ref = vt[1].toLowerCase(), seg = vt[2] || null;
+    return {nik: 'vin/tv', page: vinPage(ref), suttaId: ref, seg, ref: ref + (seg ? ':' + seg : '')};
+  }
+  // Flat (MN/DN):    mn125            → its page;  mn125:2.5 → #tr-mn125:2.5
+  // Grouped (AN/SN): an3.65           → an/an3/index.html#an3.65 (sutta is an anchor)
+  //                  sn22.59:3.2      → …/sn/sn22/index.html#tr-sn22.59:3.2
+  //                  an1.1-10         → …/an/an1/index.html#an1.1-10 (ranged sutta)
+  //                  an3              → the nipāta page top (bare book ref)
+  // KN (per-book):   dhp1             → kn/dhp/index.html#dhp1 (the abbr IS the page)
+  //                  ud1.1            → kn/ud/index.html#ud1.1
+  //                  ud1.1:2.3        → kn/ud/index.html#tr-ud1.1:2.3
+  //                  mil3.1.1         → kn/mil/index.html#mil3.1.1 (deep, multi-level)
+  const m = /^\s*([a-z]+(?:-[a-z]+)*)\s*(\d+)(?:\.(\d+(?:\.\d+)*(?:-\d+)?))?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
+  if(!m) return null;
+  const nik = m[1].toLowerCase(), n = parseInt(m[2], 10), sub = m[3] || null, seg = m[4] || null;
+  if(!(nik in JUMP_LIMITS)) return {err: nik.toUpperCase()+' is not available yet'};
+  if(n < 1 || n > JUMP_LIMITS[nik])
+    return {err: nik.toUpperCase()+(JUMP_GROUPED[nik]?' book':'')+' goes from 1 to '+JUMP_LIMITS[nik]};
+  if(JUMP_KN[nik]){
+    const suttaId = nik + n + (sub ? '.' + sub : '');   // dhp1 / ud1.1 / mil3.1.1
+    return {nik: 'kn', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : '')};
+  }
+  if(JUMP_GROUPED[nik]){
+    const page = nik + n;                              // folder, e.g. an/an3/
+    const suttaId = sub ? page + '.' + sub : null;     // an3.65 (null for a bare book ref)
+    return {nik, page, suttaId, seg, ref: (suttaId || page) + (seg ? ':' + seg : '')};
+  }
+  if(sub) return {err: nik.toUpperCase()+' refs look like '+nik+n+' or '+nik+n+':2.5'};
+  const base = nik + n;                                // flat: the page IS the sutta
+  return {nik, page: base, suttaId: base, seg, ref: base + (seg ? ':' + seg : '')};
+}
+function flashJumpErr(text){
+  jumpInputEl.classList.add('bad');
+  jumpMsgEl.textContent = text; jumpMsgEl.classList.add('show');
+  setTimeout(()=>{ jumpInputEl.classList.remove('bad'); jumpMsgEl.classList.remove('show'); }, 2200);
+}
+function jumpToRef(ref){
+  const r = parseJumpRef(ref);
+  if(!r || r.err){ flashJumpErr((r&&r.err) || 'Type a ref like mn125, dn16, an3.65 or sn22.59'); return; }
+  saveJumpHist([r.ref].concat(loadJumpHist().filter(x=>x!==r.ref)));
+  let hash = '';
+  if(r.seg) hash = '#tr-' + r.suttaId + ':' + r.seg;          // segment deep link
+  else if(r.suttaId && r.suttaId !== r.page) hash = '#' + r.suttaId;  // grouped sutta anchor
+  window.location.href = JUMP_ROOT + '/' + r.nik + '/' + r.page + '/index.html' + hash;
+}
+function renderJumpHist(){
+  const h = loadJumpHist();
+  jumpHistEl.innerHTML = '';
+  h.forEach(ref=>{
+    const d = document.createElement('div');
+    d.textContent = ref;
+    d.onmousedown = ev=>{ ev.preventDefault(); jumpToRef(ref); };
+    jumpHistEl.appendChild(d);
+  });
+  return h.length;
+}
+jumpInputEl.addEventListener('keydown', ev=>{
+  if(ev.key === 'Enter') jumpToRef(jumpInputEl.value);
+  else if(ev.key === 'Escape'){
+    jumpHistEl.classList.remove('show');
+    if(jumpInputEl.value){ jumpInputEl.value=''; syncJumpClear(); }  // clear, keep focus
+    else jumpInputEl.blur();                                          // already empty → dismiss
+  }
+});
+// Press "/" anywhere (outside a text field) to jump straight to the quick-jump box.
+document.addEventListener('keydown', ev=>{
+  if(ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target, tag = (t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault();
+  jumpInputEl.focus();
+});
+jumpInputEl.addEventListener('focus', ()=>{ if(renderJumpHist()) jumpHistEl.classList.add('show'); });
+jumpInputEl.addEventListener('blur', ()=>{ setTimeout(()=>jumpHistEl.classList.remove('show'), 120); });
+jumpInputEl.addEventListener('input', ()=>{ jumpHistEl.classList.remove('show'); syncJumpClear(); });
+if(jumpClearEl) jumpClearEl.onclick = ()=>{
+  jumpInputEl.value = '';
+  syncJumpClear();
+  jumpInputEl.focus();
+};
+document.getElementById('jumpBtn').onclick = ()=>{
+  // Clicking 🦘 scaffolds a jump FROM this page: prefill the page's ref prefix
+  // (e.g. mn10: / an9.) when the box is empty, cursor at end, ready to complete.
+  // JUMP_PREFIX is '' on pages with no current sutta (homepage) → plain focus.
+  if(JUMP_PREFIX && !jumpInputEl.value){
+    jumpInputEl.value = JUMP_PREFIX;
+    jumpInputEl.focus();
+    jumpInputEl.setSelectionRange(JUMP_PREFIX.length, JUMP_PREFIX.length);
+    syncJumpClear();
+    jumpHistEl.classList.remove('show');
+    return;
+  }
+  jumpInputEl.focus();
+  if(renderJumpHist()) jumpHistEl.classList.toggle('show');
+};
+
+// ── THEME + FONT PREFS (shared with the sutta viewer via debabel.viewer.v1) ──
+const PREFS_KEY = 'debabel.viewer.v1';
+const PREFS_FS_MIN = 11, PREFS_FS_MAX = 22;
+let prefTheme = 'light', prefFs = 15;
+function loadPrefs(){
+  try{
+    const s = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    if(s.theme==='dark'||s.theme==='light') prefTheme = s.theme;
+    if(typeof s.fs==='number') prefFs = Math.min(PREFS_FS_MAX, Math.max(PREFS_FS_MIN, s.fs));
+  }catch(e){}
+}
+function savePrefs(){
+  try{
+    let s = {};
+    try{ s = JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; }catch(e){ s = {}; }
+    s.theme = prefTheme; s.fs = prefFs;   // merge — never clobber colsBy/sidebar
+    localStorage.setItem(PREFS_KEY, JSON.stringify(s));
+  }catch(e){}
+}
+function applyPrefs(){
+  document.documentElement.setAttribute('data-theme', prefTheme);
+  document.documentElement.style.fontSize = prefFs + 'px';
+  const tb = document.getElementById('siteThemeBtn');
+  if(tb) tb.textContent = prefTheme==='dark'?'☾ Dark':'☀ Light';
+}
+function siteToggleTheme(){ prefTheme = prefTheme==='dark'?'light':'dark'; savePrefs(); applyPrefs(); }
+function siteAdjustFont(d){
+  prefFs = Math.min(PREFS_FS_MAX, Math.max(PREFS_FS_MIN, prefFs + d));
+  savePrefs(); applyPrefs();
+}
+// ── ⚙ SETTINGS POPOVER ──
+function siteToggleSettings(){
+  document.getElementById('siteSettingsPop').classList.toggle('show');
+}
+document.addEventListener('click', function(e){
+  const pop = document.getElementById('siteSettingsPop');
+  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+    pop.classList.remove('show');
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape'){
+    const pop = document.getElementById('siteSettingsPop');
+    if(pop) pop.classList.remove('show');
+  }
+});
+loadPrefs(); applyPrefs();
+
+
+// ── ☰ SIDEBAR TOGGLE (persisted; auto-hidden on narrow viewports) ──
+const HELP_TOC_KEY = 'debabel.help.toc';
+function helpSetSidebar(hidden){
+  document.getElementById('sidebar').classList.toggle('hidden', hidden);
+  document.getElementById('main').classList.toggle('full', hidden);
+  const ft = document.getElementById('siteFooter');
+  if(ft) ft.classList.toggle('full', hidden);
+  const btn = document.getElementById('tocBtn');
+  if(btn) btn.classList.toggle('on', !hidden);
+  try{ localStorage.setItem(HELP_TOC_KEY, hidden ? '1' : '0'); }catch(e){}
+}
+function toggleHelpSidebar(){
+  helpSetSidebar(!document.getElementById('sidebar').classList.contains('hidden'));
+}
+(function(){
+  let saved = null;
+  try{ saved = localStorage.getItem(HELP_TOC_KEY); }catch(e){}
+  if(saved === '1' || saved === '0') helpSetSidebar(saved === '1');
+  else helpSetSidebar(window.matchMedia && window.matchMedia('(max-width: 820px)').matches);
+})();
+// ── TOC collapse / expand all ──
+function tocSetAll(open){
+  document.querySelectorAll('#sidebar details.toc-node').forEach(d => { d.open = open; });
+}
+
+</script>
+</body>
+</html>
