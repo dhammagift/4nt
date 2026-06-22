@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "pli-tv-pvr19/0", "label": "Parivāra", "rows": [{"key": "pli-tv-pvr19:0.1", "pali": "Parivāra", "brahmali": "The Compendium"}, {"key": "pli-tv-pvr19:0.2", "pali": "19.\nDutiyagāthāsaṅgaṇika", "brahmali": "Verses on offenses, training rules, and legal procedures"}, {"key": "pli-tv-pvr19:0.3", "pali": "1.\nKāyikādiāpatti", "brahmali": "1.\nOffenses by body, etc."}]}, {"id": "pli-tv-pvr19/1", "label": "Kati āpattiyo kāyikā,", "rows": [{"key": "pli-tv-pvr19:1.1", "pali": "Kati āpattiyo kāyikā,", "brahmali": "“How many kinds of offenses are there by body?"}, {"key": "pli-tv-pvr19:1.2", "pali": "Kati vācasikā katā;", "brahmali": "How many are done by speech?"}, {"key": "pli-tv-pvr19:1.3", "pali": "Chādentassa kati āpattiyo,", "brahmali": "How many kinds of offenses are there for concealing?"}, {"key": "pli-tv-pvr19:1.4", "pali": "Kati saṁsaggapaccayā.", "brahmali": "How many because of contact?"}]}, {"id": "pli-tv-pvr19/2", "label": "Chāpattiyo kāyikā,", "rows": [{"key": "pli-tv-pvr19:2.1", "pali": "Chāpattiyo kāyikā,", "brahmali": "There are six kinds of offenses by body,"}, {"key": "pli-tv-pvr19:2.2", "pali": "Cha vācasikā katā;", "brahmali": "Six are done by speech;"}, {"key": "pli-tv-pvr19:2.3", "pali": "Chādentassa tisso āpattiyo,", "brahmali": "There are three kinds of offenses for concealing,"}, {"key": "pli-tv-pvr19:2.4", "pali": "Pañca saṁsaggapaccayā.", "brahmali": "Five because of contact."}]}, {"id": "pli-tv-pvr19/3", "label": "Aruṇugge kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:3.1", "pali": "Aruṇugge kati āpattiyo,", "brahmali": "How many kinds of offenses are there at dawn?"}, {"key": "pli-tv-pvr19:3.2", "pali": "Kati yāvatatiyakā;", "brahmali": "How many after the third announcement?"}, {"key": "pli-tv-pvr19:3.3", "pali": "Katettha aṭṭha vatthukā,", "brahmali": "How many here have eight parts?"}, {"key": "pli-tv-pvr19:3.4", "pali": "Katihi sabbasaṅgaho.", "brahmali": "Through how many are they all included?"}]}, {"id": "pli-tv-pvr19/4", "label": "Aruṇugge tisso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:4.1", "pali": "Aruṇugge tisso āpattiyo,", "brahmali": "There are three kinds of offenses at dawn,"}, {"key": "pli-tv-pvr19:4.2", "pali": "Dve yāvatatiyakā;", "brahmali": "Two after the third announcement;"}, {"key": "pli-tv-pvr19:4.3", "pali": "Ekettha aṭṭha vatthukā,", "brahmali": "One here has eight parts,"}, {"key": "pli-tv-pvr19:4.4", "pali": "Ekena sabbasaṅgaho.", "brahmali": "They are all included through one."}]}, {"id": "pli-tv-pvr19/5", "label": "Vinayassa kati mūlāni,", "rows": [{"key": "pli-tv-pvr19:5.1", "pali": "Vinayassa kati mūlāni,", "brahmali": "How many roots are there of the Monastic Law,"}, {"key": "pli-tv-pvr19:5.2", "pali": "Yāni buddhena paññattā;", "brahmali": "Which were laid down by the Buddha?"}, {"key": "pli-tv-pvr19:5.3", "pali": "Vinayagarukā kati vuttā,", "brahmali": "How many are said to be heavy in the Monastic Law?"}, {"key": "pli-tv-pvr19:5.4", "pali": "Duṭṭhullacchādanā kati.", "brahmali": "How many kinds of concealing are there of grave offenses?"}]}, {"id": "pli-tv-pvr19/6", "label": "Vinayassa dve mūlāni,", "rows": [{"key": "pli-tv-pvr19:6.1", "pali": "Vinayassa dve mūlāni,", "brahmali": "There are two roots of the Monastic Law,"}, {"key": "pli-tv-pvr19:6.2", "pali": "yāni buddhena paññattā;", "brahmali": "Which were laid down by the Buddha;"}, {"key": "pli-tv-pvr19:6.3", "pali": "Vinayagarukā dve vuttā,", "brahmali": "Two are said to be heavy in the Monastic Law,"}, {"key": "pli-tv-pvr19:6.4", "pali": "dve duṭṭhullacchādanā.", "brahmali": "There are two kinds of concealing of grave offenses."}]}, {"id": "pli-tv-pvr19/7", "label": "Gāmantare kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:7.1", "pali": "Gāmantare kati āpattiyo,", "brahmali": "How many kinds of offenses are there concerning the next inhabited area?"}, {"key": "pli-tv-pvr19:7.2", "pali": "Kati nadipārapaccayā;", "brahmali": "How many because of crossing a river?"}, {"key": "pli-tv-pvr19:7.3", "pali": "Katimaṁsesu thullaccayaṁ,", "brahmali": "How many serious offenses are there in relation to meat?"}, {"key": "pli-tv-pvr19:7.4", "pali": "Katimaṁsesu dukkaṭaṁ.", "brahmali": "How many offenses of wrong conduct are there in relation to meat?"}]}, {"id": "pli-tv-pvr19/8", "label": "Gāmantare catasso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:8.1", "pali": "Gāmantare catasso āpattiyo,", "brahmali": "There are four kinds of offenses concerning the next inhabited area,"}, {"key": "pli-tv-pvr19:8.2", "pali": "Catasso nadipārapaccayā;", "brahmali": "Four because of crossing a river;"}, {"key": "pli-tv-pvr19:8.3", "pali": "Ekamaṁse thullaccayaṁ,", "brahmali": "There is one serious offense in relation to meat,"}, {"key": "pli-tv-pvr19:8.4", "pali": "Navamaṁsesu dukkaṭaṁ.", "brahmali": "And nine offenses of wrong conduct."}]}, {"id": "pli-tv-pvr19/9", "label": "Kati vācasikā rattiṁ,", "rows": [{"key": "pli-tv-pvr19:9.1", "pali": "Kati vācasikā rattiṁ,", "brahmali": "How many kinds of offenses are there by speech at night?"}, {"key": "pli-tv-pvr19:9.2", "pali": "Kati vācasikā divā;", "brahmali": "How many are there by speech by day?"}, {"key": "pli-tv-pvr19:9.3", "pali": "Dadamānassa kati āpattiyo,", "brahmali": "How many kinds of offenses are there for one who’s giving?"}, {"key": "pli-tv-pvr19:9.4", "pali": "Paṭiggaṇhantassa kittakā.", "brahmali": "And how many for one who’s taking?"}]}, {"id": "pli-tv-pvr19/10", "label": "Dve vācasikā rattiṁ,", "rows": [{"key": "pli-tv-pvr19:10.1", "pali": "Dve vācasikā rattiṁ,", "brahmali": "There are two kinds of offenses by speech at night,"}, {"key": "pli-tv-pvr19:10.2", "pali": "Dve vācasikā divā;", "brahmali": "Two by speech by day;"}, {"key": "pli-tv-pvr19:10.3", "pali": "Dadamānassa tisso āpattiyo,", "brahmali": "There are three kinds of offenses for one who is giving,"}, {"key": "pli-tv-pvr19:10.4", "pali": "Cattāro ca paṭiggahe.", "brahmali": "And four for taking.”"}]}, {"id": "pli-tv-pvr19/11", "label": "2. Desanāgāminiyādiāpatti", "rows": [{"key": "pli-tv-pvr19:11.0", "pali": "2.\nDesanāgāminiyādiāpatti", "brahmali": "2.\nOffenses that are clearable by confession, etc."}, {"key": "pli-tv-pvr19:11.1", "pali": "Kati desanāgāminiyo,", "brahmali": "“How many kinds of offenses are clearable by confession?"}, {"key": "pli-tv-pvr19:11.2", "pali": "Kati sappaṭikammā katā;", "brahmali": "How many require amends to be made?"}, {"key": "pli-tv-pvr19:11.3", "pali": "Katettha appaṭikammā vuttā,", "brahmali": "How many here do not to require amends,"}, {"key": "pli-tv-pvr19:11.4", "pali": "Buddhenādiccabandhunā.", "brahmali": "According to the Buddha, the Kinsman of the Sun?"}]}, {"id": "pli-tv-pvr19/12", "label": "Pañca desanāgāminiyo,", "rows": [{"key": "pli-tv-pvr19:12.1", "pali": "Pañca desanāgāminiyo,", "brahmali": "Five kinds are clearable by confession,"}, {"key": "pli-tv-pvr19:12.2", "pali": "Cha sappaṭikammā katā;", "brahmali": "Six require amends to be made;"}, {"key": "pli-tv-pvr19:12.3", "pali": "Ekettha appaṭikammā vuttā,", "brahmali": "One here does not require amends,"}, {"key": "pli-tv-pvr19:12.4", "pali": "Buddhenādiccabandhunā.", "brahmali": "According to the Buddha, the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/13", "label": "Vinayagarukā kati vuttā,", "rows": [{"key": "pli-tv-pvr19:13.1", "pali": "Vinayagarukā kati vuttā,", "brahmali": "How many are said to be heavy in the Monastic Law,"}, {"key": "pli-tv-pvr19:13.2", "pali": "Kāyavācasikāni ca;", "brahmali": "And done by body or speech?"}, {"key": "pli-tv-pvr19:13.3", "pali": "Kati vikāle dhaññaraso,", "brahmali": "How many grain juices are allowable at the wrong time?"}, {"key": "pli-tv-pvr19:13.4", "pali": "Kati ñatticatutthena sammuti.", "brahmali": "How many appointments are made through one motion and three announcements?"}]}, {"id": "pli-tv-pvr19/14", "label": "Vinayagarukā dve vuttā,", "rows": [{"key": "pli-tv-pvr19:14.1", "pali": "Vinayagarukā dve vuttā,", "brahmali": "Two are said to be heavy in the Monastic Law,"}, {"key": "pli-tv-pvr19:14.2", "pali": "Kāyavācasikāni ca;", "brahmali": "And are done by body or speech;"}, {"key": "pli-tv-pvr19:14.3", "pali": "Eko vikāle dhaññaraso,", "brahmali": "One grain juice is allowable at the wrong time,"}, {"key": "pli-tv-pvr19:14.4", "pali": "Ekā ñatticatutthena sammuti.", "brahmali": "One appointment is made through one motion and three announcements."}]}, {"id": "pli-tv-pvr19/15", "label": "Pārājikā kāyikā kati,", "rows": [{"key": "pli-tv-pvr19:15.1", "pali": "Pārājikā kāyikā kati,", "brahmali": "How many offenses entailing expulsion are done by body?"}, {"key": "pli-tv-pvr19:15.2", "pali": "kati saṁvāsakabhūmiyo;", "brahmali": "How many grounds are there for belonging to the same Buddhist sect?"}, {"key": "pli-tv-pvr19:15.3", "pali": "Katinaṁ ratticchedo,", "brahmali": "For how many kinds of people are there non-countable days?"}, {"key": "pli-tv-pvr19:15.4", "pali": "paññattā dvaṅgulā kati.", "brahmali": "How many rules concern 3.5 centimeters?"}]}, {"id": "pli-tv-pvr19/16", "label": "Pārājikā kāyikā dve,", "rows": [{"key": "pli-tv-pvr19:16.1", "pali": "Pārājikā kāyikā dve,", "brahmali": "Two offenses entailing expulsion are done by body,"}, {"key": "pli-tv-pvr19:16.2", "pali": "dve saṁvāsakabhūmiyo;", "brahmali": "There are two grounds for belonging to the same Buddhist sect;"}, {"key": "pli-tv-pvr19:16.3", "pali": "Dvinnaṁ ratticchedo,", "brahmali": "There are non-countable days for two kinds of people,"}, {"key": "pli-tv-pvr19:16.4", "pali": "paññattā dvaṅgulā duve.", "brahmali": "There are two rules that concern 3.5 centimeters."}]}, {"id": "pli-tv-pvr19/17", "label": "Katattānaṁ vadhitvāna,", "rows": [{"key": "pli-tv-pvr19:17.1", "pali": "Katattānaṁ vadhitvāna,", "brahmali": "How many are there on having beaten oneself?"}, {"key": "pli-tv-pvr19:17.2", "pali": "katihi saṅgho bhijjati;", "brahmali": "How many kinds of people cause a schism in the Sangha?"}, {"key": "pli-tv-pvr19:17.3", "pali": "Katettha paṭhamāpattikā,", "brahmali": "How many here are immediate offenses?"}, {"key": "pli-tv-pvr19:17.4", "pali": "ñattiyā karaṇā kati.", "brahmali": "How many ways are there of doing a motion?"}]}, {"id": "pli-tv-pvr19/18", "label": "Dve attānaṁ vadhitvāna,", "rows": [{"key": "pli-tv-pvr19:18.1", "pali": "Dve attānaṁ vadhitvāna,", "brahmali": "There are two on having beaten oneself,"}, {"key": "pli-tv-pvr19:18.2", "pali": "dvīhi saṅgho bhijjati;", "brahmali": "Two kinds cause a schism in the Sangha;"}, {"key": "pli-tv-pvr19:18.3", "pali": "Dvettha paṭhamāpattikā,", "brahmali": "Two here are immediate offenses,"}, {"key": "pli-tv-pvr19:18.4", "pali": "ñattiyā karaṇā duve.", "brahmali": "There are two ways of doing a motion."}]}, {"id": "pli-tv-pvr19/19", "label": "Pāṇātipāte kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:19.1", "pali": "Pāṇātipāte kati āpattiyo,", "brahmali": "How many kinds of offenses are there for killing living beings?"}, {"key": "pli-tv-pvr19:19.2", "pali": "Vācā pārājikā kati;", "brahmali": "How many offenses entailing expulsion are there because of speech?"}, {"key": "pli-tv-pvr19:19.3", "pali": "Obhāsanā kati vuttā,", "brahmali": "How many kinds were spoken because of indecent speech?"}, {"key": "pli-tv-pvr19:19.4", "pali": "Sañcarittena vā kati.", "brahmali": "How many kinds because of matchmaking?"}]}, {"id": "pli-tv-pvr19/20", "label": "Pāṇātipāte tisso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:20.1", "pali": "Pāṇātipāte tisso āpattiyo,", "brahmali": "There are three kinds of offenses for killing living beings,"}, {"key": "pli-tv-pvr19:20.2", "pali": "Vācā pārājikā tayo;", "brahmali": "There are three offenses entailing expulsion because of speech;"}, {"key": "pli-tv-pvr19:20.3", "pali": "Obhāsanā tayo vuttā,", "brahmali": "Three kinds were spoken because of indecent speech,"}, {"key": "pli-tv-pvr19:20.4", "pali": "Sañcarittena vā tayo.", "brahmali": "And three kinds because of matchmaking."}]}, {"id": "pli-tv-pvr19/21", "label": "Kati puggalā na upasampādetabbā,", "rows": [{"key": "pli-tv-pvr19:21.1", "pali": "Kati puggalā na upasampādetabbā,", "brahmali": "How many kinds of people should not be ordained?"}, {"key": "pli-tv-pvr19:21.2", "pali": "Kati kammānaṁ saṅgahā;", "brahmali": "How many things bring the legal procedures together?"}, {"key": "pli-tv-pvr19:21.3", "pali": "Nāsitakā kati vuttā,", "brahmali": "How many kinds are said to be expelled?"}, {"key": "pli-tv-pvr19:21.4", "pali": "Katinaṁ ekavācikā.", "brahmali": "How many are included in a single proclamation?"}]}, {"id": "pli-tv-pvr19/22", "label": "Tayo puggalā na upasampādetabbā,", "rows": [{"key": "pli-tv-pvr19:22.1", "pali": "Tayo puggalā na upasampādetabbā,", "brahmali": "Three kinds of people should not be ordained,"}, {"key": "pli-tv-pvr19:22.2", "pali": "Tayo kammānaṁ saṅgahā;", "brahmali": "Three things bring the legal procedures together;"}, {"key": "pli-tv-pvr19:22.3", "pali": "Nāsitakā tayo vuttā,", "brahmali": "Three kinds are said to be expelled,"}, {"key": "pli-tv-pvr19:22.4", "pali": "Tiṇṇannaṁ ekavācikā.", "brahmali": "Three are included in a single proclamation."}]}, {"id": "pli-tv-pvr19/23", "label": "Adinnādāne kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:23.1", "pali": "Adinnādāne kati āpattiyo,", "brahmali": "How many kinds of offenses are there for stealing?"}, {"key": "pli-tv-pvr19:23.2", "pali": "Kati methunapaccayā;", "brahmali": "How many because of sexual intercourse?"}, {"key": "pli-tv-pvr19:23.3", "pali": "Chindantassa kati āpattiyo,", "brahmali": "How many kinds of offenses for cutting?"}, {"key": "pli-tv-pvr19:23.4", "pali": "Kati chaḍḍitapaccayā.", "brahmali": "How many because of discarding?"}]}, {"id": "pli-tv-pvr19/24", "label": "Adinnādāne tisso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:24.1", "pali": "Adinnādāne tisso āpattiyo,", "brahmali": "There are three kinds of offenses for stealing,"}, {"key": "pli-tv-pvr19:24.2", "pali": "Catasso methunapaccayā;", "brahmali": "Four because of sexual intercourse;"}, {"key": "pli-tv-pvr19:24.3", "pali": "Chindantassa tisso āpattiyo,", "brahmali": "There are three kinds of offenses for cutting,"}, {"key": "pli-tv-pvr19:24.4", "pali": "Pañca chaḍḍitapaccayā.", "brahmali": "Five because of discarding."}]}, {"id": "pli-tv-pvr19/25", "label": "Bhikkhunovādakavaggasmiṁ,", "rows": [{"key": "pli-tv-pvr19:25.1", "pali": "Bhikkhunovādakavaggasmiṁ,", "brahmali": "In the subchapter on the instructor of nuns,"}, {"key": "pli-tv-pvr19:25.2", "pali": "pācittiyena dukkaṭā;", "brahmali": "Is there an offense of wrong conduct together with an offense entailing confession?"}, {"key": "pli-tv-pvr19:25.3", "pali": "Katettha navakā vuttā,", "brahmali": "How many groups of nine are mentioned there?"}, {"key": "pli-tv-pvr19:25.4", "pali": "katinaṁ cīvarena ca.", "brahmali": "And how many about robes?"}]}, {"id": "pli-tv-pvr19/26", "label": "Bhikkhunovādakavaggasmiṁ,", "rows": [{"key": "pli-tv-pvr19:26.1", "pali": "Bhikkhunovādakavaggasmiṁ,", "brahmali": "In the subchapter on the instructor of nuns,"}, {"key": "pli-tv-pvr19:26.2", "pali": "Pācittiyena dukkaṭā katā;", "brahmali": "There is one offense of wrong conduct together with one offense entailing confession;"}, {"key": "pli-tv-pvr19:26.3", "pali": "Caturettha navakā vuttā,", "brahmali": "Four groups of nine are mentioned there,"}, {"key": "pli-tv-pvr19:26.4", "pali": "Dvinnaṁ cīvarena ca.", "brahmali": "And two about robes."}]}, {"id": "pli-tv-pvr19/27", "label": "Bhikkhunīnañca akkhātā,", "rows": [{"key": "pli-tv-pvr19:27.1", "pali": "Bhikkhunīnañca akkhātā,", "brahmali": "How many offenses entailing acknowledgment"}, {"key": "pli-tv-pvr19:27.2", "pali": "Pāṭidesaniyā kati;", "brahmali": "Have been declared to the nuns?"}, {"key": "pli-tv-pvr19:27.3", "pali": "Bhuñjantāmakadhaññena,", "brahmali": "For one eating raw grain,"}, {"key": "pli-tv-pvr19:27.4", "pali": "Pācittiyena dukkaṭā kati.", "brahmali": "How many are the offenses of wrong conduct, together with the offense entailing confession?"}]}, {"id": "pli-tv-pvr19/28", "label": "Bhikkhunīnañca akkhātā,", "rows": [{"key": "pli-tv-pvr19:28.1", "pali": "Bhikkhunīnañca akkhātā,", "brahmali": "Eight offenses entailing acknowledgment"}, {"key": "pli-tv-pvr19:28.2", "pali": "Aṭṭha pāṭidesanīyā katā;", "brahmali": "Have been declared to the nuns;"}, {"key": "pli-tv-pvr19:28.3", "pali": "Bhuñjantāmakadhaññena,", "brahmali": "For one eating raw grain,"}, {"key": "pli-tv-pvr19:28.4", "pali": "Pācittiyena dukkaṭā katā.", "brahmali": "There is one offense of wrong conduct together with one offense entailing confession."}]}, {"id": "pli-tv-pvr19/29", "label": "Gacchantassa kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:29.1", "pali": "Gacchantassa kati āpattiyo,", "brahmali": "How many kinds of offenses are there for one who is traveling?"}, {"key": "pli-tv-pvr19:29.2", "pali": "Ṭhitassa cāpi kittakā;", "brahmali": "And how many are there for standing?"}, {"key": "pli-tv-pvr19:29.3", "pali": "Nisinnassa kati āpattiyo,", "brahmali": "How many kinds of offenses are there for sitting?"}, {"key": "pli-tv-pvr19:29.4", "pali": "Nipannassāpi kittakā.", "brahmali": "And how many are there for lying down?"}]}, {"id": "pli-tv-pvr19/30", "label": "Gacchantassa catasso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:30.1", "pali": "Gacchantassa catasso āpattiyo,", "brahmali": "There are four kinds of offenses for one who is traveling,"}, {"key": "pli-tv-pvr19:30.2", "pali": "Ṭhitassa cāpi tattakā;", "brahmali": "And the same number for standing;"}, {"key": "pli-tv-pvr19:30.3", "pali": "Nisinnassa catasso āpattiyo,", "brahmali": "There are four kinds of offenses for sitting down,"}, {"key": "pli-tv-pvr19:30.4", "pali": "Nipannassāpi tattakā.", "brahmali": "And the same number for lying down.”"}]}, {"id": "pli-tv-pvr19/31", "label": "3. Pācittiya", "rows": [{"key": "pli-tv-pvr19:31.0", "pali": "3.\nPācittiya", "brahmali": "3.\nOffenses entailing confession"}, {"key": "pli-tv-pvr19:31.1", "pali": "Kati pācittiyāni,", "brahmali": "“How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:31.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:31.3", "pali": "Apubbaṁ acarimaṁ,", "brahmali": "Might one commit together,"}, {"key": "pli-tv-pvr19:31.4", "pali": "āpajjeyya ekato.", "brahmali": "All at the same time?"}]}, {"id": "pli-tv-pvr19/32", "label": "Pañca pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:32.1", "pali": "Pañca pācittiyāni,", "brahmali": "There are five offenses entailing confession,"}, {"key": "pli-tv-pvr19:32.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:32.3", "pali": "Apubbaṁ acarimaṁ,", "brahmali": "That one might commit together,"}, {"key": "pli-tv-pvr19:32.4", "pali": "āpajjeyya ekato.", "brahmali": "All at the same time."}]}, {"id": "pli-tv-pvr19/33", "label": "Kati pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:33.1", "pali": "Kati pācittiyāni,", "brahmali": "How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:33.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:33.3", "pali": "Apubbaṁ acarimaṁ,", "brahmali": "Might one commit together,"}, {"key": "pli-tv-pvr19:33.4", "pali": "āpajjeyya ekato.", "brahmali": "All at the same time?"}]}, {"id": "pli-tv-pvr19/34", "label": "Nava pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:34.1", "pali": "Nava pācittiyāni,", "brahmali": "There are nine offenses entailing confession,"}, {"key": "pli-tv-pvr19:34.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:34.3", "pali": "Apubbaṁ acarimaṁ,", "brahmali": "That one might commit together,"}, {"key": "pli-tv-pvr19:34.4", "pali": "āpajjeyya ekato.", "brahmali": "All at the same time."}]}, {"id": "pli-tv-pvr19/35", "label": "Kati pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:35.1", "pali": "Kati pācittiyāni,", "brahmali": "How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:35.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:35.3", "pali": "Kati vācāya deseyya,", "brahmali": "Should be confessed through how many statements,"}, {"key": "pli-tv-pvr19:35.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun?"}]}, {"id": "pli-tv-pvr19/36", "label": "Pañca pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:36.1", "pali": "Pañca pācittiyāni,", "brahmali": "There are five offenses entailing confession,"}, {"key": "pli-tv-pvr19:36.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:36.3", "pali": "Ekavācāya deseyya,", "brahmali": "That should be confessed through a single statement,"}, {"key": "pli-tv-pvr19:36.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/37", "label": "Kati pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:37.1", "pali": "Kati pācittiyāni,", "brahmali": "How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:37.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:37.3", "pali": "Kati vācāya deseyya,", "brahmali": "Should be confessed by how many statements,"}, {"key": "pli-tv-pvr19:37.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun?"}]}, {"id": "pli-tv-pvr19/38", "label": "Nava pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:38.1", "pali": "Nava pācittiyāni,", "brahmali": "There are nine offenses entailing confession,"}, {"key": "pli-tv-pvr19:38.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:38.3", "pali": "Ekavācāya deseyya,", "brahmali": "That should be confessed by one statement,"}, {"key": "pli-tv-pvr19:38.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/39", "label": "Kati pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:39.1", "pali": "Kati pācittiyāni,", "brahmali": "How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:39.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:39.3", "pali": "Kiñca kittetvā deseyya,", "brahmali": "Should one describe and then confess,"}, {"key": "pli-tv-pvr19:39.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun?"}]}, {"id": "pli-tv-pvr19/40", "label": "Pañca pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:40.1", "pali": "Pañca pācittiyāni,", "brahmali": "There are five offenses entailing confession,"}, {"key": "pli-tv-pvr19:40.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:40.3", "pali": "Vatthuṁ kittetvā deseyya,", "brahmali": "Where one should describe the basis and then confess,"}, {"key": "pli-tv-pvr19:40.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/41", "label": "Kati pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:41.1", "pali": "Kati pācittiyāni,", "brahmali": "How many offenses entailing confession,"}, {"key": "pli-tv-pvr19:41.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases,"}, {"key": "pli-tv-pvr19:41.3", "pali": "Kiñca kittetvā deseyya,", "brahmali": "Should one describe and then confess,"}, {"key": "pli-tv-pvr19:41.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun?"}]}, {"id": "pli-tv-pvr19/42", "label": "Nava pācittiyāni,", "rows": [{"key": "pli-tv-pvr19:42.1", "pali": "Nava pācittiyāni,", "brahmali": "There are nine offenses entailing confession,"}, {"key": "pli-tv-pvr19:42.2", "pali": "sabbāni nānāvatthukāni;", "brahmali": "All with different bases;"}, {"key": "pli-tv-pvr19:42.3", "pali": "Vatthuṁ kittetvā deseyya,", "brahmali": "Where one should describe the basis and then confess,"}, {"key": "pli-tv-pvr19:42.4", "pali": "vuttā ādiccabandhunā.", "brahmali": "As spoken by the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/43", "label": "Yāvatatiyake kati āpattiyo,", "rows": [{"key": "pli-tv-pvr19:43.1", "pali": "Yāvatatiyake kati āpattiyo,", "brahmali": "How many offenses are there after the third announcement?"}, {"key": "pli-tv-pvr19:43.2", "pali": "Kati vohārapaccayā;", "brahmali": "How many are there because of speech?"}, {"key": "pli-tv-pvr19:43.3", "pali": "Khādantassa kati āpattiyo,", "brahmali": "How many are there for one who is eating?"}, {"key": "pli-tv-pvr19:43.4", "pali": "Kati bhojanapaccayā.", "brahmali": "And how many because of cooked food?"}]}, {"id": "pli-tv-pvr19/44", "label": "Yāvatatiyake tisso āpattiyo,", "rows": [{"key": "pli-tv-pvr19:44.1", "pali": "Yāvatatiyake tisso āpattiyo,", "brahmali": "There are three offenses after the third announcement,"}, {"key": "pli-tv-pvr19:44.2", "pali": "Cha vohārapaccayā;", "brahmali": "Six because of speech;"}, {"key": "pli-tv-pvr19:44.3", "pali": "Khādantassa tisso āpattiyo,", "brahmali": "There are three offenses for one who is eating,"}, {"key": "pli-tv-pvr19:44.4", "pali": "Pañca bhojanapaccayā.", "brahmali": "Five because of cooked food."}]}, {"id": "pli-tv-pvr19/45", "label": "Sabbā yāvatatiyakā,", "rows": [{"key": "pli-tv-pvr19:45.1", "pali": "Sabbā yāvatatiyakā,", "brahmali": "Of all offenses after the third announcement,"}, {"key": "pli-tv-pvr19:45.2", "pali": "Kati ṭhānāni gacchanti;", "brahmali": "How many cases are there?"}, {"key": "pli-tv-pvr19:45.3", "pali": "Katinañceva āpatti,", "brahmali": "And for how many are there offenses?"}, {"key": "pli-tv-pvr19:45.4", "pali": "Katinaṁ adhikaraṇena ca.", "brahmali": "And for how many is there a legal issue?"}]}, {"id": "pli-tv-pvr19/46", "label": "Sabbā yāvatatiyakā,", "rows": [{"key": "pli-tv-pvr19:46.1", "pali": "Sabbā yāvatatiyakā,", "brahmali": "Of all offenses after the third announcement,"}, {"key": "pli-tv-pvr19:46.2", "pali": "Pañca ṭhānāni gacchanti;", "brahmali": "There are five cases;"}, {"key": "pli-tv-pvr19:46.3", "pali": "Pañcannañceva āpatti,", "brahmali": "And there are offenses for five,"}, {"key": "pli-tv-pvr19:46.4", "pali": "Pañcannaṁ adhikaraṇena ca.", "brahmali": "And legal issues for five."}]}, {"id": "pli-tv-pvr19/47", "label": "Katinaṁ vinicchayo hoti,", "rows": [{"key": "pli-tv-pvr19:47.1", "pali": "Katinaṁ vinicchayo hoti,", "brahmali": "For how many are there decisions?"}, {"key": "pli-tv-pvr19:47.2", "pali": "katinaṁ vūpasamena ca;", "brahmali": "For how many are there resolutions?"}, {"key": "pli-tv-pvr19:47.3", "pali": "Katinañceva anāpatti,", "brahmali": "For how many are there non-offenses?"}, {"key": "pli-tv-pvr19:47.4", "pali": "katihi ṭhānehi sobhati.", "brahmali": "For how many reasons does one shine?"}]}, {"id": "pli-tv-pvr19/48", "label": "Pañcannaṁ vinicchayo hoti,", "rows": [{"key": "pli-tv-pvr19:48.1", "pali": "Pañcannaṁ vinicchayo hoti,", "brahmali": "There are decisions for five,"}, {"key": "pli-tv-pvr19:48.2", "pali": "pañcannaṁ vūpasamena ca;", "brahmali": "And resolutions for five."}, {"key": "pli-tv-pvr19:48.3", "pali": "Pañcannañceva anāpatti,", "brahmali": "There are non-offenses for five,"}, {"key": "pli-tv-pvr19:48.4", "pali": "tīhi ṭhānehi sobhati.", "brahmali": "And one shines for three reasons."}]}, {"id": "pli-tv-pvr19/49", "label": "Kati kāyikā rattiṁ,", "rows": [{"key": "pli-tv-pvr19:49.1", "pali": "Kati kāyikā rattiṁ,", "brahmali": "How many kinds of offenses are there by body at night?"}, {"key": "pli-tv-pvr19:49.2", "pali": "Kati kāyikā divā;", "brahmali": "How many are there by body by day?"}, {"key": "pli-tv-pvr19:49.3", "pali": "Nijjhāyantassa kati āpatti,", "brahmali": "How many kinds of offenses are there for staring?"}, {"key": "pli-tv-pvr19:49.4", "pali": "Kati piṇḍapātapaccayā.", "brahmali": "How many because of almsfood?"}]}, {"id": "pli-tv-pvr19/50", "label": "Dve kāyikā rattiṁ,", "rows": [{"key": "pli-tv-pvr19:50.1", "pali": "Dve kāyikā rattiṁ,", "brahmali": "There are two kinds of offenses by body at night,"}, {"key": "pli-tv-pvr19:50.2", "pali": "Dve kāyikā divā;", "brahmali": "Two by body by day;"}, {"key": "pli-tv-pvr19:50.3", "pali": "Nijjhāyantassa ekā āpatti,", "brahmali": "There is one kind of offense for staring,"}, {"key": "pli-tv-pvr19:50.4", "pali": "Ekā piṇḍapātapaccayā.", "brahmali": "One because of almsfood."}]}, {"id": "pli-tv-pvr19/51", "label": "Katānisaṁse sampassaṁ,", "rows": [{"key": "pli-tv-pvr19:51.1", "pali": "Katānisaṁse sampassaṁ,", "brahmali": "Seeing how many benefits"}, {"key": "pli-tv-pvr19:51.2", "pali": "paresaṁ saddhāya desaye;", "brahmali": "Should one confess out of confidence in others?"}, {"key": "pli-tv-pvr19:51.3", "pali": "Ukkhittakā kati vuttā,", "brahmali": "How many kinds are said to be ejected?"}, {"key": "pli-tv-pvr19:51.4", "pali": "kati sammāvattanā.", "brahmali": "And how many are the proper conducts?"}]}, {"id": "pli-tv-pvr19/52", "label": "Aṭṭhānisaṁse sampassaṁ,", "rows": [{"key": "pli-tv-pvr19:52.1", "pali": "Aṭṭhānisaṁse sampassaṁ,", "brahmali": "Seeing eight benefits,"}, {"key": "pli-tv-pvr19:52.2", "pali": "Paresaṁ saddhāya desaye;", "brahmali": "One should confess out of confidence in others;"}, {"key": "pli-tv-pvr19:52.3", "pali": "Ukkhittakā tayo vuttā,", "brahmali": "Three kinds are said to be ejected,"}, {"key": "pli-tv-pvr19:52.4", "pali": "Tecattālīsa sammāvattanā.", "brahmali": "There are forty-three proper conducts."}]}, {"id": "pli-tv-pvr19/53", "label": "Kati ṭhāne musāvādo,", "rows": [{"key": "pli-tv-pvr19:53.1", "pali": "Kati ṭhāne musāvādo,", "brahmali": "How many cases of lying are there?"}, {"key": "pli-tv-pvr19:53.2", "pali": "kati paramanti vuccati;", "brahmali": "How many are called ‘at most’?"}, {"key": "pli-tv-pvr19:53.3", "pali": "Kati pāṭidesanīyā,", "brahmali": "How many offenses entailing acknowledgment are there?"}, {"key": "pli-tv-pvr19:53.4", "pali": "katinaṁ desanāya ca.", "brahmali": "And for how many is there confession?"}]}, {"id": "pli-tv-pvr19/54", "label": "Pañca ṭhāne musāvādo,", "rows": [{"key": "pli-tv-pvr19:54.1", "pali": "Pañca ṭhāne musāvādo,", "brahmali": "There are five cases of lying,"}, {"key": "pli-tv-pvr19:54.2", "pali": "Cuddasa paramanti vuccati;", "brahmali": "Fourteen are called ‘at most’;"}, {"key": "pli-tv-pvr19:54.3", "pali": "Dvādasa pāṭidesanīyā,", "brahmali": "There are twelve offenses entailing acknowledgment,"}, {"key": "pli-tv-pvr19:54.4", "pali": "Catunnaṁ desanāya ca.", "brahmali": "And there is confession for four."}]}, {"id": "pli-tv-pvr19/55", "label": "Kataṅgiko musāvādo,", "rows": [{"key": "pli-tv-pvr19:55.1", "pali": "Kataṅgiko musāvādo,", "brahmali": "How many factors does lying have?"}, {"key": "pli-tv-pvr19:55.2", "pali": "kati uposathaṅgāni;", "brahmali": "And how many factors does the observance day have?"}, {"key": "pli-tv-pvr19:55.3", "pali": "Kati dūteyyaṅgāni,", "brahmali": "How many qualities does a qualified messenger have?"}, {"key": "pli-tv-pvr19:55.4", "pali": "kati titthiyavattanā.", "brahmali": "How many kinds of proper conduct are there for the monastics of other religions?"}]}, {"id": "pli-tv-pvr19/56", "label": "Aṭṭhaṅgiko musāvādo,", "rows": [{"key": "pli-tv-pvr19:56.1", "pali": "Aṭṭhaṅgiko musāvādo,", "brahmali": "Lying has eight factors,"}, {"key": "pli-tv-pvr19:56.2", "pali": "aṭṭha uposathaṅgāni;", "brahmali": "The observance day has eight factors;"}, {"key": "pli-tv-pvr19:56.3", "pali": "Aṭṭha dūteyyaṅgāni,", "brahmali": "A qualified messenger has eight qualities,"}, {"key": "pli-tv-pvr19:56.4", "pali": "aṭṭha titthiyavattanā.", "brahmali": "There are eight kinds of proper conduct for monastics of other religions."}]}, {"id": "pli-tv-pvr19/57", "label": "Kativācikā upasampadā,", "rows": [{"key": "pli-tv-pvr19:57.1", "pali": "Kativācikā upasampadā,", "brahmali": "How many statements are there for an ordination?"}, {"key": "pli-tv-pvr19:57.2", "pali": "Katinaṁ paccuṭṭhātabbaṁ;", "brahmali": "For how many should one get up?"}, {"key": "pli-tv-pvr19:57.3", "pali": "Katinaṁ āsanaṁ dātabbaṁ,", "brahmali": "To how many should one give a seat?"}, {"key": "pli-tv-pvr19:57.4", "pali": "Bhikkhunovādako katihi.", "brahmali": "Through how many qualities is one an instructor of the nuns?"}]}, {"id": "pli-tv-pvr19/58", "label": "Aṭṭhavācikā upasampadā,", "rows": [{"key": "pli-tv-pvr19:58.1", "pali": "Aṭṭhavācikā upasampadā,", "brahmali": "There are eight statements for an ordination,"}, {"key": "pli-tv-pvr19:58.2", "pali": "Aṭṭhannaṁ paccuṭṭhātabbaṁ;", "brahmali": "One should get up for eight;"}, {"key": "pli-tv-pvr19:58.3", "pali": "Aṭṭhannaṁ āsanaṁ dātabbaṁ,", "brahmali": "Likewise give a seat to eight,"}, {"key": "pli-tv-pvr19:58.4", "pali": "Bhikkhunovādako aṭṭhahi.", "brahmali": "One is an instructor of the nuns through eight qualities."}]}, {"id": "pli-tv-pvr19/59", "label": "Katinaṁ chejjaṁ hoti,", "rows": [{"key": "pli-tv-pvr19:59.1", "pali": "Katinaṁ chejjaṁ hoti,", "brahmali": "For how many is there a ‘cutting off’?"}, {"key": "pli-tv-pvr19:59.2", "pali": "katinaṁ thullaccayaṁ;", "brahmali": "For how many is there a serious offense?"}, {"key": "pli-tv-pvr19:59.3", "pali": "Katinañceva anāpatti,", "brahmali": "And for how many is there no offense—"}, {"key": "pli-tv-pvr19:59.4", "pali": "sabbesaṁ ekavatthukā.", "brahmali": "Yet all of them did the same act as basis?"}]}, {"id": "pli-tv-pvr19/60", "label": "Ekassa chejjaṁ hoti,", "rows": [{"key": "pli-tv-pvr19:60.1", "pali": "Ekassa chejjaṁ hoti,", "brahmali": "There is a ‘cutting off’ for one,"}, {"key": "pli-tv-pvr19:60.2", "pali": "catunnaṁ thullaccayaṁ;", "brahmali": "A serious offense for four;"}, {"key": "pli-tv-pvr19:60.3", "pali": "Catunnañceva anāpatti,", "brahmali": "And there is no offense for four—"}, {"key": "pli-tv-pvr19:60.4", "pali": "sabbesaṁ ekavatthukā.", "brahmali": "Yet all of them did the same act as basis."}]}, {"id": "pli-tv-pvr19/61", "label": "Kati āghātavatthūni,", "rows": [{"key": "pli-tv-pvr19:61.1", "pali": "Kati āghātavatthūni,", "brahmali": "How many are the grounds for resentment?"}, {"key": "pli-tv-pvr19:61.2", "pali": "katihi saṅgho bhijjati;", "brahmali": "How many cause a schism in the Sangha?"}, {"key": "pli-tv-pvr19:61.3", "pali": "Katettha paṭhamāpattikā,", "brahmali": "How many here are immediate offenses?"}, {"key": "pli-tv-pvr19:61.4", "pali": "ñattiyā karaṇā kati.", "brahmali": "How many acts are there through a motion?"}]}, {"id": "pli-tv-pvr19/62", "label": "Nava āghātavatthūni,", "rows": [{"key": "pli-tv-pvr19:62.1", "pali": "Nava āghātavatthūni,", "brahmali": "There are nine grounds for resentment,"}, {"key": "pli-tv-pvr19:62.2", "pali": "navahi saṅgho bhijjati;", "brahmali": "Nine cause a schism in the Sangha;"}, {"key": "pli-tv-pvr19:62.3", "pali": "Navettha paṭhamāpattikā,", "brahmali": "There are nine immediate offenses here,"}, {"key": "pli-tv-pvr19:62.4", "pali": "ñattiyā karaṇā nava.", "brahmali": "There are nine acts through a motion.”"}]}, {"id": "pli-tv-pvr19/63", "label": "4. Avandanīyapuggalādi", "rows": [{"key": "pli-tv-pvr19:63.0", "pali": "4.\nAvandanīyapuggalādi", "brahmali": "4.\nPersons one should not pay respect to, etc."}, {"key": "pli-tv-pvr19:63.1", "pali": "Kati puggalā nābhivādetabbā,", "brahmali": "“How many kinds of people should one not bow down to,"}, {"key": "pli-tv-pvr19:63.2", "pali": "Añjalisāmicena ca;", "brahmali": "Nor raise one’s joined palms to, nor do acts of respect toward?"}, {"key": "pli-tv-pvr19:63.3", "pali": "Katinaṁ dukkaṭaṁ hoti,", "brahmali": "For how many is there an offense of wrong conduct?"}, {"key": "pli-tv-pvr19:63.4", "pali": "Kati cīvaradhāraṇā.", "brahmali": "How many keepings of a robe are there?"}]}, {"id": "pli-tv-pvr19/64", "label": "Dasa puggalā nābhivādetabbā,", "rows": [{"key": "pli-tv-pvr19:64.1", "pali": "Dasa puggalā nābhivādetabbā,", "brahmali": "There are ten kinds of people one should not bow down to,"}, {"key": "pli-tv-pvr19:64.2", "pali": "Añjalisāmicena ca;", "brahmali": "Nor raise one’s joined palms to, nor do acts of respect toward;"}, {"key": "pli-tv-pvr19:64.3", "pali": "Dasannaṁ dukkaṭaṁ hoti,", "brahmali": "There is an offense of wrong conduct for ten,"}, {"key": "pli-tv-pvr19:64.4", "pali": "Dasa cīvaradhāraṇā.", "brahmali": "There are ten keepings of a robe."}]}, {"id": "pli-tv-pvr19/65", "label": "Katinaṁ vassaṁvuṭṭhānaṁ,", "rows": [{"key": "pli-tv-pvr19:65.1", "pali": "Katinaṁ vassaṁvuṭṭhānaṁ,", "brahmali": "To how many kinds who have completed the rainy-season residence"}, {"key": "pli-tv-pvr19:65.2", "pali": "dātabbaṁ idha cīvaraṁ;", "brahmali": "Should robe-cloth be given?"}, {"key": "pli-tv-pvr19:65.3", "pali": "Katinaṁ sante dātabbaṁ,", "brahmali": "When one exists, to how many kinds should it be given?"}, {"key": "pli-tv-pvr19:65.4", "pali": "katinañceva na dātabbaṁ.", "brahmali": "And to how many kinds should it not be given?"}]}, {"id": "pli-tv-pvr19/66", "label": "Pañcannaṁ vassaṁvuṭṭhānaṁ,", "rows": [{"key": "pli-tv-pvr19:66.1", "pali": "Pañcannaṁ vassaṁvuṭṭhānaṁ,", "brahmali": "Robe-cloth should be given to five kinds"}, {"key": "pli-tv-pvr19:66.2", "pali": "dātabbaṁ idha cīvaraṁ;", "brahmali": "Who have completed the rainy-season residence;"}, {"key": "pli-tv-pvr19:66.3", "pali": "Sattannaṁ sante dātabbaṁ,", "brahmali": "When one exists, it should be given to seven kinds,"}, {"key": "pli-tv-pvr19:66.4", "pali": "soḷasannaṁ na dātabbaṁ.", "brahmali": "It should not be given to sixteen kinds."}]}, {"id": "pli-tv-pvr19/67", "label": "Katisataṁ rattisataṁ,", "rows": [{"key": "pli-tv-pvr19:67.1", "pali": "Katisataṁ rattisataṁ,", "brahmali": "Having concealed how many hundreds of offenses"}, {"key": "pli-tv-pvr19:67.2", "pali": "āpattiyo chādayitvāna;", "brahmali": "For a hundred days?"}, {"key": "pli-tv-pvr19:67.3", "pali": "Kati rattiyo vasitvāna,", "brahmali": "After spending how many days,"}, {"key": "pli-tv-pvr19:67.4", "pali": "mucceyya pārivāsiko.", "brahmali": "Should he be released from probation?"}]}, {"id": "pli-tv-pvr19/68", "label": "Dasasataṁ rattisataṁ,", "rows": [{"key": "pli-tv-pvr19:68.1", "pali": "Dasasataṁ rattisataṁ,", "brahmali": "Having concealed ten hundred offenses"}, {"key": "pli-tv-pvr19:68.2", "pali": "āpattiyo chādayitvāna;", "brahmali": "For a hundred days;"}, {"key": "pli-tv-pvr19:68.3", "pali": "Dasa rattiyo vasitvāna,", "brahmali": "Then, after spending ten days,"}, {"key": "pli-tv-pvr19:68.4", "pali": "mucceyya pārivāsiko.", "brahmali": "He should be released from probation."}]}, {"id": "pli-tv-pvr19/69", "label": "Kati kammadosā vuttā,", "rows": [{"key": "pli-tv-pvr19:69.1", "pali": "Kati kammadosā vuttā,", "brahmali": "How many kinds of flaws in legal procedures"}, {"key": "pli-tv-pvr19:69.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:69.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:69.4", "pali": "sabbeva adhammikā kati.", "brahmali": "How many were illegitimate?"}]}, {"id": "pli-tv-pvr19/70", "label": "Dvādasa kammadosā vuttā,", "rows": [{"key": "pli-tv-pvr19:70.1", "pali": "Dvādasa kammadosā vuttā,", "brahmali": "Twelve kinds of flaws in legal procedures"}, {"key": "pli-tv-pvr19:70.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:70.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:70.4", "pali": "sabbeva adhammikā katā.", "brahmali": "All were done illegitimately."}]}, {"id": "pli-tv-pvr19/71", "label": "Kati kammasampattiyo vuttā,", "rows": [{"key": "pli-tv-pvr19:71.1", "pali": "Kati kammasampattiyo vuttā,", "brahmali": "How many kinds of accomplishments of legal procedures"}, {"key": "pli-tv-pvr19:71.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:71.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:71.4", "pali": "Sabbeva dhammikā kati.", "brahmali": "How many were legitimate?"}]}, {"id": "pli-tv-pvr19/72", "label": "Catasso kammasampattiyo vuttā,", "rows": [{"key": "pli-tv-pvr19:72.1", "pali": "Catasso kammasampattiyo vuttā,", "brahmali": "Four kinds of accomplishments of legal procedures"}, {"key": "pli-tv-pvr19:72.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:72.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:72.4", "pali": "Sabbeva dhammikā katā.", "brahmali": "All were done legitimately."}]}, {"id": "pli-tv-pvr19/73", "label": "Kati kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:73.1", "pali": "Kati kammāni vuttāni,", "brahmali": "How many kinds of legal procedures"}, {"key": "pli-tv-pvr19:73.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:73.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:73.4", "pali": "dhammikā adhammikā kati.", "brahmali": "How many were legitimate and how many illegitimate?"}]}, {"id": "pli-tv-pvr19/74", "label": "Cha kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:74.1", "pali": "Cha kammāni vuttāni,", "brahmali": "Six kinds of legal procedures"}, {"key": "pli-tv-pvr19:74.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:74.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:74.4", "pali": "ekettha dhammikā katā;", "brahmali": "One done legitimately,"}, {"key": "pli-tv-pvr19:74.5", "pali": "Pañca adhammikā vuttā,", "brahmali": "And five illegitimately,"}, {"key": "pli-tv-pvr19:74.6", "pali": "buddhenādiccabandhunā.", "brahmali": "Were mentioned of by the Buddha, the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/75", "label": "Kati kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:75.1", "pali": "Kati kammāni vuttāni,", "brahmali": "How many kinds of legal procedures"}, {"key": "pli-tv-pvr19:75.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:75.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:75.4", "pali": "dhammikā adhammikā kati.", "brahmali": "How many were legitimate and how many illegitimate?"}]}, {"id": "pli-tv-pvr19/76", "label": "Cattāri kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:76.1", "pali": "Cattāri kammāni vuttāni,", "brahmali": "Four kinds of legal procedures"}, {"key": "pli-tv-pvr19:76.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:76.3", "pali": "Campāyaṁ vinayavatthusmiṁ,", "brahmali": "In the Monastic Law, in the account of Campā,"}, {"key": "pli-tv-pvr19:76.4", "pali": "ekettha dhammikā katā;", "brahmali": "One done legitimately,"}, {"key": "pli-tv-pvr19:76.5", "pali": "Tayo adhammikā vuttā,", "brahmali": "And three illegitimately,"}, {"key": "pli-tv-pvr19:76.6", "pali": "buddhenādiccabandhunā.", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun."}]}, {"id": "pli-tv-pvr19/77", "label": "Yaṁ desitaṁnantajinena tādinā,", "rows": [{"key": "pli-tv-pvr19:77.1", "pali": "Yaṁ desitaṁnantajinena tādinā,", "brahmali": "In regard to the classes of offenses taught by the unbounded Victor, the Unshakable One,"}, {"key": "pli-tv-pvr19:77.2", "pali": "Āpattikkhandhāni vivekadassinā;", "brahmali": "The Knower of seclusion;"}, {"key": "pli-tv-pvr19:77.3", "pali": "Katettha sammanti vinā samathehi,", "brahmali": "How many are settled without settling?"}, {"key": "pli-tv-pvr19:77.4", "pali": "Pucchāmi taṁ brūhi vibhaṅgakovida.", "brahmali": "I ask you who are skilled in analysis, please say."}]}, {"id": "pli-tv-pvr19/78", "label": "Yaṁ desitaṁnantajinena tādinā,", "rows": [{"key": "pli-tv-pvr19:78.1", "pali": "Yaṁ desitaṁnantajinena tādinā,", "brahmali": "In regard to the classes of offenses taught by the unbounded Victor, the Unshakable One,"}, {"key": "pli-tv-pvr19:78.2", "pali": "Āpattikkhandhāni vivekadassinā;", "brahmali": "The Knower of seclusion;"}, {"key": "pli-tv-pvr19:78.3", "pali": "Ekettha sammati vinā samathehi,", "brahmali": "One is settled without settling,"}, {"key": "pli-tv-pvr19:78.4", "pali": "Etaṁ te akkhāmi vibhaṅgakovida.", "brahmali": "Skilled in analysis, I declare this to you."}]}, {"id": "pli-tv-pvr19/79", "label": "Kati āpāyikā vuttā,", "rows": [{"key": "pli-tv-pvr19:79.1", "pali": "Kati āpāyikā vuttā,", "brahmali": "How many who are destined to misery"}, {"key": "pli-tv-pvr19:79.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:79.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:79.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/80", "label": "Chaūnadiyaḍḍhasatā vuttā,", "rows": [{"key": "pli-tv-pvr19:80.1", "pali": "Chaūnadiyaḍḍhasatā vuttā,", "brahmali": "One hundred and forty-four"}, {"key": "pli-tv-pvr19:80.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:80.3", "pali": "Āpāyikā nerayikā,", "brahmali": "Destined to misery, bound for hell,"}, {"key": "pli-tv-pvr19:80.4", "pali": "Kappaṭṭhā saṅghabhedakā;", "brahmali": "He who causes a schism in the Sangha remains there for an eon;"}, {"key": "pli-tv-pvr19:80.5", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:80.6", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/81", "label": "Kati nāpāyikā vuttā,", "rows": [{"key": "pli-tv-pvr19:81.1", "pali": "Kati nāpāyikā vuttā,", "brahmali": "How many who are not destined to misery"}, {"key": "pli-tv-pvr19:81.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:81.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:81.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/82", "label": "Aṭṭhārasa nāpāyikā vuttā,", "rows": [{"key": "pli-tv-pvr19:82.1", "pali": "Aṭṭhārasa nāpāyikā vuttā,", "brahmali": "Eighteen not destined to misery"}, {"key": "pli-tv-pvr19:82.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:82.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:82.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/83", "label": "Kati aṭṭhakā vuttā,", "rows": [{"key": "pli-tv-pvr19:83.1", "pali": "Kati aṭṭhakā vuttā,", "brahmali": "How many groups of eight"}, {"key": "pli-tv-pvr19:83.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:83.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:83.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/84", "label": "Aṭṭhārasa aṭṭhakā vuttā,", "rows": [{"key": "pli-tv-pvr19:84.1", "pali": "Aṭṭhārasa aṭṭhakā vuttā,", "brahmali": "Eighteen groups of eight"}, {"key": "pli-tv-pvr19:84.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:84.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:84.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it.”"}]}, {"id": "pli-tv-pvr19/85", "label": "5. Soḷasakammādi", "rows": [{"key": "pli-tv-pvr19:85.0", "pali": "5.\nSoḷasakammādi", "brahmali": "5.\nThe sixteen legal procedures, etc."}, {"key": "pli-tv-pvr19:85.1", "pali": "Kati kammāni vuttāni,", "brahmali": "“How many kinds of legal procedures"}, {"key": "pli-tv-pvr19:85.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:85.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:85.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/86", "label": "Soḷasa kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:86.1", "pali": "Soḷasa kammāni vuttāni,", "brahmali": "Sixteen kinds of legal procedures"}, {"key": "pli-tv-pvr19:86.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:86.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:86.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/87", "label": "Kati kammadosā vuttā,", "rows": [{"key": "pli-tv-pvr19:87.1", "pali": "Kati kammadosā vuttā,", "brahmali": "How many kinds of flaws in legal procedures"}, {"key": "pli-tv-pvr19:87.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:87.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:87.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/88", "label": "Dvādasa kammadosā vuttā,", "rows": [{"key": "pli-tv-pvr19:88.1", "pali": "Dvādasa kammadosā vuttā,", "brahmali": "Twelve kinds of flaws"}, {"key": "pli-tv-pvr19:88.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:88.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:88.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/89", "label": "Kati kammasampattiyo vuttā,", "rows": [{"key": "pli-tv-pvr19:89.1", "pali": "Kati kammasampattiyo vuttā,", "brahmali": "How many kinds of accomplishments of legal procedures"}, {"key": "pli-tv-pvr19:89.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:89.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:89.4", "pali": "Vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/90", "label": "Catasso kammasampattiyo vuttā,", "rows": [{"key": "pli-tv-pvr19:90.1", "pali": "Catasso kammasampattiyo vuttā,", "brahmali": "Four kinds of accomplishments"}, {"key": "pli-tv-pvr19:90.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:90.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:90.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/91", "label": "Kati kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:91.1", "pali": "Kati kammāni vuttāni,", "brahmali": "How many kinds of legal procedures"}, {"key": "pli-tv-pvr19:91.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:91.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:91.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/92", "label": "Cha kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:92.1", "pali": "Cha kammāni vuttāni,", "brahmali": "Six kinds of legal procedures"}, {"key": "pli-tv-pvr19:92.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:92.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:92.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/93", "label": "Kati kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:93.1", "pali": "Kati kammāni vuttāni,", "brahmali": "How many kinds of legal procedures"}, {"key": "pli-tv-pvr19:93.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:93.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:93.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/94", "label": "Cattāri kammāni vuttāni,", "rows": [{"key": "pli-tv-pvr19:94.1", "pali": "Cattāri kammāni vuttāni,", "brahmali": "Four kinds of legal procedures"}, {"key": "pli-tv-pvr19:94.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:94.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:94.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/95", "label": "Kati pārājikā vuttā,", "rows": [{"key": "pli-tv-pvr19:95.1", "pali": "Kati pārājikā vuttā,", "brahmali": "How many offenses entailing expulsion"}, {"key": "pli-tv-pvr19:95.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:95.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:95.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/96", "label": "Aṭṭha pārājikā vuttā,", "rows": [{"key": "pli-tv-pvr19:96.1", "pali": "Aṭṭha pārājikā vuttā,", "brahmali": "Eight offenses entailing entailing expulsion"}, {"key": "pli-tv-pvr19:96.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:96.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:96.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/97", "label": "Kati saṅghādisesā vuttā,", "rows": [{"key": "pli-tv-pvr19:97.1", "pali": "Kati saṅghādisesā vuttā,", "brahmali": "How many offenses entailing suspension"}, {"key": "pli-tv-pvr19:97.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:97.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:97.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/98", "label": "Tevīsa saṅghādisesā vuttā,", "rows": [{"key": "pli-tv-pvr19:98.1", "pali": "Tevīsa saṅghādisesā vuttā,", "brahmali": "Twenty-three offenses entailing suspension"}, {"key": "pli-tv-pvr19:98.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:98.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:98.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/99", "label": "Kati aniyatā vuttā,", "rows": [{"key": "pli-tv-pvr19:99.1", "pali": "Kati aniyatā vuttā,", "brahmali": "How many undetermined offenses"}, {"key": "pli-tv-pvr19:99.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:99.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:99.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/100", "label": "Dve aniyatā vuttā,", "rows": [{"key": "pli-tv-pvr19:100.1", "pali": "Dve aniyatā vuttā,", "brahmali": "Two undetermined offenses"}, {"key": "pli-tv-pvr19:100.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:100.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:100.4", "pali": "vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/101", "label": "Kati nissaggiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:101.1", "pali": "Kati nissaggiyā vuttā,", "brahmali": "How many offenses entailing relinquishment"}, {"key": "pli-tv-pvr19:101.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:101.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:101.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/102", "label": "Dvecattālīsa nissaggiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:102.1", "pali": "Dvecattālīsa nissaggiyā vuttā,", "brahmali": "Forty-two offenses entailing relinquishment"}, {"key": "pli-tv-pvr19:102.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:102.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:102.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/103", "label": "Kati pācittiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:103.1", "pali": "Kati pācittiyā vuttā,", "brahmali": "How many offenses entailing confession"}, {"key": "pli-tv-pvr19:103.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:103.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:103.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/104", "label": "Aṭṭhāsītisataṁ pācittiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:104.1", "pali": "Aṭṭhāsītisataṁ pācittiyā vuttā,", "brahmali": "One hundred and eighty-eight offenses entailing confession"}, {"key": "pli-tv-pvr19:104.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:104.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:104.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/105", "label": "Kati pāṭidesanīyā vuttā,", "rows": [{"key": "pli-tv-pvr19:105.1", "pali": "Kati pāṭidesanīyā vuttā,", "brahmali": "How many offenses entailing acknowledgment"}, {"key": "pli-tv-pvr19:105.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:105.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:105.4", "pali": "Vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/106", "label": "Dvādasa pāṭidesanīyā vuttā,", "rows": [{"key": "pli-tv-pvr19:106.1", "pali": "Dvādasa pāṭidesanīyā vuttā,", "brahmali": "Twelve offenses entailing acknowledgment"}, {"key": "pli-tv-pvr19:106.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:106.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:106.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/107", "label": "Kati sekhiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:107.1", "pali": "Kati sekhiyā vuttā,", "brahmali": "How many rules of training"}, {"key": "pli-tv-pvr19:107.2", "pali": "buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun?"}, {"key": "pli-tv-pvr19:107.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "We will listen to the Monastic Law from you,"}, {"key": "pli-tv-pvr19:107.4", "pali": "vinayāni suṇoma te.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/108", "label": "Pañcasattati sekhiyā vuttā,", "rows": [{"key": "pli-tv-pvr19:108.1", "pali": "Pañcasattati sekhiyā vuttā,", "brahmali": "Seventy-five rules of training"}, {"key": "pli-tv-pvr19:108.2", "pali": "Buddhenādiccabandhunā;", "brahmali": "Were mentioned by the Buddha, the Kinsman of the Sun;"}, {"key": "pli-tv-pvr19:108.3", "pali": "Vinayaṁ paṭijānantassa,", "brahmali": "Listen to the Monastic Law from me,"}, {"key": "pli-tv-pvr19:108.4", "pali": "Vinayāni suṇohi me.", "brahmali": "One who understands it."}]}, {"id": "pli-tv-pvr19/109", "label": "Yāva supucchitaṁ tayā,", "rows": [{"key": "pli-tv-pvr19:109.1", "pali": "Yāva supucchitaṁ tayā,", "brahmali": "Thus far you have asked well,"}, {"key": "pli-tv-pvr19:109.2", "pali": "yāva suvissajjitaṁ mayā;", "brahmali": "Thus far I have answered well;"}, {"key": "pli-tv-pvr19:109.3", "pali": "Pucchāvissajjanāya vā,", "brahmali": "In either the questions or the answers,"}, {"key": "pli-tv-pvr19:109.4", "pali": "natthi kiñci asuttakanti.", "brahmali": "There is nothing other than the Teaching.”"}]}, {"id": "pli-tv-pvr19/110", "label": "Dutiyagāthāsaṅgaṇikaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr19:110.1", "pali": "Dutiyagāthāsaṅgaṇikaṁ niṭṭhitaṁ.", "brahmali": "The verses on offenses, training rules, and legal procedures are finished."}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"brahmali": {"pli-tv-pvr19:2.1": ["Sp 5.474: <i>Cha āpattiyo
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

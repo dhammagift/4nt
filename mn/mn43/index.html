@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 43", "rows": [{"key": "mn43:0.1", "pali": "Majjhima Nikāya 43", "sujato": "Middle Discourses 43", "thanissaro": "", "pts": ""}, {"key": "mn43:0.2", "pali": "Mahāvedallasutta", "sujato": "The Great Elaboration", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn43:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard."}, {"key": "mn43:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "thanissaro": "on one occasion the Blessed One was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s Monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery."}, {"key": "mn43:1.3", "pali": "Atha kho āyasmā mahākoṭṭhiko sāyanhasamayaṁ paṭisallānā vuṭṭhito yenāyasmā sāriputto tenupasaṅkami;\nupasaṅkamitvā āyasmatā sāriputtena saddhiṁ sammodi.", "sujato": "Then in the late afternoon, Venerable Mahākoṭṭhita came out of retreat,\nwent to Venerable Sāriputta, and exchanged greetings with him.", "thanissaro": "Then Ven. Mahā Koṭṭhita, emerging from his seclusion in the evening,\nwent to Ven. Sāriputta and, on arrival, exchanged courteous greetings with him.", "pts": "Then the venerable Koṭṭhita the Great,\nemerging from solitary meditation towards evening, approached the venerable Sāriputta:\nhaving approached, he exchanged greetings with the venerable Sāriputta;\nhaving exchanged greetings of friendliness and courtesy, he sat down at a respectful distance."}, {"key": "mn43:1.4", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā mahākoṭṭhiko āyasmantaṁ sāriputtaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, he sat down to one side and said to Sāriputta:", "thanissaro": "After an exchange of friendly greetings & courtesies, he sat to one side.\nAs he was sitting there, he said to Ven. Sāriputta,", "pts": "As he was sitting down at a respectful distance, the venerable Koṭṭhita the Great spoke thus to the venerable Sāriputta:"}]}, {"id": "2", "label": "“Reverend, they speak of ‘a witless person’.", "rows": [{"key": "mn43:2.1", "pali": "“‘Duppañño duppañño’ti, āvuso, vuccati.", "sujato": "“Reverend, they speak of ‘a witless person’.", "thanissaro": "“Friend,\n‘One of poor discernment, one of poor discernment’:\nThus is it said.", "pts": "\"Your reverence, one is called:\n'Poor in intuitive wisdom, poor in intuitive wisdom.'"}, {"key": "mn43:2.2", "pali": "Kittāvatā nu kho, āvuso, duppaññoti vuccatī”ti?", "sujato": "How is a witless person defined?”", "thanissaro": "To what extent is one said to be ‘one of poor discernment’?”", "pts": "Now what are the respects in which one is called 'Poor in intuitive wisdom,' your reverence?\""}, {"key": "mn43:2.3", "pali": "“‘Nappajānāti nappajānātī’ti kho, āvuso, tasmā duppaññoti vuccati.", "sujato": "“Reverend, they’re called witless because they don’t understand.", "thanissaro": "“‘One doesn’t discern, one doesn’t discern’:\nThus, friend, one is said to be ‘one of poor discernment.’", "pts": "\"Your reverence, if it is said 'He does not comprehend,\nhe does not comprehend,' therefore he is called 'Poor in intuitive wisdom.'"}, {"key": "mn43:2.4", "pali": "Kiñca nappajānāti?", "sujato": "And what don’t they understand?", "thanissaro": "And what doesn’t one discern?", "pts": "What does he not comprehend?"}, {"key": "mn43:2.5", "pali": "‘Idaṁ dukkhan’ti nappajānāti,\n‘ayaṁ dukkhasamudayo’ti nappajānāti,\n‘ayaṁ dukkhanirodho’ti nappajānāti,\n‘ayaṁ dukkhanirodhagāminī paṭipadā’ti nappajānāti.", "sujato": "They don’t understand:\n‘This is suffering’ …\n‘This is the origin of suffering’ …\n‘This is the cessation of suffering’ …\n‘This is the practice that leads to the cessation of suffering.’", "thanissaro": "One doesn’t discern,\n‘This is stress.’\nOne doesn’t discern,\n‘This is the origination of stress.’\nOne doesn’t discern,\n‘This is the cessation of stress.’\nOne doesn’t discern,\n‘This is the practice leading to the cessation of stress.’", "pts": "He does not comprehend 'This is anguish,' he does not comprehend\n'This is the arising of anguish,' he does not comprehend\n'This is the stopping of anguish,' he does not comprehend 'This is the course leading to the stopping of anguish.'"}, {"key": "mn43:2.6", "pali": "‘Nappajānāti nappajānātī’ti kho, āvuso, tasmā duppaññoti vuccatī”ti.", "sujato": "They’re called witless because they don’t understand.”", "thanissaro": "‘One doesn’t discern, one doesn’t discern’:\nThus one is said to be ‘one of poor discernment.’”", "pts": "If it is said,\n'He does not comprehend, he does not comprehend,' your reverence, therefore he is called 'poor in intuitive wisdom.'\""}, {"key": "mn43:2.7", "pali": "“Sādhāvuso”ti kho āyasmā mahākoṭṭhiko āyasmato sāriputtassa bhāsitaṁ\nabhinanditvā anumoditvā āyasmantaṁ sāriputtaṁ uttariṁ pañhaṁ apucchi:", "sujato": "Saying “Good, reverend,” Mahākoṭṭhita approved and agreed with what Sāriputta said.\nThen he asked another question:", "thanissaro": "Saying,\n“Very good, friend,” Ven. Mahā Koṭṭhita— delighting in & approving of Ven.\nSāriputta’s statement—asked him a further question:", "pts": "\"It is good, your reverence,\" and the venerable Koṭṭhita the Great,\nhaving rejoiced in what the venerable Sāriputta had said,\nhaving thanked him, asked the venerable Sāriputta a further question:"}]}, {"id": "3", "label": "“They speak of ‘a wise person’.", "rows": [{"key": "mn43:3.1", "pali": "“‘Paññavā paññavā’ti, āvuso, vuccati.", "sujato": "“They speak of ‘a wise person’.", "thanissaro": "“Discerning, discerning’:\nThus is it said.", "pts": "\"Your reverence, one is called 'Intuitively wise, intuitively wise.'\nNow what are the respects in which one is called 'intuitively wise,' your reverence?\""}, {"key": "mn43:3.2", "pali": "Kittāvatā nu kho, āvuso, paññavāti vuccatī”ti?", "sujato": "How is a wise person defined?”", "thanissaro": "To what extent, friend, is one said to be ‘discerning’?”", "pts": ""}, {"key": "mn43:3.3", "pali": "“‘Pajānāti pajānātī’ti kho, āvuso, tasmā paññavāti vuccati.", "sujato": "“They’re called wise because they understand.", "thanissaro": "“‘One discerns, one discerns’:\nThus, friend, one is said to be ‘discerning.’", "pts": "\"Your reverence, if it is said 'He comprehends, he comprehends,' he is therefore called 'Intuitively wise.'"}, {"key": "mn43:3.4", "pali": "Kiñca pajānāti?", "sujato": "And what do they understand?", "thanissaro": "And what does one discern?", "pts": "And what does he comprehend?"}, {"key": "mn43:3.5", "pali": "‘Idaṁ dukkhan’ti pajānāti,\n‘ayaṁ dukkhasamudayo’ti pajānāti,\n‘ayaṁ dukkhanirodho’ti pajānāti,\n‘ayaṁ dukkhanirodhagāminī paṭipadā’ti pajānāti.", "sujato": "They understand:\n‘This is suffering’ …\n‘This is the origin of suffering’ …\n‘This is the cessation of suffering’ …\n‘This is the practice that leads to the cessation of suffering.’", "thanissaro": "One discerns,\n‘This is stress.’\nOne discerns,\n‘This is the origination of stress.’\nOne discerns,\n‘This is the cessation of stress.’\nOne discerns,\n‘This is the practice leading to the cessation of stress.’", "pts": "He comprehends 'This is anguish,' he comprehends 'This is the arising of anguish,' he comprehends 'This\nis the stopping of anguish,' he comprehends 'This is the course leading to the stopping of anguish.'"}, {"key": "mn43:3.6", "pali": "‘Pajānāti pajānātī’ti kho, āvuso, tasmā paññavāti vuccatī”ti.", "sujato": "They’re called wise because they understand.”", "thanissaro": "‘One discerns, one discerns’:\nThus one is said to be ‘discerning.’”", "pts": "If it is said,\n'He comprehends, he comprehends,' your reverence, therefore he is called 'intuitively wise.'\""}]}, {"id": "4", "label": "“They speak of ‘consciousness’.", "rows": [{"key": "mn43:4.1", "pali": "“‘Viññāṇaṁ viññāṇan’ti, āvuso, vuccati.", "sujato": "“They speak of ‘consciousness’.", "thanissaro": "“‘Consciousness, consciousness’:\nThus is it said.", "pts": "\"Your reverence, it is called 'Discriminative consciousness, discriminative consciousness.'\nNow in what respects, your reverence, is it called 'discriminative consciousness'?\""}, {"key": "mn43:4.2", "pali": "Kittāvatā nu kho, āvuso, viññāṇanti vuccatī”ti?", "sujato": "How is consciousness defined?”", "thanissaro": "To what extent, friend, is it said to be ‘consciousness’?”", "pts": ""}, {"key": "mn43:4.3", "pali": "“‘Vijānāti vijānātī’ti kho, āvuso, tasmā viññāṇanti vuccati.", "sujato": "“It’s called consciousness because it cognizes.", "thanissaro": "“‘It cognizes, it cognizes’:\nThus, friend, it is said to be ‘consciousness.’", "pts": "\"Your reverence, if it said 'It discriminates, it discriminates,' it is therefore called discriminative consciousness.\nAnd what does it discriminate?"}, {"key": "mn43:4.4", "pali": "Kiñca vijānāti?", "sujato": "And what does it cognize?", "thanissaro": "And what does it cognize?", "pts": ""}, {"key": "mn43:4.5", "pali": "Sukhantipi vijānāti, dukkhantipi vijānāti, adukkhamasukhantipi vijānāti.", "sujato": "It cognizes ‘pleasure’ and ‘pain’ and ‘neutral’.", "thanissaro": "It cognizes ‘pleasant.’\nIt cognizes ‘painful.’\nIt cognizes ‘neither painful nor pleasant.’", "pts": "It discriminates pleasure and it discriminates pain and it discriminates neither pain nor pleasure."}, {"key": "mn43:4.6", "pali": "‘Vijānāti vijānātī’ti kho, āvuso, tasmā viññāṇanti vuccatī”ti.", "sujato": "It’s called consciousness because it cognizes.”", "thanissaro": "‘It cognizes, it cognizes’:\nThus it is said to be ‘consciousness.’”", "pts": "If it is said 'It discriminates, it discriminates,' your reverence,\ntherefore it is called 'Discriminative consciousness.'\""}]}, {"id": "5", "label": "“Wisdom and consciousness—", "rows": [{"key": "mn43:5.1", "pali": "“Yā cāvuso, paññā yañca viññāṇaṁ—", "sujato": "“Wisdom and consciousness—", "thanissaro": "“Discernment & consciousness, friend:", "pts": "\"That which is intuitive wisdom, your reverence,\nand that which is discriminative consciousness, are these states associated or dissociated?"}, {"key": "mn43:5.2", "pali": "ime dhammā saṁsaṭṭhā udāhu visaṁsaṭṭhā?", "sujato": "are these things mixed or separate?", "thanissaro": "Are these qualities conjoined or disjoined?", "pts": ""}, {"key": "mn43:5.3", "pali": "Labbhā ca panimesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetun”ti?", "sujato": "And can we completely disentangle them so as to describe the difference between them?”", "thanissaro": "Is it possible, having separated them one from the other, to delineate the difference between them?”", "pts": "And is it possible to lay down a difference between these states, having analysed them again and again?\""}, {"key": "mn43:5.4", "pali": "“Yā cāvuso, paññā yañca viññāṇaṁ—", "sujato": "“Wisdom and consciousness—", "thanissaro": "“Discernment & consciousness are conjoined, friend, not disjoined.", "pts": "\"That which is intuitive wisdom, your reverence,\nand that which is discriminative consciousness, these states are associated,"}, {"key": "mn43:5.5", "pali": "ime dhammā saṁsaṭṭhā, no visaṁsaṭṭhā.", "sujato": "these things are mixed, not separate.", "thanissaro": "", "pts": "not dissociated, and it is not possible to lay down a difference between these states,"}, {"key": "mn43:5.6", "pali": "Na ca labbhā imesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetuṁ.", "sujato": "And you can never completely disentangle them so as to describe the difference between them.", "thanissaro": "It’s not possible, having separated them one from the other, to delineate the difference between them.", "pts": ""}, {"key": "mn43:5.7", "pali": "Yaṁ hāvuso, pajānāti taṁ vijānāti, yaṁ vijānāti taṁ pajānāti.", "sujato": "For you understand what you cognize, and you cognize what you understand.", "thanissaro": "For what one discerns, that one cognizes.\nWhat one cognizes, that one discerns.", "pts": "having analysed them again and again.\nWhatever one comprehends, your reverence, that one discriminates;\nwhatever one discriminates that one comprehends;"}, {"key": "mn43:5.8", "pali": "Tasmā ime dhammā saṁsaṭṭhā, no visaṁsaṭṭhā.", "sujato": "That’s why these things are mixed, not separate.", "thanissaro": "Therefore these qualities are conjoined, not disjoined, and it is not possible,", "pts": "therefore these states are associated, not dissociated,"}, {"key": "mn43:5.9", "pali": "Na ca labbhā imesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetun”ti.", "sujato": "And you can never completely disentangle them so as to describe the difference between them.”", "thanissaro": "having separated them one from another, to delineate the difference between them.”", "pts": "and it is not possible to lay down a difference between these states, having analysed them again and again.\""}]}, {"id": "6", "label": "“Wisdom and consciousness—", "rows": [{"key": "mn43:6.1", "pali": "“Yā cāvuso, paññā yañca viññāṇaṁ—", "sujato": "“Wisdom and consciousness—", "thanissaro": "“Discernment & consciousness, friend:", "pts": "\"That which is intuitive wisdom, your reverence, and that which is discriminative consciousness,\nwhat is the difference between these states which are associated, not dissociated?\""}, {"key": "mn43:6.2", "pali": "imesaṁ dhammānaṁ saṁsaṭṭhānaṁ no visaṁsaṭṭhānaṁ kiṁ nānākaraṇan”ti?", "sujato": "what is the difference between these things that are mixed, not separate?”", "thanissaro": "What is the difference between these qualities that are conjoined, not disjoined?”", "pts": ""}, {"key": "mn43:6.3", "pali": "“Yā cāvuso, paññā yañca viññāṇaṁ—", "sujato": "", "thanissaro": "“Discernment & consciousness, friend:", "pts": "\"That which is intuitive wisdom, your reverence,\nand that which is discriminative consciousness among these states that are associated,"}, {"key": "mn43:6.4", "pali": "imesaṁ dhammānaṁ saṁsaṭṭhānaṁ no visaṁsaṭṭhānaṁ paññā bhāvetabbā, viññāṇaṁ pariññeyyaṁ.", "sujato": "“The difference between these things is that wisdom should be developed,\nwhile consciousness should be completely understood.”", "thanissaro": "Of these qualities that are conjoined, not disjoined,\ndiscernment is to be developed, consciousness is to be fully comprehended.”", "pts": "not dissociated, intuitive wisdom is to be developed, discriminative consciousness is for apprehending."}, {"key": "mn43:6.5", "pali": "Idaṁ nesaṁ nānākaraṇan”ti.", "sujato": "", "thanissaro": "", "pts": "This is the difference between them.\""}]}, {"id": "7", "label": "“They speak of this thing called ‘feeling’.", "rows": [{"key": "mn43:7.1", "pali": "“‘Vedanā vedanā’ti, āvuso, vuccati.", "sujato": "“They speak of this thing called ‘feeling’.", "thanissaro": "“‘Feeling, feeling’:\nThus is it said.", "pts": "\"Your reverence, it is said,\n'Feeling, feeling.'"}, {"key": "mn43:7.2", "pali": "Kittāvatā nu kho, āvuso, vedanāti vuccatī”ti?", "sujato": "How is feeling defined?”", "thanissaro": "To what extent, friend, is it said to be ‘feeling’?”", "pts": "Now what are the respects in which it is called 'feeling,' your reverence?\""}, {"key": "mn43:7.3", "pali": "“‘Vedeti vedetī’ti kho, āvuso, tasmā vedanāti vuccati.", "sujato": "“It’s called feeling because it feels.", "thanissaro": "“‘It feels, it feels’:\nThus, friend, it is said to be ‘feeling.’", "pts": "\"Your reverence, if it is said,\n'He feels, he feels,' it is therefore called 'feeling.'"}, {"key": "mn43:7.4", "pali": "Kiñca vedeti?", "sujato": "And what does it feel?", "thanissaro": "And what does it feel?", "pts": "And what does he feel?"}, {"key": "mn43:7.5", "pali": "Sukhampi vedeti, dukkhampi vedeti, adukkhamasukhampi vedeti.", "sujato": "It feels pleasure, pain, and neutral.", "thanissaro": "It feels pleasure.\nIt feels pain.\nIt feels neither pleasure nor pain.", "pts": "He feels pleasure, and he feels pain, and he feels neither pain nor pleasure."}, {"key": "mn43:7.6", "pali": "‘Vedeti vedetī’ti kho, āvuso, tasmā vedanāti vuccatī”ti.", "sujato": "It’s called feeling because it feels.”", "thanissaro": "‘It feels, it feels’:\nThus it is said to be ‘feeling.’”", "pts": "If it is said,\n'He feels, he feels,' your reverence, therefore it is called' feeling.'\""}]}, {"id": "8", "label": "“They speak of this thing called ‘perception’.", "rows": [{"key": "mn43:8.1", "pali": "“‘Saññā saññā’ti, āvuso, vuccati.", "sujato": "“They speak of this thing called ‘perception’.", "thanissaro": "“‘Perception, perception’:\nThus is it said.", "pts": "\"Your reverence, it is said,\n'Perception, perception.'"}, {"key": "mn43:8.2", "pali": "Kittāvatā nu kho, āvuso, saññāti vuccatī”ti?", "sujato": "How is perception defined?”", "thanissaro": "To what extent, friend, is it said to be ‘perception’?”", "pts": "Now what are the respects in which it is called 'perception,' your reverence?\""}, {"key": "mn43:8.3", "pali": "“‘Sañjānāti sañjānātī’ti kho, āvuso, tasmā saññāti vuccati.", "sujato": "“It’s called perception because it perceives.", "thanissaro": "“‘It perceives, it perceives’:\nThus, friend, it is said to be ‘perception.’", "pts": "\"Your reverence, if it is said,\n'He perceives, he perceives,' it is therefore called 'perception.'"}, {"key": "mn43:8.4", "pali": "Kiñca sañjānāti?", "sujato": "And what does it perceive?", "thanissaro": "And what does it perceive?", "pts": "And what does he perceive?"}, {"key": "mn43:8.5", "pali": "Nīlakampi sañjānāti, pītakampi sañjānāti, lohitakampi sañjānāti, odātampi sañjānāti.", "sujato": "It perceives blue, yellow, red, and white.", "thanissaro": "It perceives blue.\nIt perceives yellow.\nIt perceives red.\nIt perceives white.", "pts": "He perceives what is dark green and he perceives what is yellow\nand he perceives what is red and he perceives what is white."}, {"key": "mn43:8.6", "pali": "‘Sañjānāti sañjānātī’ti kho, āvuso, tasmā saññāti vuccatī”ti.", "sujato": "It’s called perception because it perceives.”", "thanissaro": "‘It perceives, it perceives’:\nThus it is said to be ‘perception.’”", "pts": "If it is said 'He perceives, he perceives,' your reverence, it is therefore called 'perception.'\""}]}, {"id": "9", "label": "“Feeling, perception, and consciousness—", "rows": [{"key": "mn43:9.1", "pali": "“Yā cāvuso, vedanā yā ca saññā yañca viññāṇaṁ—", "sujato": "“Feeling, perception, and consciousness—", "thanissaro": "“Feeling, perception, & consciousness, friend:", "pts": "\"That which is feeling, your reverence, and that which is perception and that which is discriminative consciousness —\nare these states associated or dissociated?"}, {"key": "mn43:9.2", "pali": "ime dhammā saṁsaṭṭhā udāhu visaṁsaṭṭhā?", "sujato": "are these things mixed or separate?", "thanissaro": "Are these qualities conjoined or disjoined?", "pts": ""}, {"key": "mn43:9.3", "pali": "Labbhā ca panimesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetun”ti?", "sujato": "And can we completely disentangle them so as to describe the difference between them?”", "thanissaro": "Is it possible, having separated them one from another, to delineate the difference among them?”", "pts": "And is it possible to lay down a difference between these states, having analysed them again and again?\""}, {"key": "mn43:9.4", "pali": "“Yā cāvuso, vedanā yā ca saññā yañca viññāṇaṁ—", "sujato": "“Feeling, perception, and consciousness—", "thanissaro": "“Feeling, perception, & consciousness are conjoined, friend, not disjoined.", "pts": "\"That which is feeling, your reverence,\nand that which is perception and that which is discriminative consciousness — these states are associated,"}, {"key": "mn43:9.5", "pali": "ime dhammā saṁsaṭṭhā, no visaṁsaṭṭhā.", "sujato": "these things are mixed, not separate.", "thanissaro": "", "pts": "not dissociated, and it is not possible to lay down a difference between these states,"}, {"key": "mn43:9.6", "pali": "Na ca labbhā imesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetuṁ.", "sujato": "And you can never completely disentangle them so as to describe the difference between them.", "thanissaro": "It is not possible, having separated them one from another, to delineate the difference among them.", "pts": "having analysed them again and again."}, {"key": "mn43:9.7", "pali": "Yaṁ hāvuso, vedeti taṁ sañjānāti, yaṁ sañjānāti taṁ vijānāti.", "sujato": "For you perceive what you feel, and you cognize what you perceive.", "thanissaro": "For what one feels, that one perceives.\nWhat one perceives, that one cognizes.", "pts": "Your reverence, whatever one feels, that one perceives;\nwhatever one perceives that one discriminates;"}, {"key": "mn43:9.8", "pali": "Tasmā ime dhammā saṁsaṭṭhā no visaṁsaṭṭhā.", "sujato": "That’s why these things are mixed, not separate.", "thanissaro": "Therefore these qualities are conjoined, not disjoined, and it is not possible,", "pts": "therefore these states are associated, not dissociated,"}, {"key": "mn43:9.9", "pali": "Na ca labbhā imesaṁ dhammānaṁ vinibbhujitvā vinibbhujitvā nānākaraṇaṁ paññāpetun”ti.", "sujato": "And you can never completely disentangle them so as to describe the difference between them.”", "thanissaro": "having separated them one from another, to delineate the difference among them.”", "pts": "and it is not possible to lay down a difference between these states, having analysed them again and again.\""}]}, {"id": "10", "label": "“What can be known by purified mind…", "rows": [{"key": "mn43:10.1", "pali": "“Nissaṭṭhena hāvuso, pañcahi indriyehi parisuddhena manoviññāṇena kiṁ neyyan”ti?", "sujato": "“What can be known by purified mind consciousness released from the five senses?”", "thanissaro": "“Friend, what can be known with the purified intellect-consciousness divorced from the five (sense) faculties?”", "pts": "\"What is knowable, your reverence, by purified mental consciousness isolated from the five sense-organs?\""}, {"key": "mn43:10.2", "pali": "“Nissaṭṭhena, āvuso, pañcahi indriyehi parisuddhena manoviññāṇena ‘ananto ākāso’ti ākāsānañcāyatanaṁ neyyaṁ,\n‘anantaṁ viññāṇan’ti viññāṇañcāyatanaṁ neyyaṁ,\n‘natthi kiñcī’ti ākiñcaññāyatanaṁ neyyan”ti.", "sujato": "“Aware that ‘space is infinite’ it can know the dimension of infinite space.\nAware that ‘consciousness is infinite’ it can know the dimension of infinite consciousness.\nAware that ‘there is nothing at all’ it can know the dimension of nothingness.”", "thanissaro": "“Friend, with the purified intellect-consciousness divorced from the five faculties,\nthe dimension of the infinitude of space can be known (as) ‘infinite space,’ the dimension of the infinitude of\nconsciousness can be known (as) ‘infinite consciousness,’ the\ndimension of nothingness can be known (as) ‘There is nothing.’", "pts": "\"Your reverence, thinking,\n'Ether is unending,' the plane of infinite ether is knowable by\npure mental consciousness isolated from the five sense-organs;\nthinking,\n'Consciousness is unending,' the plane of infinite consciousness is knowable;\nthinking,\n'There is not anything,' the plane of no-thing is knowable.\""}]}, {"id": "11", "label": "“How do you understand something that can…", "rows": [{"key": "mn43:11.1", "pali": "“Neyyaṁ panāvuso, dhammaṁ kena pajānātī”ti?", "sujato": "“How do you understand something that can be known?”", "thanissaro": "“With what does one know a quality that can be known?”", "pts": "\"By what means does one comprehend a knowable mental object, your reverence?\""}, {"key": "mn43:11.2", "pali": "“Neyyaṁ kho, āvuso, dhammaṁ paññācakkhunā pajānātī”ti.", "sujato": "“You understand something that can be known with the eye of wisdom.”", "thanissaro": "“One knows a quality that can be known with the eye of discernment.”", "pts": "\"One comprehends a knowable mental object, your reverence, by means of the eye of intuitive wisdom.\""}]}, {"id": "12", "label": "“What is the goal of wisdom?”", "rows": [{"key": "mn43:12.1", "pali": "“Paññā panāvuso, kimatthiyā”ti?", "sujato": "“What is the goal of wisdom?”", "thanissaro": "“And what is the purpose of discernment?”", "pts": "\"But what is intuitive wisdom for, your reverence?\""}, {"key": "mn43:12.2", "pali": "“Paññā kho, āvuso, abhiññatthā pariññatthā pahānatthā”ti.", "sujato": "“The goal of wisdom is direct knowledge, complete understanding, and giving up.”", "thanissaro": "“The purpose of discernment is direct knowledge, its purpose is full comprehension, its purpose is abandoning.”", "pts": "\"Your reverence, intuitive wisdom is for super-knowledge, for apprehending, for getting rid of.\""}]}, {"id": "13", "label": "“How many conditions are there for the…", "rows": [{"key": "mn43:13.1", "pali": "“Kati panāvuso, paccayā sammādiṭṭhiyā uppādāyā”ti?", "sujato": "“How many conditions are there for the arising of right view?”", "thanissaro": "“Friend, how many conditions are there for the arising of right view?”", "pts": "\"But how many conditions are there, your reverence, for bringing right understanding into existence?\""}, {"key": "mn43:13.2", "pali": "“Dve kho, āvuso, paccayā sammādiṭṭhiyā uppādāya—", "sujato": "“There are two conditions for the arising of right view:", "thanissaro": "“Friend, there are two conditions for the arising of right view:", "pts": "\"There are two conditions, your reverence, for bringing right understanding into existence:"}, {"key": "mn43:13.3", "pali": "parato ca ghoso, yoniso ca manasikāro.", "sujato": "the voice of another and rational application of mind.", "thanissaro": "the voice of another and appropriate attention.", "pts": "the utterance of another (person) and wise attention."}, {"key": "mn43:13.4", "pali": "Ime kho, āvuso, dve paccayā sammādiṭṭhiyā uppādāyā”ti.", "sujato": "These are the two conditions for the arising of right view.”", "thanissaro": "These are the two conditions for the arising of right view.”", "pts": "Your reverence, these are the two conditions for bringing right understanding into existence.\""}]}, {"id": "14", "label": "“When right view is supported by how…", "rows": [{"key": "mn43:14.1", "pali": "“Katihi panāvuso, aṅgehi anuggahitā sammādiṭṭhi cetovimuttiphalā ca hoti cetovimuttiphalānisaṁsā ca,\npaññāvimuttiphalā ca hoti paññāvimuttiphalānisaṁsā cā”ti?", "sujato": "“When right view is supported by how many factors does it have\nfreedom of heart and freedom by wisdom as its fruit and benefit?”", "thanissaro": "“And assisted by how many factors does right view have awareness-release as its fruit & reward,\nand discernment-release as its fruit & reward?”", "pts": "\"If right understanding is forwarded, by how many factors, your reverence,\ndoes there come to be the fruit of freedom of mind and the advantage of the fruit of freedom of mind,\nand the fruit of freedom through intuitive wisdom and the advantage of the fruit of freedom through intuitive wisdom?\""}, {"key": "mn43:14.2", "pali": "“Pañcahi kho, āvuso, aṅgehi anuggahitā sammādiṭṭhi cetovimuttiphalā ca hoti cetovimuttiphalānisaṁsā ca,\npaññāvimuttiphalā ca hoti paññāvimuttiphalānisaṁsā ca.", "sujato": "“When right view is supported by five factors it has freedom of heart and freedom by wisdom as its fruit and benefit.", "thanissaro": "“Assisted by five factors, right view has awareness-release as its fruit & reward,\nand discernment-release as its fruit & reward.", "pts": "\"Your reverence, if right understanding is forwarded by five factors there comes to\nbe the fruit of freedom of mind and the advantage of the fruit of freedom of mind,\nand the fruit of freedom through intuitive wisdom and the advantage of the fruit of freedom through intuitive wisdom:"}, {"key": "mn43:14.3", "pali": "Idhāvuso, sammādiṭṭhi sīlānuggahitā ca hoti, sutānuggahitā ca hoti,\nsākacchānuggahitā ca hoti, samathānuggahitā ca hoti, vipassanānuggahitā ca hoti.", "sujato": "It’s when right view is supported by ethics, learning, discussion, serenity, and discernment.", "thanissaro": "There is the case where right view is assisted by virtue, assisted by learning,\nassisted by discussion, assisted by tranquility, assisted by insight.", "pts": "in this case, your reverence, right understanding is forwarded by moral habit, and it is forwarded by hearing,\nand it is forwarded by discussion, and it is forwarded by calm and it is forwarded by vision."}, {"key": "mn43:14.4", "pali": "Imehi kho, āvuso, pañcahaṅgehi anuggahitā sammādiṭṭhi cetovimuttiphalā ca hoti cetovimuttiphalānisaṁsā ca,\npaññāvimuttiphalā ca hoti paññāvimuttiphalānisaṁsā cā”ti.", "sujato": "When right view is supported by these five factors it has freedom\nof heart and freedom by wisdom as its fruit and benefit.”", "thanissaro": "Assisted by these five factors, right view has awareness-release as its fruit & reward,\nand discernment-release as its fruit & reward.”", "pts": "Your reverence, if right understanding is forwarded by these five factors,\nthere comes to be the fruit of freedom of mind and the advantage of the fruit of freedom of mind,\nand there comes to be the fruit of freedom through intuitive wisdom\nand the advantage of the fruit of freedom through intuitive wisdom.\""}]}, {"id": "15", "label": "“How many states of existence are there?”", "rows": [{"key": "mn43:15.1", "pali": "“Kati panāvuso, bhavā”ti?", "sujato": "“How many states of existence are there?”", "thanissaro": "“Friend, how many kinds of becoming are there?”", "pts": "\"And how many becomings are there, your reverence?\""}, {"key": "mn43:15.2", "pali": "“Tayome, āvuso, bhavā—", "sujato": "“Reverend, there are these three states of existence.", "thanissaro": "“Friend, there are these three kinds of becoming:", "pts": "\"These three are becomings, your reverence:"}, {"key": "mn43:15.3", "pali": "kāmabhavo, rūpabhavo, arūpabhavo”ti.", "sujato": "Existence in the sensual realm, the realm of luminous form, and the formless realm.”", "thanissaro": "sensual becoming, form becoming, formless becoming.“", "pts": "becoming of sense-pleasures, becoming of fine-materiality, becoming of immateriality.\""}]}, {"id": "16", "label": "“But how is there regeneration into a…", "rows": [{"key": "mn43:16.1", "pali": "“Kathaṁ panāvuso, āyatiṁ punabbhavābhinibbatti hotī”ti?", "sujato": "“But how is there regeneration into a new state of existence in the future?”", "thanissaro": "“And how is further becoming in the future brought about?”", "pts": "\"How, your reverence, is there the recurrence of again-becoming in the future?\""}, {"key": "mn43:16.2", "pali": "“Avijjānīvaraṇānaṁ kho, āvuso, sattānaṁ taṇhāsaṁyojanānaṁ tatratatrābhinandanā—", "sujato": "“It’s because of sentient beings—shrouded by ignorance and fettered by craving—taking pleasure wherever they land.", "thanissaro": "“The delight, now here, now there, of beings hindered by ignorance & fettered by craving:", "pts": "\"For those creatures who are hindered by ignorance, fettered by craving,"}, {"key": "mn43:16.3", "pali": "evaṁ āyatiṁ punabbhavābhinibbatti hotī”ti.", "sujato": "That’s how there is regeneration into a new state of existence in the future.”", "thanissaro": "That’s how further becoming in the future is brought about.”", "pts": "delighting in this and that, there thus comes to be recurrence of again-becoming in the future.\""}]}, {"id": "17", "label": "“But how is there no regeneration into…", "rows": [{"key": "mn43:17.1", "pali": "“Kathaṁ panāvuso, āyatiṁ punabbhavābhinibbatti na hotī”ti?", "sujato": "“But how is there no regeneration into a new state of existence in the future?”", "thanissaro": "“And how is further becoming in the future not brought about?”", "pts": "\"But how, your reverence, is there not recurrence of again-becoming in the future?\""}, {"key": "mn43:17.2", "pali": "“Avijjāvirāgā kho, āvuso, vijjuppādā taṇhānirodhā—", "sujato": "“It’s when ignorance fades away, knowledge arises, and craving ceases.", "thanissaro": "“Through the fading of ignorance, the arising of clear knowing, & the cessation of craving:", "pts": "\"By the fading away of ignorance, by the uprising of knowledge, by the stopping of craving,"}, {"key": "mn43:17.3", "pali": "evaṁ āyatiṁ punabbhavābhinibbatti na hotī”ti.", "sujato": "That’s how there is no regeneration into a new state of existence in the future.”", "thanissaro": "That’s how further becoming in the future is not brought about.”", "pts": "there is thus no recurrence of again-becoming in the future \""}]}, {"id": "18", "label": "“But what, reverend, is the first absorption?”", "rows": [{"key": "mn43:18.1", "pali": "“Katamaṁ panāvuso, paṭhamaṁ jhānan”ti?", "sujato": "“But what, reverend, is the first absorption?”", "thanissaro": "“What, friend, is the first jhāna?”", "pts": "\"And what, your reverence, is the first meditation?\""}, {"key": "mn43:18.2", "pali": "“Idhāvuso, bhikkhu vivicceva kāmehi vivicca akusalehi dhammehi savitakkaṁ\nsavicāraṁ vivekajaṁ pītisukhaṁ paṭhamaṁ jhānaṁ upasampajja viharati—", "sujato": "“Reverend, it’s when a mendicant, quite secluded from sensual pleasures, secluded from unskillful qualities,\nenters and remains in the first absorption, which has the rapture and bliss born of seclusion,\nwhile placing the mind and keeping it connected.", "thanissaro": "“There is the case, friend, where a monk—quite secluded from sensuality,\nsecluded from unskillful qualities—enters & remains in the first jhāna:\nrapture & pleasure born of seclusion, accompanied by directed thought & evaluation.", "pts": "\"As to this, your reverence, a monk, aloof from pleasures of the senses, aloof from unskilled states of mind,\nenters on and abides in the first meditation which is accompanied by initial thought and discursive thought,\nis born of aloofness, and is rapturous and joyful."}, {"key": "mn43:18.3", "pali": "idaṁ vuccati, āvuso, paṭhamaṁ jhānan”ti.", "sujato": "This is called the first absorption.”", "thanissaro": "This is called the first jhāna.”", "pts": "This, your reverence, is called the first meditation.\""}]}, {"id": "19", "label": "“But how many factors does the first…", "rows": [{"key": "mn43:19.1", "pali": "“Paṭhamaṁ panāvuso, jhānaṁ katiaṅgikan”ti?", "sujato": "“But how many factors does the first absorption have?”", "thanissaro": "“And how many factors does the first jhāna have?”", "pts": "\"Of how many factors, your reverence, is the first meditation?\""}, {"key": "mn43:19.2", "pali": "“Paṭhamaṁ kho, āvuso, jhānaṁ pañcaṅgikaṁ.", "sujato": "“The first absorption has five factors.", "thanissaro": "“The first jhāna has five factors.", "pts": "\"Your reverence, the first meditation is five-factored:"}, {"key": "mn43:19.3", "pali": "Idhāvuso, paṭhamaṁ jhānaṁ samāpannassa bhikkhuno vitakko ca vattati, vicāro ca pīti ca sukhañca cittekaggatā ca.", "sujato": "When a mendicant has entered the first absorption, placing the mind,\nkeeping it connected, rapture, bliss, and unification of mind are present.", "thanissaro": "There is the case where, in a monk who has attained the five-factored first jhāna,\nthere occurs directed thought, evaluation, rapture, pleasure, & singleness of mind.", "pts": "if a monk has entered on the first meditation there is initial thought\nand discursive thought and rapture and joy and one-pointedness of mind."}, {"key": "mn43:19.4", "pali": "Paṭhamaṁ kho, āvuso, jhānaṁ evaṁ pañcaṅgikan”ti.", "sujato": "That’s how the first absorption has five factors.”", "thanissaro": "It’s in this way that the first jhāna has five factors.”", "pts": "Thus, your reverence, is the first meditation five-factored.\""}]}, {"id": "20", "label": "“But how many factors has the first…", "rows": [{"key": "mn43:20.1", "pali": "“Paṭhamaṁ panāvuso, jhānaṁ kataṅgavippahīnaṁ kataṅgasamannāgatan”ti?", "sujato": "“But how many factors has the first absorption given up and how many does it possess?”", "thanissaro": "“And how many factors are abandoned in the first jhāna, and with how many is it endowed?”", "pts": "\"Your reverence, in regard to the first meditation, how many factors are abandoned, how many factors are possessed?\""}, {"key": "mn43:20.2", "pali": "“Paṭhamaṁ kho, āvuso, jhānaṁ pañcaṅgavippahīnaṁ, pañcaṅgasamannāgataṁ.", "sujato": "“The first absorption has given up five factors and possesses five factors.", "thanissaro": "“Five factors are abandoned in the first jhāna, and with five is it endowed.", "pts": "\"Your reverence, in regard to the first meditation, five factors are abandoned, five are possessed:"}, {"key": "mn43:20.3", "pali": "Idhāvuso, paṭhamaṁ jhānaṁ samāpannassa bhikkhuno kāmacchando pahīno hoti, byāpādo pahīno hoti,\nthinamiddhaṁ pahīnaṁ hoti, uddhaccakukkuccaṁ pahīnaṁ hoti, vicikicchā pahīnā hoti;", "sujato": "When a mendicant has entered the first absorption, sensual desire, ill will,\ndullness and drowsiness, restlessness and remorse, and doubt are given up.", "thanissaro": "There is the case where, in a monk who has attained the first jhāna, sensual desire is abandoned,\nill will is abandoned, sloth & torpor is abandoned, restlessness & anxiety is abandoned, uncertainty is abandoned.", "pts": "if a monk has entered on the first meditation, desire for sense-pleasure is abandoned, malevolence is abandoned,\nsloth and torpor are abandoned, restlessness and worry are abandoned, doubt is abandoned,"}, {"key": "mn43:20.4", "pali": "vitakko ca vattati, vicāro ca pīti ca sukhañca cittekaggatā ca.", "sujato": "Placing the mind, keeping it connected, rapture, bliss, and unification of mind are present.", "thanissaro": "And there occur directed thought, evaluation, rapture, pleasure, & singleness of mind.", "pts": "but there is initial thought and discursive thought, rapture and joy and one-pointedness of mind."}, {"key": "mn43:20.5", "pali": "Paṭhamaṁ kho, āvuso, jhānaṁ evaṁ pañcaṅgavippahīnaṁ pañcaṅgasamannāgatan”ti.", "sujato": "That’s how the first absorption has given up five factors and possesses five factors.”", "thanissaro": "It’s in this way that five factors are abandoned in the first jhāna, and with five it is endowed.”", "pts": "Thus, your reverence, in regard to the first meditation, five factors are abandoned, five factors are possessed.\""}]}, {"id": "21", "label": "“Reverend, these five faculties have different domains…", "rows": [{"key": "mn43:21.1", "pali": "“Pañcimāni, āvuso, indriyāni nānāvisayāni nānāgocarāni, na aññamaññassa gocaravisayaṁ paccanubhonti, seyyathidaṁ—", "sujato": "“Reverend, these five faculties have different domains and different ranges,\nand don’t experience each others’ domain and range.\nThat is,", "thanissaro": "“Friend, there are these five faculties each with a separate range,\na separate domain, and they do not experience one another’s range & domain:\nthe eye-faculty, the ear-faculty, the nose-faculty, the tongue-faculty, & the body-faculty.", "pts": "\"Your reverence, these five sense-organs, different in range,\ndifferent in pasture, do not react to the pasture and range of one another;"}, {"key": "mn43:21.2", "pali": "cakkhundriyaṁ, sotindriyaṁ, ghānindriyaṁ, jivhindriyaṁ, kāyindriyaṁ.", "sujato": "the faculties of the eye, ear, nose, tongue, and body.", "thanissaro": "", "pts": "that is to say the organ of eye, the organ of ear, the organ of nose, the organ of tongue, the organ of body."}, {"key": "mn43:21.3", "pali": "Imesaṁ kho, āvuso, pañcannaṁ indriyānaṁ nānāvisayānaṁ nānāgocarānaṁ,\nna aññamaññassa gocaravisayaṁ paccanubhontānaṁ, kiṁ paṭisaraṇaṁ, ko ca nesaṁ gocaravisayaṁ paccanubhotī”ti?", "sujato": "What do these five faculties, with their different domains and ranges, have recourse to?\nWhat experiences their domains and ranges?”", "thanissaro": "Now what do these five faculties—each with a separate range,\na separate domain, not experiencing one another’s range & domain:\nthe eye-faculty, the ear-faculty, the nose-faculty, the tongue-faculty,\n& the body-faculty—have as their (common) arbitrator?\nWhat experiences (all) their ranges & domains?”", "pts": "What is the repository of these five sense-organs, different in range,\ndifferent in pasture, which do not react to the pasture and range of one another?"}, {"key": "mn43:21.4", "pali": "“Pañcimāni, āvuso, indriyāni nānāvisayāni nānāgocarāni, na aññamaññassa gocaravisayaṁ paccanubhonti, seyyathidaṁ—", "sujato": "", "thanissaro": "“Friend, these five faculties—each with a separate range,\na separate domain, not experiencing one another’s range & domain:", "pts": "And what is it that reacts to their pasture and range?\"\n\"Your reverence, these five sense-organs, different in range,"}, {"key": "mn43:21.5", "pali": "cakkhundriyaṁ, sotindriyaṁ, ghānindriyaṁ, jivhindriyaṁ, kāyindriyaṁ.", "sujato": "", "thanissaro": "the eye-faculty, the ear-faculty, the nose-faculty, the tongue-faculty,", "pts": "different in pasture, do not react to the pasture and range of one another;\nthat is to say the organ of eye, the organ of ear, the organ of nose, the organ of tongue, the organ of body."}, {"key": "mn43:21.6", "pali": "Imesaṁ kho, āvuso, pañcannaṁ indriyānaṁ nānāvisayānaṁ nānāgocarānaṁ,\nna aññamaññassa gocaravisayaṁ paccanubhontānaṁ, mano paṭisaraṇaṁ, mano ca nesaṁ gocaravisayaṁ paccanubhotī”ti.", "sujato": "“These five faculties, with their different domains and ranges, have recourse to the mind.\nAnd the mind experiences their domains and ranges.”", "thanissaro": "& the body-faculty—have the intellect as their (common) arbitrator.\nThe intellect is what experiences (all) their ranges & domains.”", "pts": "Of these five sense-organs, your reverence, different in range, different in pasture,\nnot reacting to the pasture and range of one another,\nmind is the repository, and mind reacts to their pasture and range.\""}]}, {"id": "22", "label": "“Pañcimāni, āvuso, indriyāni, seyyathidaṁ—", "rows": [{"key": "mn43:22.1", "pali": "“Pañcimāni, āvuso, indriyāni, seyyathidaṁ—", "sujato": "", "thanissaro": "“Now, these five faculties—the eye-faculty, the ear-faculty, the nose-faculty, the tongue-faculty, & the body-faculty:", "pts": "\"Your reverence, these are the five sense-organs, that is to say, the organ of eye,\nthe organ of ear, the organ of nose, the organ of tongue, the organ of body."}, {"key": "mn43:22.2", "pali": "cakkhundriyaṁ, sotindriyaṁ, ghānindriyaṁ, jivhindriyaṁ, kāyindriyaṁ.", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn43:22.3", "pali": "Imāni kho, āvuso, pañcindriyāni kiṁ paṭicca tiṭṭhantī”ti?", "sujato": "“These five faculties depend on what to continue?”", "thanissaro": "In dependence on what do they remain standing?”", "pts": "On what do these five sense-organs depend, your reverence?\""}, {"key": "mn43:22.4", "pali": "“Pañcimāni, āvuso, indriyāni, seyyathidaṁ—", "sujato": "", "thanissaro": "“These five faculties—the eye-faculty, the ear-faculty, the nose-faculty,", "pts": "\"Your reverence, these are the five sense-organs, that is to say, the organ of eye,\nthe organ of ear, the organ of nose, the organ of tongue, the organ of body."}, {"key": "mn43:22.5", "pali": "cakkhundriyaṁ, sotindriyaṁ, ghānindriyaṁ, jivhindriyaṁ, kāyindriyaṁ.", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn43:22.6", "pali": "Imāni kho, āvuso, pañcindriyāni āyuṁ paṭicca tiṭṭhantī”ti.", "sujato": "“These five faculties depend on vitality to continue.”", "thanissaro": "the tongue-faculty, & the body-faculty—remain standing in dependence on vitality.”", "pts": "Your reverence, these five sense-organs depend on vitality.\""}, {"key": "mn43:22.7", "pali": "“Āyu panāvuso, kiṁ paṭicca tiṭṭhatī”ti?", "sujato": "“But what does vitality depend on to continue?”", "thanissaro": "“And vitality remains standing in dependence on what?”", "pts": "\"And on what does vitality depend, your reverence?\""}, {"key": "mn43:22.8", "pali": "“Āyu usmaṁ paṭicca tiṭṭhatī”ti.", "sujato": "“Vitality depends on warmth to continue.”", "thanissaro": "“Vitality remains standing in dependence on heat.”", "pts": "\"Vitality depends on heat.\""}, {"key": "mn43:22.9", "pali": "“Usmā panāvuso, kiṁ paṭicca tiṭṭhatī”ti?", "sujato": "“But what does warmth depend on to continue?”", "thanissaro": "“And heat remains standing in dependence on what?”", "pts": "\"And on what does heat depend, your reverence?\""}, {"key": "mn43:22.10", "pali": "“Usmā āyuṁ paṭicca tiṭṭhatī”ti.", "sujato": "“Warmth depends on vitality to continue.”", "thanissaro": "“Heat remains standing in dependence on vitality.”", "pts": "\"Heat depends on vitality.\""}, {"key": "mn43:22.11", "pali": "“Idāneva kho mayaṁ, āvuso, āyasmato sāriputtassa bhāsitaṁ evaṁ ājānāma:", "sujato": "“Just now I understood you to say:", "thanissaro": "“Just now, friend Sāriputta, we understood you to say,", "pts": "\"Your reverence, we now understand the words of the venerable Sāriputta thus:\n'Vitality depends on heat';"}, {"key": "mn43:22.12", "pali": "‘āyu usmaṁ paṭicca tiṭṭhatī’ti.", "sujato": "‘Vitality depends on warmth to continue.’", "thanissaro": "‘Vitality remains standing in dependence on heat.’", "pts": ""}, {"key": "mn43:22.13", "pali": "Idāneva pana mayaṁ, āvuso, āyasmato sāriputtassa bhāsitaṁ evaṁ ājānāma:", "sujato": "But I also understood you to say:", "thanissaro": "And just now we understood you to say,", "pts": "we now understand the words of the venerable Sāriputta thus:\n'Heat depends on vitality.'"}, {"key": "mn43:22.14", "pali": "‘usmā āyuṁ paṭicca tiṭṭhatī’ti.", "sujato": "‘Warmth depends on vitality to continue.’", "thanissaro": "‘Heat remains standing in dependence on vitality.’", "pts": ""}, {"key": "mn43:22.15", "pali": "Yathā kathaṁ panāvuso, imassa bhāsitassa attho daṭṭhabbo”ti?", "sujato": "How then should we see the meaning of this statement?”", "thanissaro": "Now how is the meaning of these statements to be seen?”", "pts": "What is the precise meaning to be attached to these words, your reverence?\""}, {"key": "mn43:22.16", "pali": "“Tena hāvuso, upamaṁ te karissāmi;", "sujato": "“Well then, reverend, I shall give you a simile.", "thanissaro": "“In that case, friend, I will give you analogy,", "pts": "\"Well then, your reverence, I will make a simile for you."}, {"key": "mn43:22.17", "pali": "upamāyapidhekacce viññū purisā bhāsitassa atthaṁ ājānanti.", "sujato": "For by means of a simile some sensible people understand the meaning of what is said.", "thanissaro": "for there are cases where it is through an analogy that an intelligent person understands the meaning of a statement.", "pts": "For by a simile some intelligent persons here understand the meaning of what has been said:"}, {"key": "mn43:22.18", "pali": "Seyyathāpi, āvuso, telappadīpassa jhāyato acciṁ paṭicca ābhā paññāyati, ābhaṁ paṭicca acci paññāyati;", "sujato": "Suppose there was an oil lamp burning.\nThe luminosity appears dependent on the flame, and the flame appears dependent on the luminosity.", "thanissaro": "Suppose an oil lamp is burning.\nIts radiance is discerned in dependence on its flame, and its flame is discerned in dependence on its radiance.", "pts": "As when an oil lamp is burning the light is seen because of the flame and the flame is seen because of the light,"}, {"key": "mn43:22.19", "pali": "evameva kho, āvuso, āyu usmaṁ paṭicca tiṭṭhati, usmā āyuṁ paṭicca tiṭṭhatī”ti.", "sujato": "In the same way, vitality depends on warmth to continue, and warmth depends on vitality to continue.”", "thanissaro": "In the same way, vitality remains standing in dependence on heat, and heat remains standing in dependence on vitality.", "pts": "so, your reverence, vitality depends on heat and heat on vitality.\""}]}, {"id": "23", "label": "“Are the vital forces and the phenomena…", "rows": [{"key": "mn43:23.1", "pali": "“Teva nu kho, āvuso, āyusaṅkhārā, te vedaniyā dhammā udāhu aññe āyusaṅkhārā aññe vedaniyā dhammā”ti?", "sujato": "“Are the vital forces and the phenomena that are felt one and the same?\nOr are the vital forces one thing, and the phenomena that are felt another?”", "thanissaro": "“Friend, are vitality-fabrications the same thing as feeling-states?\nOr are vitality-fabrications one thing, and feeling-states another?”", "pts": "\"Now, your reverence, are these properties of vitality states that are to be felt,\nor are the properties of vitality one thing, states that are to be felt another?\""}, {"key": "mn43:23.2", "pali": "“Na kho, āvuso, teva āyusaṅkhārā te vedaniyā dhammā.", "sujato": "“The vital forces are not the same things as the phenomena that are felt.", "thanissaro": "“Vitality-fabrications are not the same thing as feeling-states, friend.", "pts": "\"Your reverence, these properties of vitality are not themselves states to be felt."}, {"key": "mn43:23.3", "pali": "Te ca hāvuso, āyusaṅkhārā abhaviṁsu te vedaniyā dhammā,\nna yidaṁ saññāvedayitanirodhaṁ samāpannassa bhikkhuno vuṭṭhānaṁ paññāyetha.", "sujato": "For if the vital forces and the phenomena that are felt were the same things,\na mendicant who had attained the cessation of perception and feeling would not emerge from it.", "thanissaro": "If vitality-fabrications were the same thing as feeling-states,\nthe emergence of a monk from the attainment of the cessation of feeling & perception would not be discerned.", "pts": "If, your reverence, these properties of vitality were themselves states to be felt,\nno emergence could be shown for a monk who had won to the stopping of perception and feeling."}, {"key": "mn43:23.4", "pali": "Yasmā ca kho, āvuso, aññe āyusaṅkhārā aññe vedaniyā dhammā,\ntasmā saññāvedayitanirodhaṁ samāpannassa bhikkhuno vuṭṭhānaṁ paññāyatī”ti.", "sujato": "But because the vital forces and the phenomena that are felt are different things,\na mendicant who has attained the cessation of perception and feeling can emerge from it.”", "thanissaro": "It’s because vitality-fabrications are one thing and feeling-states another that the emergence\nof a monk from the attainment of the cessation of perception & feeling is discerned.”", "pts": "But because, your reverence, the properties of vitality are one thing and states to be felt another,\ntherefore the emergence of a monk who has won to the stopping of perception and feeling can be shown.\""}]}, {"id": "24", "label": "“How many things must this body lose…", "rows": [{"key": "mn43:24.1", "pali": "“Yadā nu kho, āvuso, imaṁ kāyaṁ kati dhammā jahanti;\nathāyaṁ kāyo ujjhito avakkhitto seti, yathā kaṭṭhaṁ acetanan”ti?", "sujato": "“How many things must this body lose before it lies abandoned, tossed aside like an insentient log?”", "thanissaro": "“When this body lacks how many qualities does it lie discarded & forsaken, like a senseless log?”", "pts": "\"In regard to this body, your reverence, when how many things are got rid of,\ndoes this body lie cast away, flung aside like unto a senseless log of wood?\""}, {"key": "mn43:24.2", "pali": "“Yadā kho, āvuso, imaṁ kāyaṁ tayo dhammā jahanti—āyu usmā ca viññāṇaṁ;\nathāyaṁ kāyo ujjhito avakkhitto seti, yathā kaṭṭhaṁ acetanan”ti.", "sujato": "“This body must lose three things before it lies abandoned, tossed aside like an insentient log:\nvitality, warmth, and consciousness.”", "thanissaro": "“When this body lacks these three qualities—vitality, heat,\n& consciousness—it lies discarded & forsaken like a senseless log.”", "pts": "\"In regard to this body, your reverence, when three things are got rid of:\nvitality, heat and consciousness, then does this body lie cast away, flung aside like unto a senseless log of wood.\""}]}, {"id": "25", "label": "“What’s the difference between someone who has…", "rows": [{"key": "mn43:25.1", "pali": "“Yvāyaṁ, āvuso, mato kālaṅkato, yo cāyaṁ bhikkhu saññāvedayitanirodhaṁ samāpanno—imesaṁ kiṁ nānākaraṇan”ti?", "sujato": "“What’s the difference between someone who has passed away and a\nmendicant who has attained the cessation of perception and feeling?”", "thanissaro": "“What is the difference between one who is dead, who has completed his time,\nand a monk who has attained the cessation of perception & feeling?”", "pts": "\"What is the difference, your reverence, between that dead thing, passed away,\nand that monk who has attained to the stopping of perception and feeling?\""}, {"key": "mn43:25.2", "pali": "“Yvāyaṁ, āvuso, mato kālaṅkato tassa kāyasaṅkhārā niruddhā paṭippassaddhā, vacīsaṅkhārā niruddhā paṭippassaddhā,\ncittasaṅkhārā niruddhā paṭippassaddhā, āyu parikkhīṇo, usmā vūpasantā, indriyāni paribhinnāni.", "sujato": "“When someone dies, their physical, verbal, and mental processes have ceased and stilled;\ntheir vitality is spent;\ntheir warmth is dissipated;\nand their faculties have disintegrated.", "thanissaro": "“In the case of the one who is dead, who has completed his time,\nhis bodily fabrications have ceased & subsided, his verbal fabrications…\nhis mental fabrications have ceased & subsided, his vitality is exhausted,\nhis heat subsided, & his faculties are scattered.", "pts": "\"Your reverence, the bodily activities of that dead thing, passed away,\nhave been stopped, have subsided, the vocal activities have been stopped, have subsided,\nthe mental activities have been stopped, have subsided, the vitality is entirely destroyed,\nthe heat allayed, the sense-organs are entirely broken asunder."}, {"key": "mn43:25.3", "pali": "Yo cāyaṁ bhikkhu saññāvedayitanirodhaṁ samāpanno tassapi kāyasaṅkhārā niruddhā paṭippassaddhā,\nvacīsaṅkhārā niruddhā paṭippassaddhā,\ncittasaṅkhārā niruddhā paṭippassaddhā, āyu na parikkhīṇo, usmā avūpasantā, indriyāni vippasannāni.", "sujato": "When a mendicant has attained the cessation of perception and feeling,\ntheir physical, verbal, and mental processes have ceased and stilled.\nBut their vitality is not spent;\ntheir warmth is not dissipated;\nand their faculties are very clear.", "thanissaro": "But in the case of a monk who has attained the cessation of perception & feeling,\nhis bodily fabrications have ceased & subsided, his verbal fabrications…\nhis mental fabrications have ceased & subsided, his vitality is not exhausted,\nhis heat has not subsided, & his faculties are exceptionally clear.", "pts": "But that monk who has attained to the stopping of perception and feeling,\nalthough his bodily activities have been stopped, have subsided, although his vocal activities have been stopped,\nhave subsided, although his mental activities have been stopped, have subsided,\nhis vitality is not entirely destroyed, his heat is not allayed, his sense-organs are purified."}, {"key": "mn43:25.4", "pali": "Yvāyaṁ, āvuso, mato kālaṅkato, yo cāyaṁ bhikkhu saññāvedayitanirodhaṁ samāpanno—idaṁ nesaṁ nānākaraṇan”ti.", "sujato": "That’s the difference between someone who has passed away and a\nmendicant who has attained the cessation of perception and feeling.”", "thanissaro": "This is the difference between one who is dead, who has completed his time,\nand a monk who has attained the cessation of perception & feeling.”", "pts": "This, your reverence, is the difference between a dead thing, passed away,\nand that monk who has attained to the stopping of perception and feeling.\""}]}, {"id": "26", "label": "“How many conditions are necessary to attain…", "rows": [{"key": "mn43:26.1", "pali": "“Kati panāvuso, paccayā adukkhamasukhāya cetovimuttiyā samāpattiyā”ti?", "sujato": "“How many conditions are necessary to attain the neutral release of the heart?”", "thanissaro": "“Friend, how many conditions are there for the attainment of the neither-pleasant-nor-painful awareness-release?”", "pts": "\"And how many conditions are there, your reverence,\nfor the attainment of the freedom of mind which has neither anguish nor joy?\""}, {"key": "mn43:26.2", "pali": "“Cattāro kho, āvuso, paccayā adukkhamasukhāya cetovimuttiyā samāpattiyā.", "sujato": "“Four conditions are necessary to attain the neutral release of the heart.", "thanissaro": "“Friend, there are four conditions for the attainment of the neither-pleasant-nor-painful awareness-release.", "pts": "\"There are four conditions, your reverence, for the attainment of the freedom of mind which has neither anguish nor joy."}, {"key": "mn43:26.3", "pali": "Idhāvuso, bhikkhu sukhassa ca pahānā dukkhassa ca pahānā pubbeva somanassadomanassānaṁ\natthaṅgamā adukkhamasukhaṁ upekkhāsatipārisuddhiṁ catutthaṁ jhānaṁ upasampajja viharati.", "sujato": "With the giving up of pleasure and pain and the disappearance of former happiness and sadness,\na mendicant enters and remains in the fourth absorption, without pleasure or pain, with pure equanimity and mindfulness.", "thanissaro": "There is the case where a monk, with the abandoning of pleasure & pain—\nas with the earlier disappearance of elation & distress—enters & remains in the fourth jhāna:\npurity of equanimity & mindfulness, neither pleasure nor pain.", "pts": "In this case, your reverence, a monk by getting rid of joy,\nby getting rid of anguish, by the going down of his former pleasures and sorrows,\nenters on and abides in the fourth meditation which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness."}, {"key": "mn43:26.4", "pali": "Ime kho, āvuso, cattāro paccayā adukkhamasukhāya cetovimuttiyā samāpattiyā”ti.", "sujato": "These four conditions are necessary to attain the neutral release of the heart.”", "thanissaro": "These are the four conditions for the attainment of the neither-pleasant-nor-painful awareness-release.", "pts": "These, your reverence, are the four conditions for attaining the freedom of mind which has neither anguish nor joy.\""}]}, {"id": "27", "label": "“How many conditions are necessary to attain…", "rows": [{"key": "mn43:27.1", "pali": "“Kati panāvuso, paccayā animittāya cetovimuttiyā samāpattiyā”ti?", "sujato": "“How many conditions are necessary to attain the signless release of the heart?”", "thanissaro": "“How many conditions are there for the attainment of the theme-less awareness-release?”", "pts": "\"How many conditions are there, your reverence, for the attainment of the freedom of mind that is signless?\""}, {"key": "mn43:27.2", "pali": "“Dve kho, āvuso, paccayā animittāya cetovimuttiyā samāpattiyā—", "sujato": "“Two conditions are necessary to attain the signless release of the heart:", "thanissaro": "“There are two conditions for the attainment of the theme-less awareness-release:", "pts": "\"There are two conditions, your reverence, for the attainment of the freedom of mind that is signless:"}, {"key": "mn43:27.3", "pali": "sabbanimittānañca amanasikāro, animittāya ca dhātuyā manasikāro.", "sujato": "not focusing on any signs, and focusing on the signless.", "thanissaro": "lack of attention to all themes and attention to the theme-less property.", "pts": "paying no attention to any signs, and paying attention to the signless realm."}, {"key": "mn43:27.4", "pali": "Ime kho, āvuso, dve paccayā animittāya cetovimuttiyā samāpattiyā”ti.", "sujato": "These two conditions are necessary to attain the signless release of the heart.”", "thanissaro": "These are the two conditions for the attainment of the theme-less awareness-release.”", "pts": "These, your reverence, are the two conditions for the attainment of the freedom of mind that is signless.\""}, {"key": "mn43:27.5", "pali": "“Kati panāvuso, paccayā animittāya cetovimuttiyā ṭhitiyā”ti?", "sujato": "“How many conditions are necessary to remain in the signless release of the heart?”", "thanissaro": "“And how many conditions are there for the persistence of the theme-less awareness-release?”", "pts": "\"How many conditions are there, your reverence, for the persistence of the freedom of mind that is signless?\""}]}, {"id": "28", "label": "“Three conditions are necessary to remain in…", "rows": [{"key": "mn43:28.1", "pali": "“Tayo kho, āvuso, paccayā animittāya cetovimuttiyā ṭhitiyā—", "sujato": "“Three conditions are necessary to remain in the signless release of the heart:", "thanissaro": "“There are three conditions for the persistence of the theme-less awareness-release:", "pts": "\"There are three conditions, your reverence, for the persistence of the freedom of mind that is signless:"}, {"key": "mn43:28.2", "pali": "sabbanimittānañca amanasikāro, animittāya ca dhātuyā manasikāro, pubbe ca abhisaṅkhāro.", "sujato": "not focusing on any signs, focusing on the signless, and a previous determination.", "thanissaro": "lack of attention to all themes, attention to the theme-less property, and a prior act of will.", "pts": "paying no attention to any signs, and paying attention to the signless realm, and a preceding preparation."}, {"key": "mn43:28.3", "pali": "Ime kho, āvuso, tayo paccayā animittāya cetovimuttiyā ṭhitiyā”ti.", "sujato": "These three conditions are necessary to remain in the signless release of the heart.”", "thanissaro": "These are the three conditions for the persistence of the theme-less awareness-release.”", "pts": "These, your reverence, are the three conditions for the persistence of the freedom of mind that is signless.\""}]}, {"id": "29", "label": "“How many conditions are necessary to emerge…", "rows": [{"key": "mn43:29.1", "pali": "“Kati panāvuso, paccayā animittāya cetovimuttiyā vuṭṭhānāyā”ti?", "sujato": "“How many conditions are necessary to emerge from the signless release of the heart?”", "thanissaro": "“And how many conditions are there for the emergence from the theme-less awareness-release?”", "pts": "\"How many conditions are there, your reverence, for emergence from the freedom of mind that is signless?\""}, {"key": "mn43:29.2", "pali": "“Dve kho, āvuso, paccayā animittāya cetovimuttiyā vuṭṭhānāya—", "sujato": "“Two conditions are necessary to emerge from the signless release of the heart:", "thanissaro": "“There are two conditions for the emergence from the theme-less awareness-release:", "pts": "\"There are the two conditions, your reverence, for emerging from the freedom of mind that is signless:"}, {"key": "mn43:29.3", "pali": "sabbanimittānañca manasikāro, animittāya ca dhātuyā amanasikāro.", "sujato": "focusing on all signs, and not focusing on the signless.", "thanissaro": "attention to all themes and lack of attention to the theme-less property.", "pts": "paying attention to all signs, and not paying attention to the signless realm."}, {"key": "mn43:29.4", "pali": "Ime kho, āvuso, dve paccayā animittāya cetovimuttiyā vuṭṭhānāyā”ti.", "sujato": "These two conditions are necessary to emerge from the signless release of the heart.”", "thanissaro": "These are the two conditions for the emergence from the theme-less awareness-release.”", "pts": "These, your reverence, are the two conditions for emergence from the freedom of mind that is signless.\""}, {"key": "mn43:29.5", "pali": "“Yā cāyaṁ, āvuso, appamāṇā cetovimutti, yā ca ākiñcaññā cetovimutti, yā ca suññatā cetovimutti,\nyā ca animittā cetovimutti—ime dhammā nānātthā ceva nānābyañjanā ca udāhu ekatthā byañjanameva nānan”ti?", "sujato": "“The limitless release of the heart, and the release of the heart through nothingness,\nand the release of the heart through emptiness, and the signless release of the heart:\ndo these things differ in both meaning and phrasing?\nOr do they mean the same thing, and differ only in the phrasing?”", "thanissaro": "“The immeasurable awareness-release, the nothingness awareness-release,\nthe emptiness awareness-release, the theme-less awareness-release:\nAre these qualities different in meaning & different in name, or are they one in meaning and different only in name?”", "pts": "\"Your reverence, whatever is immeasurable freedom of mind and whatever is freedom of mind that is\nnaught and whatever is freedom of mind that is void and whatever is freedom of mind that is signless —\nare these states different in connotation and different in denotation,\nor are they identical in connotation while being different only in denotation?\""}]}, {"id": "30", "label": "“There is a way in which these…", "rows": [{"key": "mn43:30.1", "pali": "“Yā cāyaṁ, āvuso, appamāṇā cetovimutti, yā ca ākiñcaññā cetovimutti, yā ca suññatā cetovimutti,\nyā ca animittā cetovimutti—atthi kho, āvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā nānātthā ceva nānābyañjanā ca;", "sujato": "“There is a way in which these things differ in both meaning and phrasing.", "thanissaro": "“The immeasurable awareness-release, the nothingness awareness-release,\nthe emptiness awareness-release, the theme-less awareness-release:\nThere is a way of explanation by which these qualities are different in meaning & different in name,", "pts": "\"Your reverence, whatever is immeasurable freedom of mind and whatever is the freedom of mind that is\nnaught and whatever is freedom of mind that is void and whatever is freedom of mind that is signless —\nthere is a method according to which these states are different in connotation as well as being different in denotation;\nand, your reverence,"}, {"key": "mn43:30.2", "pali": "atthi ca kho, āvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā ekatthā, byañjanameva nānaṁ.", "sujato": "But there’s also a way in which they mean the same thing, and differ only in the phrasing.", "thanissaro": "and there is a way of explanation by which these qualities are one in meaning and different only in name.", "pts": "there is a method according to which these states are identical in connotation while being different in denotation."}]}, {"id": "31", "label": "And what’s the way in which these…", "rows": [{"key": "mn43:31.1", "pali": "Katamo cāvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā nānātthā ceva nānābyañjanā ca?", "sujato": "And what’s the way in which these things differ in both meaning and phrasing?", "thanissaro": "“And what is the way of explanation by which these qualities are different in meaning & different in name?", "pts": "And what, your reverence,\nis the method according to which these states are different in connotation as well as being different in denotation?"}, {"key": "mn43:31.2", "pali": "Idhāvuso, bhikkhu mettāsahagatena cetasā ekaṁ disaṁ pharitvā viharati, tathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ mettāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā viharati.", "sujato": "Firstly, a mendicant meditates spreading a heart full of love to one direction,\nand to the second, and to the third, and to the fourth.\nIn the same way above, below, across, everywhere, all around,\nthey spread a heart full of love to the whole world—abundant, expansive, limitless, free of enmity and ill will.", "thanissaro": "There is the case where a monk keeps pervading the first direction [the east]—\nas well as the second direction, the third, & the fourth—with an awareness imbued with goodwill.\nThus he keeps pervading above, below, & all around,\neverywhere & in every respect the all-encompassing world with an awareness imbued with goodwill:\nabundant, expansive, immeasurable, free from hostility, free from ill will.", "pts": "As to this, your reverence, a monk abides having suffused the first quarter with a mind of friendliness,\nlikewise the second, likewise the third, likewise the fourth;\njust so above, below, across;\nhe dwells having suffused the whole world everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn43:31.3", "pali": "Karuṇāsahagatena cetasā …pe…", "sujato": "They meditate spreading a heart full of compassion …", "thanissaro": "“He keeps pervading the first direction—as well as the second direction,\nthe third, & the fourth—with an awareness imbued with compassion…", "pts": "He dwells having suffused the first quarter with a mind of compassion,\nlikewise the second, likewise the third, likewise the fourth;\njust so above, below, across;\nhe dwells having suffused the whole world everywhere, in every way with a mind of compassion,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn43:31.4", "pali": "muditāsahagatena cetasā …", "sujato": "They meditate spreading a heart full of rejoicing …", "thanissaro": "an awareness imbued with empathetic joy.…", "pts": "He dwells having suffused the first quarter with a mind of sympathetic joy,\nlikewise the second, likewise the third, likewise the fourth;\njust so above, below, across;\nhe dwells having suffused the whole world everywhere, in every way with a mind of sympathetic joy,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn43:31.5", "pali": "upekkhāsahagatena cetasā ekaṁ disaṁ pharitvā viharati, tathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ upekkhāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā viharati.", "sujato": "They meditate spreading a heart full of equanimity to one direction,\nand to the second, and to the third, and to the fourth.\nIn the same way above, below, across, everywhere, all around,\nthey spread a heart full of equanimity to the whole world—abundant, expansive, limitless, free of enmity and ill will.", "thanissaro": "“He keeps pervading the first direction—as well as the second direction,\nthe third, & the fourth—with an awareness imbued with equanimity.\nThus he keeps pervading above, below, & all around,\neverywhere & in every respect the all-encompassing world with an awareness imbued with equanimity:\nabundant, expansive, immeasurable, free from hostility, free from ill will.", "pts": "He dwells having suffused the first quarter with a mind of equanimity,\nlikewise the second, likewise the third, likewise the fourth;\njust so above, below, across;\nhe dwells having suffused the whole world everywhere, in every way with a mind of equanimity,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn43:31.6", "pali": "Ayaṁ vuccatāvuso, appamāṇā cetovimutti.", "sujato": "This is called the limitless release of the heart.", "thanissaro": "“This is called the immeasurable awareness-release.", "pts": "This, your reverence, is called immeasurable freedom of mind."}]}, {"id": "32", "label": "And what is the release of the…", "rows": [{"key": "mn43:32.1", "pali": "Katamā cāvuso, ākiñcaññā cetovimutti?", "sujato": "And what is the release of the heart through nothingness?", "thanissaro": "“And what is the nothingness awareness-release?", "pts": "And what, your reverence, is the freedom of mind that is naught?"}, {"key": "mn43:32.2", "pali": "Idhāvuso, bhikkhu sabbaso viññāṇañcāyatanaṁ samatikkamma natthi kiñcīti ākiñcaññāyatanaṁ upasampajja viharati.", "sujato": "It’s when a mendicant, going totally beyond the dimension of infinite consciousness,\naware that ‘there is nothing at all’, enters and remains in the dimension of nothingness.", "thanissaro": "There is the case where a monk,\nwith the complete transcending of the dimension of the infinitude of consciousness, thinking,\n‘There is nothing,’ enters & remains in the dimension of nothingness.", "pts": "As to this, your reverence, a monk passing quite beyond the plane of infinite consciousness, thinking,\n'There is not anything,' enters on and abides in the plane of no-thing."}, {"key": "mn43:32.3", "pali": "Ayaṁ vuccatāvuso, ākiñcaññā cetovimutti.", "sujato": "This is called the heart’s release through nothingness.", "thanissaro": "This is called the nothingness awareness-release.", "pts": "This, your reverence, is called the freedom of mind that is naught."}]}, {"id": "33", "label": "And what is the release of the…", "rows": [{"key": "mn43:33.1", "pali": "Katamā cāvuso, suññatā cetovimutti?", "sujato": "And what is the release of the heart through emptiness?", "thanissaro": "“And what is the emptiness awareness-release?", "pts": "And what, your reverence, is the freedom of mind that is void?"}, {"key": "mn43:33.2", "pali": "Idhāvuso, bhikkhu araññagato vā rukkhamūlagato vā suññāgāragato vā iti paṭisañcikkhati:", "sujato": "It’s when a mendicant has gone to a wilderness, or to the root of a tree, or to an empty hut, and reflects like this:", "thanissaro": "There is the case where a monk, having gone into the wilderness,\nto the root of a tree, or into an empty dwelling, considers this:", "pts": "As to this, your reverence, a monk forest-gone or gone to the root of a tree or gone to an empty place, reflects thus:\n'This is void of self or of what pertains to self.'"}, {"key": "mn43:33.3", "pali": "‘suññamidaṁ attena vā attaniyena vā’ti.", "sujato": "‘This is empty of a self or what belongs to a self.’", "thanissaro": "‘This is empty of self or of anything pertaining to self.’\nThis is called the emptiness awareness-release.", "pts": ""}, {"key": "mn43:33.4", "pali": "Ayaṁ vuccatāvuso, suññatā cetovimutti.", "sujato": "This is called the release of the heart through emptiness.", "thanissaro": "", "pts": "This, your reverence, is called the freedom of mind that is void."}]}, {"id": "34", "label": "And what is the signless release of…", "rows": [{"key": "mn43:34.1", "pali": "Katamā cāvuso, animittā cetovimutti?", "sujato": "And what is the signless release of the heart?", "thanissaro": "“And what is the theme-less awareness-release?", "pts": "And what, your reverence, is the freedom of mind that is signless?"}, {"key": "mn43:34.2", "pali": "Idhāvuso, bhikkhu sabbanimittānaṁ amanasikārā animittaṁ cetosamādhiṁ upasampajja viharati.", "sujato": "It’s when a mendicant, not focusing on any signs, enters and remains in the signless immersion of the heart.", "thanissaro": "There is the case where a monk, through not attending to all themes,\nenters & remains in the theme-less concentration of awareness.", "pts": "As to this, your reverence, a monk, by paying no attention to any signs,\nentering on the concentration of mind that is signless, abides therein."}, {"key": "mn43:34.3", "pali": "Ayaṁ vuccatāvuso, animittā cetovimutti.", "sujato": "This is called the signless release of the heart.", "thanissaro": "This is called the theme-less awareness-release.", "pts": "This, your reverence, is called the freedom of mind that is signless."}, {"key": "mn43:34.4", "pali": "Ayaṁ kho, āvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā nānātthā ceva nānābyañjanā ca.", "sujato": "This is the way in which these things differ in both meaning and phrasing.", "thanissaro": "“This is the way of explaining by which these qualities are different in meaning & different in name.", "pts": "This, your reverence,\nis the method according to which these states are different in connotation as well as differing in denotation."}]}, {"id": "35", "label": "And what’s the way in which they…", "rows": [{"key": "mn43:35.1", "pali": "Katamo cāvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā ekatthā byañjanameva nānaṁ?", "sujato": "And what’s the way in which they mean the same thing, and differ only in the phrasing?", "thanissaro": "“And what is the way of explaining whereby these qualities are one in meaning and different only in name?", "pts": "And what, your reverence,\nis the method according to which these states are identical in connotation while being different in denotation?"}, {"key": "mn43:35.2", "pali": "Rāgo kho, āvuso, pamāṇakaraṇo, doso pamāṇakaraṇo, moho pamāṇakaraṇo.", "sujato": "Greed, hate, and delusion are makers of limits.", "thanissaro": "“Passion, friend, is a making of measurement.\nAversion is a making of measurement.\nDelusion is a making of measurement.", "pts": "Attachment, your reverence, is productive of the measurable,\nhatred is productive of the measurable, confusion is productive of the measurable."}, {"key": "mn43:35.3", "pali": "Te khīṇāsavassa bhikkhuno pahīnā ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": "A mendicant who has ended the defilements has given these up, cut them off at the root,\nmade them like a palm stump, and obliterated them, so they are unable to arise in the future.", "thanissaro": "In a monk whose effluents are ended, these have been abandoned, their root destroyed,\nmade like a palmyra stump, deprived of the conditions of development, not destined for future arising.", "pts": "For a monk whose cankers are destroyed, these are got rid of, cut off at the roots,\nmade like a palm-tree stump so that they can come to no further existence in the future."}, {"key": "mn43:35.4", "pali": "Yāvatā kho, āvuso, appamāṇā cetovimuttiyo, akuppā tāsaṁ cetovimutti aggamakkhāyati.", "sujato": "The unshakable release of the heart is said to be the best kind of limitless release of the heart.", "thanissaro": "Now, to the extent that there is immeasurable awareness-release,\nthe unprovoked awareness-release is declared the foremost.", "pts": "To the extent, your reverence, that freedoms of mind are immeasurable,\nunshakahle freedom of mind is shown to be their chief,"}, {"key": "mn43:35.5", "pali": "Sā kho panākuppā cetovimutti suññā rāgena, suññā dosena, suññā mohena.", "sujato": "That unshakable release of the heart is empty of greed, hate, and delusion.", "thanissaro": "And this unprovoked awareness-release is empty of passion, empty of aversion, empty of delusion.", "pts": "for that unshakable freedom of mind is void of attachment, void of hatred, void of confusion."}]}, {"id": "36", "label": "Greed is something, hate is something, and…", "rows": [{"key": "mn43:36.1", "pali": "Rāgo kho, āvuso, kiñcano, doso kiñcano, moho kiñcano.", "sujato": "Greed is something, hate is something, and delusion is something.", "thanissaro": "“Passion is a something.\nAversion is a something.\nDelusion is a something.", "pts": "Attachment, your reverence, is something (obstructive),\nhatred is something (obstructive), confusion is something (obstructive)."}, {"key": "mn43:36.2", "pali": "Te khīṇāsavassa bhikkhuno pahīnā ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": "A mendicant who has ended the defilements has given these up, cut them off at the root,\nmade them like a palm stump, and obliterated them, so they are unable to arise in the future.", "thanissaro": "In a monk whose effluents are ended, these have been abandoned, their root destroyed,\nmade like a palmyra stump, deprived of the conditions of development, not destined for future arising.", "pts": "For a monk whose cankers are destroyed, these are got rid of, cut off at the roots,\nmade like a palm-tree stump so that they can come to no further existence in the future."}, {"key": "mn43:36.3", "pali": "Yāvatā kho, āvuso, ākiñcaññā cetovimuttiyo, akuppā tāsaṁ cetovimutti aggamakkhāyati.", "sujato": "The unshakable release of the heart is said to be the best kind of release of the heart through nothingness.", "thanissaro": "Now, to the extent that there is nothingness awareness-release,\nthe unprovoked awareness-release is declared the foremost.", "pts": "To the extent, your reverence, that freedoms of mind are naught, unshakable freedom of mind is shown to be their chief,"}, {"key": "mn43:36.4", "pali": "Sā kho panākuppā cetovimutti suññā rāgena, suññā dosena, suññā mohena.", "sujato": "That unshakable release of the heart is empty of greed, hate, and delusion.", "thanissaro": "And this unprovoked awareness-release is empty of passion, empty of aversion, empty of delusion.", "pts": "for that unshakable freedom of mind is void of attachment, void of hatred, void of confusion."}]}, {"id": "37", "label": "Greed, hate, and delusion are makers of…", "rows": [{"key": "mn43:37.1", "pali": "Rāgo kho, āvuso, nimittakaraṇo, doso nimittakaraṇo, moho nimittakaraṇo.", "sujato": "Greed, hate, and delusion are makers of signs.", "thanissaro": "“Passion is a making of themes.\nAversion is a making of themes.\nDelusion is a making of themes.", "pts": "Attachment, your reverence, is productive of signs, hatred is productive of signs, confusion is productive of signs."}, {"key": "mn43:37.2", "pali": "Te khīṇāsavassa bhikkhuno pahīnā ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": "A mendicant who has ended the defilements has given these up, cut them off at the root,\nmade them like a palm stump, and obliterated them, so they are unable to arise in the future.", "thanissaro": "In a monk whose effluents are ended, these have been abandoned, their root destroyed,\nmade like a palmyra stump, deprived of the conditions of development, not destined for future arising.", "pts": "For a monk whose cankers are destroyed these are got rid of, cut off at the roots,\nmade like a palm-tree stump so that they can come to no further existence in the future."}, {"key": "mn43:37.3", "pali": "Yāvatā kho, āvuso, animittā cetovimuttiyo, akuppā tāsaṁ cetovimutti aggamakkhāyati.", "sujato": "The unshakable release of the heart is said to be the best kind of signless release of the heart.", "thanissaro": "Now, to the extent that there is theme-less awareness-release,\nthe unprovoked awareness-release is declared the foremost.", "pts": "To the extent, your reverence, that freedoms of mind are signless,\nunshakable freedom of mind is shown to be their chief,"}, {"key": "mn43:37.4", "pali": "Sā kho panākuppā cetovimutti suññā rāgena, suññā dosena, suññā mohena.", "sujato": "That unshakable release of the heart is empty of greed, hate, and delusion.", "thanissaro": "And this unprovoked awareness-release is empty of passion, empty of aversion, empty of delusion.", "pts": "for that unshakable freedom of mind is void of attachment, void of hatred, void of confusion."}, {"key": "mn43:37.5", "pali": "Ayaṁ kho, āvuso, pariyāyo yaṁ pariyāyaṁ āgamma ime dhammā ekatthā byañjanameva nānan”ti.", "sujato": "This is the way in which they mean the same thing, and differ only in the phrasing.”", "thanissaro": "“This, friend, is the way of explaining whereby these qualities are one in meaning and different only in name.”", "pts": "This, your reverence,\nis the method according to which these states are identical in connotation while being different in denotation.\""}, {"key": "mn43:37.6", "pali": "Idamavocāyasmā sāriputto.", "sujato": "This is what Venerable Sāriputta said.", "thanissaro": "That is what Ven. Sāriputta said.", "pts": "Thus spoke the venerable Sāriputta."}, {"key": "mn43:37.7", "pali": "Attamano āyasmā mahākoṭṭhiko āyasmato sāriputtassa bhāsitaṁ abhinandīti.", "sujato": "Satisfied, Venerable Mahākoṭṭhita approved what Sāriputta said.", "thanissaro": "Gratified, Ven. Mahā Koṭṭhita delighted in Ven. Sāriputta’s words.", "pts": "Delighted, the venerable Koṭṭhita the Great rejoiced in what the venerable Sāriputta had said."}, {"key": "mn43:37.8", "pali": "Mahāvedallasuttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato": "", "thanissaro": "", "pts": "Greater Discourse of the Miscellany abhiññatthaṃ and pariññatthaṃ also at It. p. 29.\nBut cf. p. 352, above, where consciousness is for apprehending, pariññeyya."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn43:1.1": ["This sutta and the next are named fo
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

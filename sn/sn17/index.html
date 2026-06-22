@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn17-pathamavagga", "label": "Paṭhamavagga — Chapter One", "children": [{"id": "sn17.1", "label": "SN 17.1 · Grim", "children": [{"id": "sn17.1/0", "label": "Linked Discourses 17.1", "rows": [{"key": "sn17.1:0.1", "pali": "Saṁyutta Nikāya 17.1", "sujato": "Linked Discourses 17.1"}, {"key": "sn17.1:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.1:0.3", "pali": "Dāruṇasutta", "sujato": "Grim"}]}, {"id": "sn17.1/1", "label": "So I have heard.", "rows": [{"key": "sn17.1:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn17.1:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn17.1:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,"}, {"key": "sn17.1:1.4", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”"}, {"key": "sn17.1:1.5", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied."}, {"key": "sn17.1:1.6", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}]}, {"id": "sn17.1/2", "label": "“Possessions, honor, and popularity are grim, bitter,…", "rows": [{"key": "sn17.1:2.1", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim, bitter, and harsh.\nThey’re an obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.1:2.2", "pali": "Tasmātiha, bhikkhave, evaṁ sikkhitabbaṁ:", "sujato": "So you should train like this:"}, {"key": "sn17.1:2.3", "pali": "‘uppannaṁ lābhasakkārasilokaṁ pajahissāma, na ca no uppanno lābhasakkārasiloko cittaṁ pariyādāya ṭhassatī’ti.", "sujato": "‘We will give up arisen possessions, honor, and popularity, and we won’t let them occupy our minds.’"}, {"key": "sn17.1:2.4", "pali": "Evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}, {"key": "sn17.1:2.5", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.2", "label": "SN 17.2 · A Hook", "children": [{"id": "sn17.2/0", "label": "Linked Discourses 17.2", "rows": [{"key": "sn17.2:0.1", "pali": "Saṁyutta Nikāya 17.2", "sujato": "Linked Discourses 17.2"}, {"key": "sn17.2:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.2:0.3", "pali": "Baḷisasutta", "sujato": "A Hook"}]}, {"id": "sn17.2/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.2:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.2:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim, bitter, and harsh.\nThey’re an obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.2:1.3", "pali": "Seyyathāpi, bhikkhave, bāḷisiko āmisagataṁ baḷisaṁ gambhīre udakarahade pakkhipeyya.", "sujato": "Suppose an angler was to cast a baited hook into a deep lake."}, {"key": "sn17.2:1.4", "pali": "Tamenaṁ aññataro āmisacakkhu maccho gileyya.", "sujato": "Seeing the bait, a fish would swallow it."}, {"key": "sn17.2:1.5", "pali": "Evañhi so, bhikkhave, maccho gilabaḷiso bāḷisikassa anayaṁ āpanno byasanaṁ āpanno yathākāmakaraṇīyo bāḷisikassa.", "sujato": "And so the fish that swallowed the hook would meet with tragedy and disaster,\nand the angler can do what he wants with it."}]}, {"id": "sn17.2/2", "label": "‘Angler’ is a term for Māra the…", "rows": [{"key": "sn17.2:2.1", "pali": "Bāḷisikoti kho, bhikkhave, mārassetaṁ pāpimato adhivacanaṁ.", "sujato": "‘Angler’ is a term for Māra the Wicked."}, {"key": "sn17.2:2.2", "pali": "Baḷisanti kho, bhikkhave, lābhasakkārasilokassetaṁ adhivacanaṁ.", "sujato": "‘Hook’ is a term for possessions, honor, and popularity."}, {"key": "sn17.2:2.3", "pali": "Yo hi koci, bhikkhave, bhikkhu uppannaṁ lābhasakkārasilokaṁ assādeti nikāmeti, ayaṁ vuccati,\nbhikkhave, bhikkhu gilabaḷiso mārassa anayaṁ āpanno byasanaṁ āpanno yathākāmakaraṇīyo pāpimato.", "sujato": "Whoever enjoys and likes arisen possessions, honor, and popularity is called a mendicant who has swallowed Māra’s hook.\nThey’ve met with tragedy and disaster, and the Wicked One can do with them what he wants."}, {"key": "sn17.2:2.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "So grim are possessions, honor, and popularity—bitter and harsh,\nan obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.2:2.5", "pali": "Tasmātiha, bhikkhave, evaṁ sikkhitabbaṁ:", "sujato": "So you should train like this:"}, {"key": "sn17.2:2.6", "pali": "‘uppannaṁ lābhasakkārasilokaṁ pajahissāma, na ca no uppanno lābhasakkārasiloko cittaṁ pariyādāya ṭhassatī’ti.", "sujato": "‘We will give up arisen possessions, honor, and popularity, and we won’t let them occupy our minds.’"}, {"key": "sn17.2:2.7", "pali": "Evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}, {"key": "sn17.2:2.8", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.3", "label": "SN 17.3 · A Turtle", "children": [{"id": "sn17.3/0", "label": "Linked Discourses 17.3", "rows": [{"key": "sn17.3:0.1", "pali": "Saṁyutta Nikāya 17.3", "sujato": "Linked Discourses 17.3"}, {"key": "sn17.3:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.3:0.3", "pali": "Kummasutta", "sujato": "A Turtle"}]}, {"id": "sn17.3/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.3:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.3:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.3:1.3", "pali": "Bhūtapubbaṁ, bhikkhave, aññatarasmiṁ udakarahade mahākummakulaṁ ciranivāsi ahosi.", "sujato": "Once upon a time in a certain lake there was a large family of turtles that had lived there for a long time."}, {"key": "sn17.3:1.4", "pali": "Atha kho, bhikkhave, aññataro kummo aññataraṁ kummaṁ etadavoca:", "sujato": "Then one of the turtles said to another,"}, {"key": "sn17.3:1.5", "pali": "‘mā kho tvaṁ, tāta kumma, etaṁ padesaṁ agamāsī’ti.", "sujato": "‘My dear turtle, don’t you go to that place.’"}, {"key": "sn17.3:1.6", "pali": "Agamāsi kho, bhikkhave, so kummo taṁ padesaṁ.", "sujato": "But that turtle did go to that place,"}, {"key": "sn17.3:1.7", "pali": "Tamenaṁ luddo papatāya vijjhi.", "sujato": "and a hunter pierced her with a harpoon."}, {"key": "sn17.3:1.8", "pali": "Atha kho, bhikkhave, so kummo yena so kummo tenupasaṅkami.", "sujato": "Then that turtle went back to the other turtle."}, {"key": "sn17.3:1.9", "pali": "Addasā kho, bhikkhave, so kummo taṁ kummaṁ dūratova āgacchantaṁ.", "sujato": "When the other turtle saw her coming off in the distance,"}, {"key": "sn17.3:1.10", "pali": "Disvāna taṁ kummaṁ etadavoca:", "sujato": "he said,"}, {"key": "sn17.3:1.11", "pali": "‘kacci tvaṁ, tāta kumma, na taṁ padesaṁ agamāsī’ti?", "sujato": "‘My dear turtle, I hope you didn’t go to that place!’"}, {"key": "sn17.3:1.12", "pali": "‘Agamāsiṁ khvāhaṁ, tāta kumma, taṁ padesan’ti.", "sujato": "‘I did.’"}, {"key": "sn17.3:1.13", "pali": "‘Kacci panāsi, tāta kumma, akkhato anupahato’ti?", "sujato": "‘But my dear turtle, I hope you’re not hurt or injured!’"}, {"key": "sn17.3:1.14", "pali": "‘Akkhato khomhi, tāta kumma, anupahato, atthi ca me idaṁ suttakaṁ piṭṭhito piṭṭhito anubandhan’ti.", "sujato": "‘I’m not hurt or injured.\nBut this cord keeps dragging behind me.’"}, {"key": "sn17.3:1.15", "pali": "‘Tagghasi, tāta kumma, khato, taggha upahato.", "sujato": "‘Indeed, my dear turtle, you’re hurt and injured!"}, {"key": "sn17.3:1.16", "pali": "Etena hi te, tāta kumma, suttakena pitaro ca pitāmahā ca anayaṁ āpannā byasanaṁ āpannā.", "sujato": "Your father and grandfather met with tragedy and disaster because of such a cord."}, {"key": "sn17.3:1.17", "pali": "Gaccha dāni tvaṁ, tāta kumma, na dāni tvaṁ amhākan’ti.", "sujato": "Go now, you are no longer one of us.’"}]}, {"id": "sn17.3/2", "label": "‘Hunter’ is a term for Māra the…", "rows": [{"key": "sn17.3:2.1", "pali": "Luddoti kho, bhikkhave, mārassetaṁ pāpimato adhivacanaṁ.", "sujato": "‘Hunter’ is a term for Māra the Wicked."}, {"key": "sn17.3:2.2", "pali": "Papatāti kho, bhikkhave, lābhasakkārasilokassetaṁ adhivacanaṁ.", "sujato": "‘Harpoon’ is a term for possessions, honor, and popularity."}, {"key": "sn17.3:2.3", "pali": "Suttakanti kho, bhikkhave, nandīrāgassetaṁ adhivacanaṁ.", "sujato": "‘Cord’ is a term for greed and relishing."}, {"key": "sn17.3:2.4", "pali": "Yo hi koci, bhikkhave, bhikkhu uppannaṁ lābhasakkārasilokaṁ assādeti nikāmeti—", "sujato": "Whoever enjoys and likes arisen possessions, honor,\nand popularity is called a mendicant who has been pierced with a harpoon.\nThey’ve met with tragedy and disaster, and the Wicked One can do with them what he wants."}, {"key": "sn17.3:2.5", "pali": "ayaṁ vuccati, bhikkhave, bhikkhu giddho papatāya anayaṁ āpanno byasanaṁ āpanno yathākāmakaraṇīyo pāpimato.", "sujato": ""}, {"key": "sn17.3:2.6", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.3:2.7", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.3:2.8", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.4", "label": "SN 17.4 · A Fleecy Sheep", "children": [{"id": "sn17.4/0", "label": "Linked Discourses 17.4", "rows": [{"key": "sn17.4:0.1", "pali": "Saṁyutta Nikāya 17.4", "sujato": "Linked Discourses 17.4"}, {"key": "sn17.4:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.4:0.3", "pali": "Dīghalomikasutta", "sujato": "A Fleecy Sheep"}]}, {"id": "sn17.4/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.4:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.4:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.4:1.3", "pali": "Seyyathāpi, bhikkhave, dīghalomikā eḷakā kaṇṭakagahanaṁ paviseyya.", "sujato": "Suppose a fleecy sheep was to enter a briar patch."}, {"key": "sn17.4:1.4", "pali": "Sā tatra tatra sajjeyya, tatra tatra gayheyya, tatra tatra bajjheyya, tatra tatra anayabyasanaṁ āpajjeyya.", "sujato": "She’d get caught, snagged, and trapped at every turn, coming to ruin."}, {"key": "sn17.4:1.5", "pali": "Evameva kho, bhikkhave,\nidhekacco bhikkhu lābhasakkārasilokena abhibhūto pariyādiṇṇacitto pubbaṇhasamayaṁ\nnivāsetvā pattacīvaramādāya gāmaṁ vā nigamaṁ vā piṇḍāya pavisati.", "sujato": "In the same way, take a certain mendicant whose mind is overcome and overwhelmed by possessions, honor, and popularity.\nThey robe up in the morning and, taking their bowl and robe, enter the village or town for alms."}, {"key": "sn17.4:1.6", "pali": "So tatra tatra sajjati, tatra tatra gayhati, tatra tatra bajjhati, tatra tatra anayabyasanaṁ āpajjati.", "sujato": "They get caught, snagged, and trapped at every turn, coming to ruin."}, {"key": "sn17.4:1.7", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.4:1.8", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.4:1.9", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn17.5", "label": "SN 17.5 · A Dung Beetle", "children": [{"id": "sn17.5/0", "label": "Linked Discourses 17.5", "rows": [{"key": "sn17.5:0.1", "pali": "Saṁyutta Nikāya 17.5", "sujato": "Linked Discourses 17.5"}, {"key": "sn17.5:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.5:0.3", "pali": "Mīḷhakasutta", "sujato": "A Dung Beetle"}]}, {"id": "sn17.5/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.5:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.5:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.5:1.3", "pali": "Seyyathāpi, bhikkhave, mīḷhakā gūthādī gūthapūrā puṇṇā gūthassa.\nPurato cassa mahāgūthapuñjo.", "sujato": "Suppose there was a dung-eating beetle full of dung, stuffed with dung, and before her was a huge pile of dung."}, {"key": "sn17.5:1.4", "pali": "Sā tena aññā mīḷhakā atimaññeyya:", "sujato": "She’d look down on other beetles, thinking:"}, {"key": "sn17.5:1.5", "pali": "‘ahamhi gūthādī gūthapūrā puṇṇā gūthassa, purato ca myāyaṁ mahāgūthapuñjo’ti.", "sujato": "‘For I am a dung-eating beetle full of dung, stuffed with dung, and before me is a huge pile of dung.’"}, {"key": "sn17.5:1.6", "pali": "Evameva kho, bhikkhave,\nidhekacco bhikkhu lābhasakkārasilokena abhibhūto pariyādiṇṇacitto pubbaṇhasamayaṁ\nnivāsetvā pattacīvaramādāya gāmaṁ vā nigamaṁ vā piṇḍāya pavisati.", "sujato": "In the same way, take a certain mendicant whose mind is overcome and overwhelmed by possessions, honor, and popularity.\nThey robe up in the morning and, taking their bowl and robe, enter the village or town for alms."}, {"key": "sn17.5:1.7", "pali": "So tattha bhuttāvī ca hoti yāvadattho, nimantito ca svātanāya, piṇḍapāto cassa pūro.", "sujato": "There they eat as much as they like, get invited back tomorrow, and have plenty of almsfood."}, {"key": "sn17.5:1.8", "pali": "So ārāmaṁ gantvā bhikkhugaṇassa majjhe vikatthati:", "sujato": "When they get back to the monastery, they boast in the middle of a group of mendicants:"}, {"key": "sn17.5:1.9", "pali": "‘bhuttāvī camhi yāvadattho, nimantito camhi svātanāya, piṇḍapāto ca myāyaṁ pūro,\nlābhī camhi cīvarapiṇḍapātasenāsanagilānappaccayabhesajjaparikkhārānaṁ,\nime panaññe bhikkhū appapuññā appesakkhā na lābhino cīvarapiṇḍapātasenāsanagilānappaccayabhesajjaparikkhārānan’ti.", "sujato": "‘I ate as much as I liked, got invited back tomorrow, and had plenty of almsfood.\nI get robes, almsfood, lodgings, and medicines and supplies for the sick.\nBut these other mendicants have little merit or significance, so they don’t get these things.’"}, {"key": "sn17.5:1.10", "pali": "So tena lābhasakkārasilokena abhibhūto pariyādiṇṇacitto aññe pesale bhikkhū atimaññati.", "sujato": "With a mind overcome and overwhelmed by possessions, honor,\nand popularity, they look down on other good-hearted mendicants."}, {"key": "sn17.5:1.11", "pali": "Tañhi tassa, bhikkhave, moghapurisassa hoti dīgharattaṁ ahitāya dukkhāya.", "sujato": "This will be for their lasting harm and suffering."}, {"key": "sn17.5:1.12", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.5:1.13", "pali": "evañhi vo bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.5:1.14", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn17.6", "label": "SN 17.6 · A Bolt of Lightning", "children": [{"id": "sn17.6/0", "label": "Linked Discourses 17.6", "rows": [{"key": "sn17.6:0.1", "pali": "Saṁyutta Nikāya 17.6", "sujato": "Linked Discourses 17.6"}, {"key": "sn17.6:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.6:0.3", "pali": "Asanisutta", "sujato": "A Bolt of Lightning"}]}, {"id": "sn17.6/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.6:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.6:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.6:1.3", "pali": "Kaṁ, bhikkhave, asanivicakkaṁ āgacchatu, sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇātu.", "sujato": "Let forked lightning fall on whom?\nLet possessions, honor, and popularity come to a trainee who has not achieved their heart’s desire."}]}, {"id": "sn17.6/2", "label": "‘Forked lightning’ is a term for possessions,…", "rows": [{"key": "sn17.6:2.1", "pali": "Asanivicakkanti kho, bhikkhave, lābhasakkārasilokassetaṁ adhivacanaṁ.", "sujato": "‘Forked lightning’ is a term for possessions, honor, and popularity."}, {"key": "sn17.6:2.2", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.6:2.3", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.6:2.4", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn17.7", "label": "SN 17.7 · A Poisoned Arrow", "children": [{"id": "sn17.7/0", "label": "Linked Discourses 17.7", "rows": [{"key": "sn17.7:0.1", "pali": "Saṁyutta Nikāya 17.7", "sujato": "Linked Discourses 17.7"}, {"key": "sn17.7:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.7:0.3", "pali": "Diddhasutta", "sujato": "A Poisoned Arrow"}]}, {"id": "sn17.7/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.7:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.7:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.7:1.3", "pali": "Kaṁ, bhikkhave, diddhagatena visallena sallena vijjhatu, sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇātu.", "sujato": "Let whom be pierced by a poisoned arrow?\nLet possessions, honor, and popularity come to a trainee who has not achieved their heart’s desire."}]}, {"id": "sn17.7/2", "label": "‘Arrow’ is a term for possessions, honor,…", "rows": [{"key": "sn17.7:2.1", "pali": "Sallanti kho, bhikkhave, lābhasakkārasilokassetaṁ adhivacanaṁ.", "sujato": "‘Arrow’ is a term for possessions, honor, and popularity."}, {"key": "sn17.7:2.2", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.7:2.3", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.7:2.4", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn17.8", "label": "SN 17.8 · A Jackal", "children": [{"id": "sn17.8/0", "label": "Linked Discourses 17.8", "rows": [{"key": "sn17.8:0.1", "pali": "Saṁyutta Nikāya 17.8", "sujato": "Linked Discourses 17.8"}, {"key": "sn17.8:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.8:0.3", "pali": "Siṅgālasutta", "sujato": "A Jackal"}]}, {"id": "sn17.8/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.8:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.8:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.8:1.3", "pali": "Assuttha no tumhe, bhikkhave, rattiyā paccūsasamayaṁ jarasiṅgālassa vassamānassā”ti?", "sujato": "Mendicants, did you hear an old jackal howling at the crack of dawn?”"}, {"key": "sn17.8:1.4", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”"}, {"key": "sn17.8:1.5", "pali": "“Eso kho, bhikkhave, jarasiṅgālo ukkaṇḍakena nāma rogajātena phuṭṭho neva bilagato ramati,\nna rukkhamūlagato ramati, na ajjhokāsagato ramati;", "sujato": "“That old jackal has the disease called mange.\nHe’s not happy in his den, or at the root of a tree, or out in the open."}, {"key": "sn17.8:1.6", "pali": "yena yena gacchati, yattha yattha tiṭṭhati, yattha yattha nisīdati, yattha yattha nipajjati;\ntattha tattha anayabyasanaṁ āpajjati.", "sujato": "Wherever he goes, stands, sits, or lies down he meets with tragedy and disaster."}, {"key": "sn17.8:1.7", "pali": "Evameva kho, bhikkhave, idhekacco bhikkhu lābhasakkārasilokena abhibhūto pariyādiṇṇacitto neva suññāgāragato ramati,\nna rukkhamūlagato ramati, na ajjhokāsagato ramati;", "sujato": "In the same way, take a certain mendicant whose mind is overcome and overwhelmed by possessions, honor, and popularity.\nThey’re not happy in an empty hut, at the root of a tree, or out in the open."}, {"key": "sn17.8:1.8", "pali": "yena yena gacchati, yattha yattha tiṭṭhati, yattha yattha nisīdati, yattha yattha nipajjati;\ntattha tattha anayabyasanaṁ āpajjati.", "sujato": "Wherever they go, stand, sit, or lie down they meet with tragedy and disaster."}, {"key": "sn17.8:1.9", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.8:1.10", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.8:1.11", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.9", "label": "SN 17.9 · Gale-force Winds", "children": [{"id": "sn17.9/0", "label": "Linked Discourses 17.9", "rows": [{"key": "sn17.9:0.1", "pali": "Saṁyutta Nikāya 17.9", "sujato": "Linked Discourses 17.9"}, {"key": "sn17.9:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.9:0.3", "pali": "Verambhasutta", "sujato": "Gale-force Winds"}]}, {"id": "sn17.9/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.9:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.9:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.9:1.3", "pali": "Upari, bhikkhave, ākāse verambhā nāma vātā vāyanti.", "sujato": "High in the atmosphere there are gale-force winds blowing."}, {"key": "sn17.9:1.4", "pali": "Tattha yo pakkhī gacchati tamenaṁ verambhā vātā khipanti.", "sujato": "Any bird that flies there is flung about by those gale-force winds."}, {"key": "sn17.9:1.5", "pali": "Tassa verambhavātakkhittassa aññeneva pādā gacchanti,\naññena pakkhā gacchanti, aññena sīsaṁ gacchati, aññena kāyo gacchati.", "sujato": "Their feet go one way, their wings another, their head another, and their body another."}, {"key": "sn17.9:1.6", "pali": "Evameva kho, bhikkhave,\nidhekacco bhikkhu lābhasakkārasilokena abhibhūto pariyādiṇṇacitto pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya\ngāmaṁ vā nigamaṁ vā piṇḍāya pavisati arakkhiteneva kāyena arakkhitāya vācāya arakkhitena cittena,\nanupaṭṭhitāya satiyā, asaṁvutehi indriyehi.", "sujato": "In the same way, take a certain monk whose mind is overcome and overwhelmed by possessions, honor, and popularity.\nHe robes up in the morning and, taking his bowl and robe, enters the village or town for alms without guarding body,\nspeech, and mind, without establishing mindfulness, and without restraining the sense faculties."}, {"key": "sn17.9:1.7", "pali": "So tattha passati mātugāmaṁ dunnivatthaṁ vā duppārutaṁ vā.", "sujato": "There he sees a lady scantily clad, with revealing clothes."}, {"key": "sn17.9:1.8", "pali": "Tassa mātugāmaṁ disvā dunnivatthaṁ vā duppārutaṁ vā rāgo cittaṁ anuddhaṁseti.", "sujato": "Lust infects his mind."}, {"key": "sn17.9:1.9", "pali": "So rāgānuddhaṁsitena cittena sikkhaṁ paccakkhāya hīnāyāvattati.", "sujato": "He disavows the training and returns to a lesser life."}, {"key": "sn17.9:1.10", "pali": "Tassa aññe cīvaraṁ haranti, aññe pattaṁ haranti, aññe nisīdanaṁ haranti,\naññe sūcigharaṁ haranti, verambhavātakkhittasseva sakuṇassa.", "sujato": "Some take his robe, others his bowl, others his sitting cloth,\nothers his needle case, just like the bird flung about by the gale-force winds."}, {"key": "sn17.9:1.11", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.9:1.12", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.9:1.13", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn17.10", "label": "SN 17.10 · With Verses", "children": [{"id": "sn17.10/0", "label": "Linked Discourses 17.10", "rows": [{"key": "sn17.10:0.1", "pali": "Saṁyutta Nikāya 17.10", "sujato": "Linked Discourses 17.10"}, {"key": "sn17.10:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn17.10:0.3", "pali": "Sagāthakasutta", "sujato": "With Verses"}]}, {"id": "sn17.10/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.10:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.10:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.10:1.3", "pali": "Idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ passāmi sakkārena abhibhūtaṁ pariyādiṇṇacittaṁ,\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapannaṁ.", "sujato": "Take a case where I see a certain individual whose mind is overcome and overwhelmed by honor.\nWhen their body breaks up, after death, they’re reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn17.10:1.4", "pali": "Idha panāhaṁ, bhikkhave, ekaccaṁ puggalaṁ passāmi asakkārena abhibhūtaṁ pariyādiṇṇacittaṁ,\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapannaṁ.", "sujato": "Take another case where I see a certain individual whose mind is overcome and overwhelmed by lack of honor.\nWhen their body breaks up, after death, they’re reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn17.10:1.5", "pali": "Idha panāhaṁ, bhikkhave, ekaccaṁ puggalaṁ passāmi sakkārena ca asakkārena ca tadubhayena abhibhūtaṁ pariyādiṇṇacittaṁ,\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapannaṁ.", "sujato": "And take another case where I see a certain individual whose mind\nis overcome and overwhelmed by both honor and lack of honor.\nWhen their body breaks up, after death, they’re reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn17.10:1.6", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.10:1.7", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}]}, {"id": "sn17.10/2", "label": "That is what the Buddha said.", "rows": [{"key": "sn17.10:2.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn17.10:2.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn17.10/3", "label": "“Whether they’re honored", "rows": [{"key": "sn17.10:3.1", "pali": "“Yassa sakkariyamānassa,", "sujato": "“Whether they’re honored"}, {"key": "sn17.10:3.2", "pali": "asakkārena cūbhayaṁ;", "sujato": "or not honored, or both,"}, {"key": "sn17.10:3.3", "pali": "Samādhi na vikampati,", "sujato": "their immersion doesn’t waver"}, {"key": "sn17.10:3.4", "pali": "appamāṇavihārino.", "sujato": "as they abide in the immeasurables."}]}, {"id": "sn17.10/4", "label": "They persistently meditate", "rows": [{"key": "sn17.10:4.1", "pali": "Taṁ jhāyinaṁ sātatikaṁ,", "sujato": "They persistently meditate"}, {"key": "sn17.10:4.2", "pali": "sukhumaṁ diṭṭhivipassakaṁ;", "sujato": "with subtle view and discernment."}, {"key": "sn17.10:4.3", "pali": "Upādānakkhayārāmaṁ,", "sujato": "Rejoicing in the ending of grasping,"}, {"key": "sn17.10:4.4", "pali": "āhu sappuriso itī”ti.", "sujato": "they’re said to be a true person.”"}, {"key": "sn17.10:4.5", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn17.10:4.6", "pali": "Paṭhamo vaggo.", "sujato": ""}]}, {"id": "sn17.10/5", "label": "Tassuddānaṁ", "rows": [{"key": "sn17.10:5.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn17.10:5.1", "pali": "Dāruṇo baḷisaṁ kummaṁ,", "sujato": ""}, {"key": "sn17.10:5.2", "pali": "dīghalomi ca mīḷhakaṁ;", "sujato": ""}, {"key": "sn17.10:5.3", "pali": "Asani diddhaṁ siṅgālaṁ,", "sujato": ""}, {"key": "sn17.10:5.4", "pali": "verambhena sagāthakanti.", "sujato": ""}]}]}]}, {"id": "sn17-dutiyavagga", "label": "Dutiyavagga — Chapter Two", "children": [{"id": "sn17.11", "label": "SN 17.11 · A Gold Cup", "children": [{"id": "sn17.11/0", "label": "Linked Discourses 17.11", "rows": [{"key": "sn17.11:0.1", "pali": "Saṁyutta Nikāya 17.11", "sujato": "Linked Discourses 17.11"}, {"key": "sn17.11:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn17.11:0.3", "pali": "Suvaṇṇapātisutta", "sujato": "A Gold Cup"}]}, {"id": "sn17.11/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.11:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.11:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe… adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.11:1.3", "pali": "Idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ evaṁ cetasā ceto paricca pajānāmi:", "sujato": "When I’ve comprehended the mind of a certain individual, I understand:"}, {"key": "sn17.11:1.4", "pali": "‘na cāyamāyasmā suvaṇṇapātiyāpi rūpiyacuṇṇaparipūrāya hetu sampajānamusā bhāseyyā’ti.", "sujato": "‘This venerable would not tell a deliberate lie even for the sake of a gold cup filled with silver powder.’"}, {"key": "sn17.11:1.5", "pali": "Tamenaṁ passāmi aparena samayena lābhasakkārasilokena abhibhūtaṁ pariyādiṇṇacittaṁ sampajānamusā bhāsantaṁ.", "sujato": "But some time later I see them tell a deliberate lie because their mind is overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.11:1.6", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.11:1.7", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.11:1.8", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.12", "label": "SN 17.12 · A Silver Pot", "children": [{"id": "sn17.12/0", "label": "Linked Discourses 17.12", "rows": [{"key": "sn17.12:0.1", "pali": "Saṁyutta Nikāya 17.12", "sujato": "Linked Discourses 17.12"}, {"key": "sn17.12:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn17.12:0.3", "pali": "Rūpiyapātisutta", "sujato": "A Silver Pot"}]}, {"id": "sn17.12/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.12:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.12:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.12:1.3", "pali": "idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ evaṁ cetasā ceto paricca pajānāmi:", "sujato": "When I’ve comprehended the mind of a certain individual, I understand:"}, {"key": "sn17.12:1.4", "pali": "‘na cāyamāyasmā rūpiyapātiyāpi suvaṇṇacuṇṇaparipūrāya hetu sampajānamusā bhāseyyā’ti.", "sujato": "‘This venerable would not tell a deliberate lie even for the sake of a silver pot filled with gold powder.’"}, {"key": "sn17.12:1.5", "pali": "Tamenaṁ passāmi aparena samayena lābhasakkārasilokena abhibhūtaṁ pariyādiṇṇacittaṁ sampajānamusā bhāsantaṁ.", "sujato": "But some time later I see them tell a deliberate lie because their mind is overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.12:1.6", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.12:1.7", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.12:1.8", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.13-20", "label": "SN 17.13–20", "children": [{"id": "sn17.13-20/0", "label": "Linked Discourses 17.13–20", "rows": [{"key": "sn17.13-20:0.1", "pali": "Saṁyutta Nikāya 17.13–20", "sujato": "Linked Discourses 17.13–20"}, {"key": "sn17.13-20:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn17.13-20:0.3", "pali": "Suvaṇṇanikkhasuttādiaṭṭhaka", "sujato": "A Gold Ingot, Etc."}]}, {"id": "sn17.13-20/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.13-20:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.13-20:1.2", "pali": "“Idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ evaṁ cetasā ceto paricca pajānāmi:", "sujato": "“Mendicants, when I’ve comprehended the mind of a certain individual, I understand:"}, {"key": "sn17.13-20:1.3", "pali": "‘na cāyamāyasmā suvaṇṇanikkhassāpi hetu …pe…", "sujato": "‘This venerable would not tell a deliberate lie even for the sake of a gold ingot.’ …”"}, {"key": "sn17.13-20:1.4", "pali": "suvaṇṇanikkhasatassāpi hetu …", "sujato": "“‘… for the sake of a hundred gold ingots.’ …”"}, {"key": "sn17.13-20:1.5", "pali": "siṅgīnikkhassāpi hetu …", "sujato": "“‘… for the sake of a mountain of gold.’ …”"}, {"key": "sn17.13-20:1.6", "pali": "siṅgīnikkhasatassāpi hetu …", "sujato": "“‘… for the sake of a hundred mountains of gold.’ …”"}, {"key": "sn17.13-20:1.7", "pali": "pathaviyāpi jātarūpaparipūrāya hetu …", "sujato": "“‘… for the sake of the whole earth full of gold.’ …”"}, {"key": "sn17.13-20:1.8", "pali": "āmisakiñcikkhahetupi …", "sujato": "“‘… for any kind of material reward.’ …”"}, {"key": "sn17.13-20:1.9", "pali": "jīvitahetupi …", "sujato": "“‘… for the sake of life.’ …”"}, {"key": "sn17.13-20:1.10", "pali": "janapadakalyāṇiyāpi hetu sampajānamusā bhāseyyā’ti.", "sujato": "“‘… for the sake of the finest lady in the land.’"}, {"key": "sn17.13-20:1.11", "pali": "Tamenaṁ passāmi aparena samayena lābhasakkārasilokena abhibhūtaṁ pariyādiṇṇacittaṁ sampajānamusā bhāsantaṁ.", "sujato": "But some time later I see them tell a deliberate lie because their mind is overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.13-20:1.12", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.13-20:1.13", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.13-20:1.14", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn17.13-20:1.15", "pali": "Dutiyo vaggo.", "sujato": ""}]}, {"id": "sn17.13-20/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn17.13-20:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn17.13-20:2.1", "pali": "Dve pāti dve suvaṇṇā ca,", "sujato": ""}, {"key": "sn17.13-20:2.2", "pali": "Siṅgīhi apare duve;", "sujato": ""}, {"key": "sn17.13-20:2.3", "pali": "Pathavī kiñcikkhajīvitaṁ,", "sujato": ""}, {"key": "sn17.13-20:2.4", "pali": "Janapadakalyāṇiyā dasāti.", "sujato": ""}]}]}]}, {"id": "sn17-tatiyavagga", "label": "Tatiyavagga — Chapter Three", "children": [{"id": "sn17.21", "label": "SN 17.21 · A Female", "children": [{"id": "sn17.21/0", "label": "Linked Discourses 17.21", "rows": [{"key": "sn17.21:0.1", "pali": "Saṁyutta Nikāya 17.21", "sujato": "Linked Discourses 17.21"}, {"key": "sn17.21:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.21:0.3", "pali": "Mātugāmasutta", "sujato": "A Female"}]}, {"id": "sn17.21/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.21:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.21:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.21:1.3", "pali": "na tassa, bhikkhave, mātugāmo eko ekassa cittaṁ pariyādāya tiṭṭhati yassa lābhasakkārasiloko cittaṁ pariyādāya tiṭṭhati.", "sujato": "Even if you’re alone with a lady she might not occupy your mind,\nbut possessions, honor and popularity would still occupy your mind."}, {"key": "sn17.21:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.21:1.5", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.21:1.6", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.22", "label": "SN 17.22 · The Finest Lady in the Land", "children": [{"id": "sn17.22/0", "label": "Linked Discourses 17.22", "rows": [{"key": "sn17.22:0.1", "pali": "Saṁyutta Nikāya 17.22", "sujato": "Linked Discourses 17.22"}, {"key": "sn17.22:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.22:0.3", "pali": "Kalyāṇīsutta", "sujato": "The Finest Lady in the Land"}]}, {"id": "sn17.22/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.22:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.22:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.22:1.3", "pali": "na tassa, bhikkhave,\njanapadakalyāṇī ekā ekassa cittaṁ pariyādāya tiṭṭhati yassa lābhasakkārasiloko cittaṁ pariyādāya tiṭṭhati.", "sujato": "Even if you’re alone with the finest lady in the land she might not occupy your mind,\nbut possessions, honor and popularity would still occupy your mind."}, {"key": "sn17.22:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.22:1.5", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.22:1.6", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.23", "label": "SN 17.23 · An Only Son", "children": [{"id": "sn17.23/0", "label": "Linked Discourses 17.23", "rows": [{"key": "sn17.23:0.1", "pali": "Saṁyutta Nikāya 17.23", "sujato": "Linked Discourses 17.23"}, {"key": "sn17.23:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.23:0.3", "pali": "Ekaputtakasutta", "sujato": "An Only Son"}]}, {"id": "sn17.23/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.23:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.23:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.23:1.3", "pali": "saddhā, bhikkhave, upāsikā ekaputtakaṁ piyaṁ manāpaṁ evaṁ sammā āyācamānā āyāceyya:", "sujato": "A faithful laywoman with a dear and beloved only son would rightly appeal to him,"}, {"key": "sn17.23:1.4", "pali": "‘tādiso, tāta, bhavāhi yādiso citto ca gahapati hatthako ca āḷavako’ti.", "sujato": "‘My darling, please be like the householder Citta and Hatthaka of Āḷavī.’"}, {"key": "sn17.23:1.5", "pali": "Esā, bhikkhave, tulā etaṁ pamāṇaṁ mama sāvakānaṁ upāsakānaṁ, yadidaṁ citto ca gahapati hatthako ca āḷavako.", "sujato": "These are a standard and a measure for my male lay disciples, that is, the householder Citta and Hatthaka of Āḷavī."}, {"key": "sn17.23:1.6", "pali": "Sace kho tvaṁ, tāta, agārasmā anagāriyaṁ pabbajasi;", "sujato": "‘But my darling, if you go forth from the lay life to homelessness,"}, {"key": "sn17.23:1.7", "pali": "tādiso, tāta, bhavāhi yādisā sāriputtamoggallānāti.", "sujato": "please be like Sāriputta and Moggallāna.’"}, {"key": "sn17.23:1.8", "pali": "Esā, bhikkhave, tulā etaṁ pamāṇaṁ mama sāvakānaṁ bhikkhūnaṁ, yadidaṁ sāriputtamoggalānā.", "sujato": "These are a standard and a measure for my monk disciples, that is, Sāriputta and Moggallāna."}, {"key": "sn17.23:1.9", "pali": "Mā ca kho tvaṁ, tāta, sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇātūti.", "sujato": "‘And my darling, may you not come into possessions, honor,\nand popularity while you’re still a trainee and haven’t achieved your heart’s desire.’"}, {"key": "sn17.23:1.10", "pali": "Tañce, bhikkhave, bhikkhuṁ sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇāti, so tassa hoti antarāyāya.", "sujato": "If a trainee who hasn’t achieved their heart’s desire comes into possessions,\nhonor, and popularity it’s an obstacle for them."}, {"key": "sn17.23:1.11", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.23:1.12", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.23:1.13", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.24", "label": "SN 17.24 · An Only Daughter", "children": [{"id": "sn17.24/0", "label": "Linked Discourses 17.24", "rows": [{"key": "sn17.24:0.1", "pali": "Saṁyutta Nikāya 17.24", "sujato": "Linked Discourses 17.24"}, {"key": "sn17.24:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.24:0.3", "pali": "Ekadhītusutta", "sujato": "An Only Daughter"}]}, {"id": "sn17.24/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.24:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.24:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.24:1.3", "pali": "saddhā bhikkhave upāsikā ekaṁ dhītaraṁ piyaṁ manāpaṁ evaṁ sammā āyācamānā āyāceyya:", "sujato": "A faithful laywoman with a dear and beloved only daughter would rightly appeal to her,"}, {"key": "sn17.24:1.4", "pali": "‘tādisā, ayye, bhavāhi yādisā khujjuttarā ca upāsikā veḷukaṇḍakiyā ca nandamātā’ti.", "sujato": "‘My darling, please be like the laywomen Khujjuttarā and Veḷukaṇṭakī, Nanda’s mother.’"}, {"key": "sn17.24:1.5", "pali": "Esā, bhikkhave, tulā etaṁ pamāṇaṁ mama sāvikānaṁ upāsikānaṁ, yadidaṁ khujjuttarā ca upāsikā veḷukaṇḍakiyā ca nandamātā.", "sujato": "These are a standard and a measure for my female lay disciples,\nthat is, the laywomen Khujjuttarā and Veḷukaṇṭakī, Nanda’s mother."}, {"key": "sn17.24:1.6", "pali": "Sace kho tvaṁ, ayye, agārasmā anagāriyaṁ pabbajasi;", "sujato": "‘But my darling, if you go forth from the lay life to homelessness,"}, {"key": "sn17.24:1.7", "pali": "tādisā, ayye, bhavāhi yādisā khemā ca bhikkhunī uppalavaṇṇā cāti.", "sujato": "please be like the nuns Khemā and Uppalavaṇṇā.’"}, {"key": "sn17.24:1.8", "pali": "Esā, bhikkhave, tulā etaṁ pamāṇaṁ mama sāvikānaṁ bhikkhunīnaṁ, yadidaṁ khemā ca bhikkhunī uppalavaṇṇā ca.", "sujato": "These are a standard and a measure for my nun disciples, that is, the nuns Khemā and Uppalavaṇṇā."}, {"key": "sn17.24:1.9", "pali": "Mā ca kho tvaṁ, ayye, sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇātūti.", "sujato": "‘And my darling, may you not come into possessions, honor,\nand popularity while you’re still a trainee and haven’t achieved your heart’s desire.’"}, {"key": "sn17.24:1.10", "pali": "Tañce, bhikkhave, bhikkhuniṁ sekhaṁ appattamānasaṁ lābhasakkārasiloko anupāpuṇāti, so tassā hoti antarāyāya.", "sujato": "If a trainee who hasn’t achieved their heart’s desire comes into possessions,\nhonor, and popularity it’s an obstacle for them."}, {"key": "sn17.24:1.11", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.24:1.12", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.24:1.13", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn17.25", "label": "SN 17.25 · Ascetics and Brahmins", "children": [{"id": "sn17.25/0", "label": "Linked Discourses 17.25", "rows": [{"key": "sn17.25:0.1", "pali": "Saṁyutta Nikāya 17.25", "sujato": "Linked Discourses 17.25"}, {"key": "sn17.25:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.25:0.3", "pali": "Samaṇabrāhmaṇasutta", "sujato": "Ascetics and Brahmins"}]}, {"id": "sn17.25/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.25:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.25:1.2", "pali": "“Ye hi keci, bhikkhave,\nsamaṇā vā brāhmaṇā vā lābhasakkārasilokassa assādañca ādīnavañca nissaraṇañca yathābhūtaṁ nappajānanti,", "sujato": "“Mendicants, there are ascetics and brahmins who don’t truly understand the gratification,\ndrawback, and escape when it comes to possessions, honor, and popularity."}, {"key": "sn17.25:1.3", "pali": "na me te, bhikkhave, samaṇā vā brāhmaṇā vā samaṇesu vā samaṇasammatā brāhmaṇesu vā brāhmaṇasammatā,\nna ca pana te āyasmantā sāmaññatthaṁ vā brahmaññatthaṁ vā\ndiṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharanti.", "sujato": "I don’t deem them as true ascetics and brahmins.\nThose venerables don’t realize the goal of life as an ascetic or brahmin,\nand don’t live having realized it with their own insight."}, {"key": "sn17.25:1.4", "pali": "Ye ca kho keci, bhikkhave,\nsamaṇā vā brāhmaṇā vā lābhasakkārasilokassa assādañca ādīnavañca nissaraṇañca yathābhūtaṁ pajānanti,", "sujato": "There are ascetics and brahmins who do truly understand the gratification,\ndrawback, and escape when it comes to possessions, honor, and popularity."}, {"key": "sn17.25:1.5", "pali": "te ca kho me, bhikkhave, samaṇā vā brāhmaṇā vā samaṇesu ceva samaṇasammatā brāhmaṇesu ca brāhmaṇasammatā,\nte ca panāyasmanto sāmaññatthañca brahmaññatthañca diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "I deem them as true ascetics and brahmins.\nThose venerables realize the goal of life as an ascetic or brahmin, and live having realized it with their own insight.”"}, {"key": "sn17.25:1.6", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn17.26", "label": "SN 17.26 · Ascetics and Brahmins (2nd)", "children": [{"id": "sn17.26/0", "label": "Linked Discourses 17.26", "rows": [{"key": "sn17.26:0.1", "pali": "Saṁyutta Nikāya 17.26", "sujato": "Linked Discourses 17.26"}, {"key": "sn17.26:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.26:0.3", "pali": "Dutiyasamaṇabrāhmaṇasutta", "sujato": "Ascetics and Brahmins (2nd)"}]}, {"id": "sn17.26/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.26:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.26:1.2", "pali": "“Ye hi keci, bhikkhave,\nsamaṇā vā brāhmaṇā vā lābhasakkārasilokassa samudayañca atthaṅgamañca\nassādañca ādīnavañca nissaraṇañca yathābhūtaṁ nappajānanti …pe…", "sujato": "“There are ascetics and brahmins who don’t truly understand the origin, disappearance,\ngratification, drawback, and escape when it comes to possessions, honor, and popularity …"}, {"key": "sn17.26:1.3", "pali": "pajānanti …pe…", "sujato": "There are ascetics and brahmins who do truly understand …”"}, {"key": "sn17.26:1.4", "pali": "sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": ""}, {"key": "sn17.26:1.5", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn17.27", "label": "SN 17.27 · Ascetics and Brahmins (3rd)", "children": [{"id": "sn17.27/0", "label": "Linked Discourses 17.27", "rows": [{"key": "sn17.27:0.1", "pali": "Saṁyutta Nikāya 17.27", "sujato": "Linked Discourses 17.27"}, {"key": "sn17.27:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.27:0.3", "pali": "Tatiyasamaṇabrāhmaṇasutta", "sujato": "Ascetics and Brahmins (3rd)"}]}, {"id": "sn17.27/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.27:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.27:1.2", "pali": "“Ye hi keci, bhikkhave, samaṇā vā brāhmaṇā vā lābhasakkārasilokaṁ yathābhūtaṁ nappajānanti,\nlābhasakkārasilokasamudayaṁ nappajānanti,\nlābhasakkārasilokanirodhaṁ nappajānanti, lābhasakkārasilokanirodhagāminiṁ paṭipadaṁ nappajānanti …pe…", "sujato": "“There are ascetics and brahmins who don’t truly understand possessions, honor,\nand popularity, their origin, their cessation, and the path that leads to their cessation …"}, {"key": "sn17.27:1.3", "pali": "pajānanti …pe…", "sujato": "There are ascetics and brahmins who do truly understand …”"}, {"key": "sn17.27:1.4", "pali": "sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": ""}, {"key": "sn17.27:1.5", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn17.28", "label": "SN 17.28 · Skin", "children": [{"id": "sn17.28/0", "label": "Linked Discourses 17.28", "rows": [{"key": "sn17.28:0.1", "pali": "Saṁyutta Nikāya 17.28", "sujato": "Linked Discourses 17.28"}, {"key": "sn17.28:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.28:0.3", "pali": "Chavisutta", "sujato": "Skin"}]}, {"id": "sn17.28/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.28:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.28:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.28:1.3", "pali": "Lābhasakkārasiloko, bhikkhave, chaviṁ chindati, chaviṁ chetvā cammaṁ chindati, cammaṁ chetvā maṁsaṁ chindati,\nmaṁsaṁ chetvā nhāruṁ chindati, nhāruṁ chetvā aṭṭhiṁ chindati, aṭṭhiṁ chetvā aṭṭhimiñjaṁ āhacca tiṭṭhati.", "sujato": "They cut through the outer skin, the inner skin, the flesh,\nsinews, and bones, until they reach the marrow and keep pressing."}, {"key": "sn17.28:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.28:1.5", "pali": "evañhi vo bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.28:1.6", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.29", "label": "SN 17.29 · A Rope", "children": [{"id": "sn17.29/0", "label": "Linked Discourses 17.29", "rows": [{"key": "sn17.29:0.1", "pali": "Saṁyutta Nikāya 17.29", "sujato": "Linked Discourses 17.29"}, {"key": "sn17.29:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.29:0.3", "pali": "Rajjusutta", "sujato": "A Rope"}]}, {"id": "sn17.29/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.29:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.29:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.29:1.3", "pali": "Lābhasakkārasiloko, bhikkhave, chaviṁ chindati, chaviṁ chetvā cammaṁ chindati, cammaṁ chetvā maṁsaṁ chindati,\nmaṁsaṁ chetvā nhāruṁ chindati, nhāruṁ chetvā aṭṭhiṁ chindati, aṭṭhiṁ chetvā aṭṭhimiñjaṁ āhacca tiṭṭhati.", "sujato": "They cut through the outer skin, the inner skin, the flesh,\nsinews, and bones, until they reach the marrow and keep pressing."}]}, {"id": "sn17.29/2", "label": "Suppose a strong man was to twist…", "rows": [{"key": "sn17.29:2.1", "pali": "Seyyathāpi, bhikkhave, balavā puriso daḷhāya vāḷarajjuyā jaṅghaṁ veṭhetvā ghaṁseyya.", "sujato": "Suppose a strong man was to twist a strong horse-hair rope around your shin and tighten it."}, {"key": "sn17.29:2.2", "pali": "Sā chaviṁ chindeyya, chaviṁ chetvā cammaṁ chindeyya, cammaṁ chetvā maṁsaṁ chindeyya,\nmaṁsaṁ chetvā nhāruṁ chindeyya, nhāruṁ chetvā aṭṭhiṁ chindeyya, aṭṭhiṁ chetvā aṭṭhimiñjaṁ āhacca tiṭṭheyya.", "sujato": "It would cut through the outer skin, the inner skin, the flesh,\nsinews, and bones, until it reached the marrow and kept pressing."}, {"key": "sn17.29:2.3", "pali": "Evameva kho, bhikkhave, lābhasakkārasiloko chaviṁ chindati,\nchaviṁ chetvā cammaṁ chindati, cammaṁ chetvā maṁsaṁ chindati,\nmaṁsaṁ chetvā nhāruṁ chindati, nhāruṁ chetvā aṭṭhiṁ chindati, aṭṭhiṁ chetvā aṭṭhimiñjaṁ āhacca tiṭṭhati.", "sujato": "In the same way, possessions, honor, and popularity cut through the outer skin,\nthe inner skin, the flesh, sinews, and bones, until they reach the marrow and keep pressing."}, {"key": "sn17.29:2.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.29:2.5", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.29:2.6", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn17.30", "label": "SN 17.30 · A Mendicant With Defilements Ended", "children": [{"id": "sn17.30/0", "label": "Linked Discourses 17.30", "rows": [{"key": "sn17.30:0.1", "pali": "Saṁyutta Nikāya 17.30", "sujato": "Linked Discourses 17.30"}, {"key": "sn17.30:0.2", "pali": "3.\nTatiyavagga", "sujato": "Chapter Three"}, {"key": "sn17.30:0.3", "pali": "Bhikkhusutta", "sujato": "A Mendicant With Defilements Ended"}]}, {"id": "sn17.30/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.30:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.30:1.2", "pali": "“Yopi so, bhikkhave, bhikkhu arahaṁ khīṇāsavo tassapāhaṁ lābhasakkārasiloko antarāyāya vadāmī”ti.", "sujato": "“Mendicants, possessions, honor,\nand popularity are an obstacle even for a mendicant who is perfected, with defilements ended.”"}, {"key": "sn17.30:1.3", "pali": "Evaṁ vutte, āyasmā ānando bhagavantaṁ etadavoca:", "sujato": "When he said this, Venerable Ānanda said to the Buddha,"}, {"key": "sn17.30:1.4", "pali": "“kissa pana, bhante, khīṇāsavassa bhikkhuno lābhasakkārasiloko antarāyāyā”ti?", "sujato": "“Sir, what do possessions, honor, and popularity obstruct for a mendicant with defilements ended?”"}, {"key": "sn17.30:1.5", "pali": "“Yā hissa sā, ānanda, akuppā cetovimutti nāhaṁ tassā lābhasakkārasilokaṁ antarāyāya vadāmi.", "sujato": "“Ānanda, I don’t say that possessions, honor, and popularity obstruct the unshakable freedom of heart."}, {"key": "sn17.30:1.6", "pali": "Ye ca khvassa, ānanda,\nappamattassa ātāpino pahitattassa viharato diṭṭhadhammasukhavihārā\nadhigatā tesāhamassa lābhasakkārasilokaṁ antarāyāya vadāmi.", "sujato": "But I do say that possessions, honor,\nand popularity obstruct the achievement of blissful meditations in this life for a meditator who is diligent,\nkeen, and resolute."}, {"key": "sn17.30:1.7", "pali": "Evaṁ dāruṇo kho, ānanda, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "So grim are possessions, honor, and popularity—bitter and harsh,\nan obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.30:1.8", "pali": "Tasmātihānanda, evaṁ sikkhitabbaṁ:", "sujato": "So you should train like this:"}, {"key": "sn17.30:1.9", "pali": "‘uppannaṁ lābhasakkārasilokaṁ pajahissāma, na ca no uppanno lābhasakkārasiloko cittaṁ pariyādāya ṭhassatī’ti.", "sujato": "‘We will give up arisen possessions, honor, and popularity, and we won’t let them occupy our minds.’"}, {"key": "sn17.30:1.10", "pali": "Evañhi vo, ānanda, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}, {"key": "sn17.30:1.11", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn17.30:1.12", "pali": "Tatiyo vaggo.", "sujato": ""}]}, {"id": "sn17.30/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn17.30:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn17.30:2.1", "pali": "Mātugāmo ca kalyāṇī,", "sujato": ""}, {"key": "sn17.30:2.2", "pali": "putto ca ekadhītu ca;", "sujato": ""}, {"key": "sn17.30:2.3", "pali": "Samaṇabrāhmaṇā tīṇi,", "sujato": ""}, {"key": "sn17.30:2.4", "pali": "chavi rajju ca bhikkhunāti.", "sujato": ""}]}]}]}, {"id": "sn17-catutthavagga", "label": "Catutthavagga — Chapter Four", "children": [{"id": "sn17.31", "label": "SN 17.31 · Schism", "children": [{"id": "sn17.31/0", "label": "Linked Discourses 17.31", "rows": [{"key": "sn17.31:0.1", "pali": "Saṁyutta Nikāya 17.31", "sujato": "Linked Discourses 17.31"}, {"key": "sn17.31:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.31:0.3", "pali": "Bhindisutta", "sujato": "Schism"}]}, {"id": "sn17.31/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.31:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.31:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.31:1.3", "pali": "Lābhasakkārasilokena abhibhūto pariyādiṇṇacitto, bhikkhave, devadatto saṅghaṁ bhindi.", "sujato": "Devadatta split the Saṅgha because his mind was overcome and overwhelmed by possessions, honor, and popularity."}, {"key": "sn17.31:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.31:1.5", "pali": "sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.31:1.6", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn17.32", "label": "SN 17.32 · Skillful Root", "children": [{"id": "sn17.32/0", "label": "Linked Discourses 17.32", "rows": [{"key": "sn17.32:0.1", "pali": "Saṁyutta Nikāya 17.32", "sujato": "Linked Discourses 17.32"}, {"key": "sn17.32:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.32:0.3", "pali": "Kusalamūlasutta", "sujato": "Skillful Root"}]}, {"id": "sn17.32/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.32:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.32:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.32:1.3", "pali": "Lābhasakkārasilokena abhibhūtassa pariyādiṇṇacittassa, bhikkhave, devadattassa kusalamūlaṁ samucchedamagamā.", "sujato": "Devadatta cut off his skillful root because his mind was overcome and overwhelmed by possessions, honor, and popularity."}, {"key": "sn17.32:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.32:1.5", "pali": "sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.32:1.6", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.33", "label": "SN 17.33 · Skillful Quality", "children": [{"id": "sn17.33/0", "label": "Linked Discourses 17.33", "rows": [{"key": "sn17.33:0.1", "pali": "Saṁyutta Nikāya 17.33", "sujato": "Linked Discourses 17.33"}, {"key": "sn17.33:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.33:0.3", "pali": "Kusaladhammasutta", "sujato": "Skillful Quality"}]}, {"id": "sn17.33/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.33:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.33:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.33:1.3", "pali": "Lābhasakkārasilokena abhibhūtassa pariyādiṇṇacittassa, bhikkhave, devadattassa kusalo dhammo samucchedamagamā.", "sujato": "Devadatta cut off his skillful quality because his mind was overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.33:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.33:1.5", "pali": "sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.33:1.6", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn17.34", "label": "SN 17.34 · Bright Quality", "children": [{"id": "sn17.34/0", "label": "Linked Discourses 17.34", "rows": [{"key": "sn17.34:0.1", "pali": "Saṁyutta Nikāya 17.34", "sujato": "Linked Discourses 17.34"}, {"key": "sn17.34:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.34:0.3", "pali": "Sukkadhammasutta", "sujato": "Bright Quality"}]}, {"id": "sn17.34/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.34:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.34:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko.", "sujato": "“Possessions, honor, and popularity are grim …"}, {"key": "sn17.34:1.3", "pali": "Lābhasakkārasilokena abhibhūtassa pariyādiṇṇacittassa, bhikkhave, devadattassa sukko dhammo samucchedamagamā.", "sujato": "Devadatta cut off his bright quality because his mind was overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.34:1.4", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.34:1.5", "pali": "sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.34:1.6", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn17.35", "label": "SN 17.35 · Shortly After He Left", "children": [{"id": "sn17.35/0", "label": "Linked Discourses 17.35", "rows": [{"key": "sn17.35:0.1", "pali": "Saṁyutta Nikāya 17.35", "sujato": "Linked Discourses 17.35"}, {"key": "sn17.35:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.35:0.3", "pali": "Acirapakkantasutta", "sujato": "Shortly After He Left"}]}, {"id": "sn17.35/1", "label": "At one time the Buddha was staying…", "rows": [{"key": "sn17.35:1.1", "pali": "Ekaṁ samayaṁ bhagavā rājagahe viharati gijjhakūṭe pabbate acirapakkante devadatte.", "sujato": "At one time the Buddha was staying near Rājagaha, on the Vulture’s Peak Mountain, not long after Devadatta had left."}, {"key": "sn17.35:1.2", "pali": "Tatra kho bhagavā devadattaṁ ārabbha bhikkhū āmantesi:", "sujato": "There the Buddha spoke to the mendicants about Devadatta:"}, {"key": "sn17.35:1.3", "pali": "“attavadhāya, bhikkhave, devadattassa lābhasakkārasiloko udapādi, parābhavāya devadattassa lābhasakkārasiloko udapādi.", "sujato": "“Possessions, honor, and popularity came to Devadatta for his own ruin and downfall."}]}, {"id": "sn17.35/2", "label": "It’s like a banana plant …", "rows": [{"key": "sn17.35:2.1", "pali": "Seyyathāpi, bhikkhave, kadalī attavadhāya phalaṁ deti, parābhavāya phalaṁ deti;", "sujato": "It’s like a banana plant …"}, {"key": "sn17.35:2.2", "pali": "evameva kho, bhikkhave, attavadhāya devadattassa lābhasakkārasiloko udapādi,\nparābhavāya devadattassa lābhasakkārasiloko udapādi.", "sujato": ""}]}, {"id": "sn17.35/3", "label": "or a bamboo …", "rows": [{"key": "sn17.35:3.1", "pali": "Seyyathāpi, bhikkhave, veḷu attavadhāya phalaṁ deti, parābhavāya phalaṁ deti;", "sujato": "or a bamboo …"}, {"key": "sn17.35:3.2", "pali": "evameva kho, bhikkhave, attavadhāya devadattassa lābhasakkārasiloko udapādi,\nparābhavāya devadattassa lābhasakkārasiloko udapādi.", "sujato": ""}]}, {"id": "sn17.35/4", "label": "or a reed, all of which bear…", "rows": [{"key": "sn17.35:4.1", "pali": "Seyyathāpi, bhikkhave, naḷo attavadhāya phalaṁ deti, parābhavāya phalaṁ deti;", "sujato": "or a reed, all of which bear fruit to their own ruin and downfall …"}, {"key": "sn17.35:4.2", "pali": "evameva kho, bhikkhave, attavadhāya devadattassa lābhasakkārasiloko udapādi,\nparābhavāya devadattassa lābhasakkārasiloko udapādi.", "sujato": ""}]}, {"id": "sn17.35/5", "label": "It’s like a mule, which becomes pregnant…", "rows": [{"key": "sn17.35:5.1", "pali": "Seyyathāpi, bhikkhave, assatarī attavadhāya gabbhaṁ gaṇhāti, parābhavāya gabbhaṁ gaṇhāti;", "sujato": "It’s like a mule, which becomes pregnant to its own ruin and downfall."}, {"key": "sn17.35:5.2", "pali": "evameva kho, bhikkhave, attavadhāya devadattassa lābhasakkārasiloko udapādi,\nparābhavāya devadattassa lābhasakkārasiloko udapādi.", "sujato": "In the same way, possessions, honor, and popularity came to Devadatta for his own ruin and downfall."}, {"key": "sn17.35:5.3", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko.", "sujato": "So grim are possessions, honor, and popularity."}, {"key": "sn17.35:5.4", "pali": "Evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}]}, {"id": "sn17.35/6", "label": "That is what the Buddha said.", "rows": [{"key": "sn17.35:6.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn17.35:6.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn17.35/7", "label": "“The banana plant is destroyed by its…", "rows": [{"key": "sn17.35:7.1", "pali": "“Phalaṁ ve kadaliṁ hanti,", "sujato": "“The banana plant is destroyed by its own fruit,"}, {"key": "sn17.35:7.2", "pali": "phalaṁ veḷuṁ phalaṁ naḷaṁ;", "sujato": "as are the bamboo and the reed."}, {"key": "sn17.35:7.3", "pali": "Sakkāro kāpurisaṁ hanti,", "sujato": "Honor destroys a reprobate,"}, {"key": "sn17.35:7.4", "pali": "gabbho assatariṁ yathā”ti.", "sujato": "as pregnancy destroys a mule.”"}, {"key": "sn17.35:7.5", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn17.36", "label": "SN 17.36 · Five Hundred Carts", "children": [{"id": "sn17.36/0", "label": "Linked Discourses 17.36", "rows": [{"key": "sn17.36:0.1", "pali": "Saṁyutta Nikāya 17.36", "sujato": "Linked Discourses 17.36"}, {"key": "sn17.36:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.36:0.3", "pali": "Pañcarathasatasutta", "sujato": "Five Hundred Carts"}]}, {"id": "sn17.36/1", "label": "Near Rājagaha, in the Bamboo Grove, the…", "rows": [{"key": "sn17.36:1.1", "pali": "Rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "Near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground."}, {"key": "sn17.36:1.2", "pali": "Tena kho pana samayena devadattassa ajātasattukumāro pañcahi rathasatehi sāyaṁ pātaṁ upaṭṭhānaṁ gacchati,\npañca ca thālipākasatāni bhattābhihāro abhiharīyati.", "sujato": "Now at that time Prince Ajātasattu was going with five hundred carts at daybreak and dusk to attend on Devadatta,\npresenting him with an offering of five hundred servings of food."}, {"key": "sn17.36:1.3", "pali": "Atha kho sambahulā bhikkhū yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho te bhikkhū bhagavantaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to the Buddha, bowed, sat down to one side, and said to him,"}, {"key": "sn17.36:1.4", "pali": "“devadattassa, bhante, ajātasattukumāro pañcahi rathasatehi sāyaṁ pātaṁ upaṭṭhānaṁ gacchati,\npañca ca thālipākasatāni bhattābhihāro abhiharīyatī”ti.", "sujato": "“Sir, Prince Ajātasattu is going with five hundred carts at daybreak and dusk to attend on Devadatta,\npresenting him with an offering of five hundred servings of food.”"}, {"key": "sn17.36:1.5", "pali": "“Mā, bhikkhave, devadattassa lābhasakkārasilokaṁ pihayittha.", "sujato": "“Mendicants, don’t envy Devadatta’s possessions, honor, and popularity."}, {"key": "sn17.36:1.6", "pali": "Yāvakīvañca, bhikkhave, devadattassa ajātasattukumāro pañcahi rathasatehi sāyaṁ pātaṁ upaṭṭhānaṁ gamissati,\npañca ca thālipākasatāni bhattābhihāro āharīyissati, hāniyeva,\nbhikkhave, devadattassa pāṭikaṅkhā kusalesu dhammesu, no vuddhi.", "sujato": "As long as Prince Ajātasattu goes with five hundred carts at daybreak and dusk to attend on Devadatta,\npresenting him with an offering of five hundred servings of food,\nDevadatta can expect decline, not growth, in skillful qualities."}]}, {"id": "sn17.36/2", "label": "If they were to lance a boil…", "rows": [{"key": "sn17.36:2.1", "pali": "Seyyathāpi, bhikkhave, caṇḍassa kukkurassa nāsāya pittaṁ bhindeyyuṁ,\nevañhi so, bhikkhave, kukkuro bhiyyoso mattāya caṇḍataro assa;", "sujato": "If they were to lance a boil on a wild dog’s nose, it would get even wilder."}, {"key": "sn17.36:2.2", "pali": "evameva, bhikkhave, yāvakīvañca devadattassa ajātasattukumāro pañcahi rathasatehi sāyaṁ pātaṁ upaṭṭhānaṁ gamissati,\npañca ca thālipākasatāni bhattābhihāro āharīyissati, hāniyeva,\nbhikkhave, devadattassa pāṭikaṅkhā kusalesu dhammesu, no vuddhi.", "sujato": "In the same way, as long as Prince Ajātasattu goes with five hundred carts at daybreak and dusk to attend on Devadatta,\npresenting him with an offering of five hundred servings of food,\nDevadatta can expect decline, not growth, in skillful qualities."}, {"key": "sn17.36:2.3", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko …pe…", "sujato": "So grim are possessions, honor, and popularity. …”"}, {"key": "sn17.36:2.4", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": ""}, {"key": "sn17.36:2.5", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn17.37", "label": "SN 17.37 · Mother", "children": [{"id": "sn17.37/0", "label": "Linked Discourses 17.37", "rows": [{"key": "sn17.37:0.1", "pali": "Saṁyutta Nikāya 17.37", "sujato": "Linked Discourses 17.37"}, {"key": "sn17.37:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.37:0.3", "pali": "Mātusutta", "sujato": "Mother"}]}, {"id": "sn17.37/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.37:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.37:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim, bitter, and harsh.\nThey’re an obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.37:1.3", "pali": "Idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ evaṁ cetasā ceto paricca pajānāmi:", "sujato": "When I’ve comprehended the mind of a certain individual, I understand:"}, {"key": "sn17.37:1.4", "pali": "‘na cāyamāyasmā mātupi hetu sampajānamusā bhāseyyā’ti.", "sujato": "‘This venerable would not tell a deliberate lie even for the sake of their mother.’"}, {"key": "sn17.37:1.5", "pali": "Tamenaṁ passāmi aparena samayena lābhasakkārasilokena abhibhūtaṁ pariyādiṇṇacittaṁ sampajānamusā bhāsantaṁ.", "sujato": "But some time later I see them tell a deliberate lie because their mind is overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.37:1.6", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "So grim are possessions, honor, and popularity—bitter and harsh,\nan obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.37:1.7", "pali": "Tasmātiha, bhikkhave, evaṁ sikkhitabbaṁ:", "sujato": "So you should train like this:"}, {"key": "sn17.37:1.8", "pali": "‘uppannaṁ lābhasakkārasilokaṁ pajahissāma.", "sujato": "‘We will give up arisen possessions, honor, and popularity, and we won’t let them occupy our minds.’"}, {"key": "sn17.37:1.9", "pali": "Na ca no uppanno lābhasakkārasiloko cittaṁ pariyādāya ṭhassatī’ti.", "sujato": ""}, {"key": "sn17.37:1.10", "pali": "Evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}, {"key": "sn17.37:1.11", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn17.38-43", "label": "SN 17.38–43", "children": [{"id": "sn17.38-43/0", "label": "Linked Discourses 17.38–43", "rows": [{"key": "sn17.38-43:0.1", "pali": "Saṁyutta Nikāya 17.38–43", "sujato": "Linked Discourses 17.38–43"}, {"key": "sn17.38-43:0.2", "pali": "4.\nCatutthavagga", "sujato": "Chapter Four"}, {"key": "sn17.38-43:0.3", "pali": "Pitusuttādichakka", "sujato": "Father, Etc."}]}, {"id": "sn17.38-43/1", "label": "At Sāvatthī.", "rows": [{"key": "sn17.38-43:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn17.38-43:1.2", "pali": "“Dāruṇo, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "“Possessions, honor, and popularity are grim, bitter, and harsh.\nThey’re an obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.38-43:1.3", "pali": "Idhāhaṁ, bhikkhave, ekaccaṁ puggalaṁ evaṁ cetasā ceto paricca pajānāmi:", "sujato": "When I’ve comprehended the mind of a certain individual, I understand:"}, {"key": "sn17.38-43:1.4", "pali": "‘na cāyamāyasmā pitupi hetu …pe…", "sujato": "‘This venerable would not tell a deliberate lie even for the sake of their father.’ …”"}, {"key": "sn17.38-43:1.5", "pali": "(vitthāretabbaṁ) …", "sujato": "(Tell in full as in SN 17.37.)"}, {"key": "sn17.38-43:1.6", "pali": "bhātupi hetu …", "sujato": "“‘… brother.’ …”"}, {"key": "sn17.38-43:1.7", "pali": "bhaginiyāpi hetu …", "sujato": "“‘… sister.’ …”"}, {"key": "sn17.38-43:1.8", "pali": "puttassapi hetu …", "sujato": "“‘… son.’ …”"}, {"key": "sn17.38-43:1.9", "pali": "dhītuyāpi hetu …", "sujato": "“‘… daughter.’ …”"}, {"key": "sn17.38-43:1.10", "pali": "pajāpatiyāpi hetu sampajānamusā bhāseyyā’ti.", "sujato": "“‘… wife.’"}, {"key": "sn17.38-43:1.11", "pali": "Tamenaṁ passāmi aparena samayena lābhasakkārasilokena abhibhūtaṁ pariyādiṇṇacittaṁ sampajānamusā bhāsantaṁ.", "sujato": "But some time later I see them tell a deliberate lie because their mind is overcome and overwhelmed by possessions,\nhonor, and popularity."}, {"key": "sn17.38-43:1.12", "pali": "Evaṁ dāruṇo kho, bhikkhave, lābhasakkārasiloko kaṭuko pharuso antarāyiko anuttarassa yogakkhemassa adhigamāya.", "sujato": "So grim are possessions, honor, and popularity—bitter and harsh,\nan obstacle to reaching the supreme sanctuary from the yoke."}, {"key": "sn17.38-43:1.13", "pali": "Tasmātiha, bhikkhave, evaṁ sikkhitabbaṁ:", "sujato": "So you should train like this:"}, {"key": "sn17.38-43:1.14", "pali": "‘uppannaṁ lābhasakkārasilokaṁ pajahissāma, na ca no uppanno lābhasakkārasiloko cittaṁ pariyādāya ṭhassatī’ti.", "sujato": "‘We will give up arisen possessions, honor, and popularity, and we won’t let them occupy our minds.’"}, {"key": "sn17.38-43:1.15", "pali": "Evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "That’s how you should train.”"}, {"key": "sn17.38-43:1.16", "pali": "Terasamaṁ.", "sujato": ""}, {"key": "sn17.38-43:1.17", "pali": "Catuttho vaggo.", "sujato": ""}]}, {"id": "sn17.38-43/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn17.38-43:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn17.38-43:2.1", "pali": "Bhindi mūlaṁ duve dhammā,", "sujato": ""}, {"key": "sn17.38-43:2.2", "pali": "pakkantaṁ ratha mātari;", "sujato": ""}, {"key": "sn17.38-43:2.3", "pali": "Pitā bhātā ca bhaginī,", "sujato": ""}, {"key": "sn17.38-43:2.4", "pali": "putto dhītā pajāpatīti.", "sujato": ""}, {"key": "sn17.38-43:2.5", "pali": "Lābhasakkārasaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses on possessions, honor, and popularity are complete."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn17.1:2.1": ["<i>Dāruṇa</i> is “grim”, fe
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 69", "rows": [{"key": "mn69:0.1", "pali": "Majjhima Nikāya 69", "sujato": "Middle Discourses 69", "thanissaro": "", "pts": ""}, {"key": "mn69:0.2", "pali": "Goliyānisutta", "sujato": "With Gulissāni", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn69:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "[than] THUS have I heard:"}, {"key": "mn69:1.2", "pali": "ekaṁ samayaṁ bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "thanissaro": "on one occasion the Blessed One was staying near Rājagaha in the Bamboo Forest, the Squirrels’ Sanctuary.", "pts": "At one time the Lord was staying near Rājagaha in the Bamboo Grove at the squirrels' feeding place."}]}, {"id": "2", "label": "Now at that time a wilderness mendicant…", "rows": [{"key": "mn69:2.1", "pali": "Tena kho pana samayena goliyāni nāma bhikkhu āraññiko padasamācāro saṅghamajjhe osaṭo hoti kenacideva karaṇīyena.", "sujato": "Now at that time a wilderness mendicant of boorish behavior named\nGulissāni had come down to the midst of the Saṅgha on some business.", "thanissaro": "And on that occasion a monk named Golissāni, a wilderness-dweller of crude behavior,\nhad entered into the midst of the Saṅgha on some business or other.", "pts": "At that time a monk named Gulissāni, forest-gone, uncouth in his habits,\nhad arrived in the midst of an Order on some business or other."}, {"key": "mn69:2.2", "pali": "Tatra kho āyasmā sāriputto goliyāniṁ bhikkhuṁ ārabbha bhikkhū āmantesi:", "sujato": "There Venerable Sāriputta spoke to the mendicants about Gulissāni:", "thanissaro": "Then Ven. Sāriputta, with reference to the monk named Golissāni, addressed the monks:", "pts": "Thereupon the venerable Sāriputta addressed the monks concerning the monk Gulissāni, saying:"}]}, {"id": "3", "label": "“Reverends, a wilderness monk who has come…", "rows": [{"key": "mn69:3.1", "pali": "“Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena sabrahmacārīsu sagāravena bhavitabbaṁ sappatissena.", "sujato": "“Reverends, a wilderness monk who has come to stay in the Saṅgha\nshould have respect and reverence for his spiritual companions.", "thanissaro": "“Friends, when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nit should be with respect and with deference toward his fellows in the holy life.", "pts": "\"Your reverences, a monk who is forest-gone and who comes back to an Order and is staying with an Order,\nshould be deferential and respectful towards his fellow Brahma-farers."}, {"key": "mn69:3.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto sabrahmacārīsu agāravo hoti appatisso, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nis not respectful or deferential toward his fellows in the holy life, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nand is not deferential and respectful towards his fellow Brahma-farers, there will be those who speak about him and say:"}, {"key": "mn69:3.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena, yo ayamāyasmā sabrahmacārīsu agāravo hoti appatisso’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he has no respect and reverence for his spiritual companions?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is not respectful or deferential toward his fellows in the holy life?’", "pts": "'What is the good of this venerable one who is forest-gone and who lives alone in the forest doing as he pleases but\nwho is not deferential and respectful towards his fellow Brahma-farers? - there will be those who speak about him."}, {"key": "mn69:3.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": ""}, {"key": "mn69:3.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena sabrahmacārīsu sagāravena bhavitabbaṁ sappatissena.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha\nshould have respect and reverence for his spiritual companions.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nit should be with respect and with deference toward his fellows in the holy life.", "pts": "Therefore a monk who is forest-gone and who has come back to an Order and is staying\nwith an Order should bo deferential and respectful towards his fellow-Brahma-farers. ■"}]}, {"id": "4", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:4.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena āsanakusalena bhavitabbaṁ:", "sujato": "A wilderness monk who has come to stay in the Saṅgha should be careful where he sits, thinking:", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should be skilled with regard to seats,", "pts": "Your reverences, a monk who is forest-gone and who comes back to an Order and is staying with an Order,\nshould be skilled about the seats, thinking:"}, {"key": "mn69:4.2", "pali": "‘iti there ca bhikkhū nānupakhajja nisīdissāmi nave ca bhikkhū na āsanena paṭibāhissāmī’ti.", "sujato": "‘I shall sit so that I don’t intrude on the senior monks and I don’t block the junior monks from a seat.’", "thanissaro": "(thinking,) ‘I will sit without encroaching on the elder monks,", "pts": "'I will sit down not encroaching on (the space intended for) monks who are elders,\nnor will I keep newly ordained monks from a seat.'"}, {"key": "mn69:4.3", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto na āsanakusalo hoti, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "and not preempting the new monks from a seat.’\nIf a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nis not skilled with regard to seats, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nand is not skilled about the seats, there will be those who speak about him and say:"}, {"key": "mn69:4.4", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena, yo ayamāyasmā āsanakusalo na hotī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s not careful where he sits?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he doesn’t know even a point of good conduct?’", "pts": "'What is the good of this venerable one who is forest-gone and who lives alone in the forest doing what he\npleases but who does not even know the rule about decent conduct? - there will be those who speak about him."}, {"key": "mn69:4.5", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": ""}, {"key": "mn69:4.6", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena āsanakusalena bhavitabbaṁ.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha should be careful where he sits.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should be skilled with regard to seats.", "pts": "Therefore a monk who is forest-gone and who has come back to an Order\nand is staying with an Order should be skilled about the seats. ■"}, {"key": "mn69:4.7", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena ābhisamācārikopi dhammo jānitabbo.", "sujato": "A wilderness monk who has come to stay in the Saṅgha should know even the supplementary regulations.", "thanissaro": "", "pts": "Your reverences, a monk who is forest-gone and who comes back to an Order and is staying with an Order,\nshould not enter a village too early nor return during the day."}, {"key": "mn69:4.8", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto ābhisamācārikampi dhammaṁ na jānāti, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "", "pts": ""}, {"key": "mn69:4.9", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā ābhisamācārikampi dhammaṁ na jānātī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he doesn’t even know the supplementary regulations?’", "thanissaro": "", "pts": ""}, {"key": "mn69:4.10", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn69:4.11", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena ābhisamācārikopi dhammo jānitabbo.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha should know even the supplementary regulations.", "thanissaro": "", "pts": ""}]}, {"id": "5", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:5.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena nātikālena gāmo pavisitabbo nātidivā paṭikkamitabbaṁ.", "sujato": "A wilderness monk who has come to stay in the Saṅgha shouldn’t\nenter the village too early or return too late in the day.", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not enter the village too early or return too late in the day.", "pts": ""}, {"key": "mn69:5.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto atikālena gāmaṁ pavisati atidivā paṭikkamati,\ntassa bhavanti vattāro.", "sujato": "If he does so, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nenters the village too early and returns too late in the day, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nand enters a village too early and returns during the day, there will be those who speak about him and say:"}, {"key": "mn69:5.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo\nayamāyasmā atikālena gāmaṁ pavisati atidivā paṭikkamatī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he enters the village too early or returns too late in the day?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he enters the village too early and returns too late in the day?’", "pts": "'What is the good of this venerable one who is forest-gone and who lives alone in the forest doing as he pleases\nbut who enters a village too early and returns during the day' - there will be those who speak about him."}, {"key": "mn69:5.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": ""}, {"key": "mn69:5.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena nātikālena gāmo pavisitabbo, nātidivā paṭikkamitabbaṁ.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha\nshouldn’t enter the village too early or return too late in the day.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not enter the village too early or return too late in the day.", "pts": "Therefore a monk who is forest-gone and who comes back to an Order and is staying with\nan Order should not enter a village too early and should not return during the day. ■"}]}, {"id": "6", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:6.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena na purebhattaṁ pacchābhattaṁ kulesu cārittaṁ āpajjitabbaṁ.", "sujato": "A wilderness monk who has come to stay in the Saṅgha shouldn’t visit families before or after the meal.", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not go calling on families before or after the meal.\nIf a wilderness-dwelling monk,", "pts": "Your reverences, a monk who is forest-gone and who comes back to an Order and is\nstaying with an Order should not call upon families before a meal or after a meal."}, {"key": "mn69:6.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto purebhattaṁ pacchābhattaṁ kulesu cārittaṁ āpajjati,\ntassa bhavanti vattāro.", "sujato": "If he does so, there’ll be some who say:", "thanissaro": "coming into the Saṅgha and living in the Saṅgha,\ngoes calling on families before or after the meal, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nand calls upon families before a meal or after a meal, there will be those who will speak about him and say:"}, {"key": "mn69:6.3", "pali": "‘Ayaṁ nūnimassāyasmato āraññikassa ekassāraññe serivihārena viharato vikālacariyā bahulīkatā,\ntamenaṁ saṅghagatampi samudācaratī’ti—", "sujato": "‘This wilderness venerable, staying alone and autonomous in the wilderness,\nmust be used to wandering about at the wrong time, since he behaves like this when he’s come to the Saṅgha.’", "thanissaro": "‘Surely this venerable wilderness-dweller, alone in the wilderness, living independently,\nspends his time making untimely visits, given that he behaves this way even when he has come into the Saṅgha.’", "pts": "'Is not this walking at a wrong time frequently practised by this venerable one who is forest-gone,\nliving alone in the forest doing as he pleases, and does not he also boast about it to one who is in the Order?' -"}, {"key": "mn69:6.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:6.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena na purebhattaṁ pacchābhattaṁ kulesu cārittaṁ āpajjitabbaṁ.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha shouldn’t visit families before or after the meal.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not go calling on families before or after the meal.", "pts": "Therefore a monk who is forest-gone and who comes back to an Order and is staying\nwith an Order should call upon families neither before a meal nor after a meal. ■"}]}, {"id": "7", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:7.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena anuddhatena bhavitabbaṁ acapalena.", "sujato": "A wilderness monk who has come to stay in the Saṅgha shouldn’t be restless and fickle.", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not be high-strung & unruly.", "pts": "Your reverences, a monk who is forest-gone and who comes back to an Order and is staying with an Order,\nshould not be proud or inconsiderate."}, {"key": "mn69:7.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto uddhato hoti capalo, tassa bhavanti vattāro.", "sujato": "If he is, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nis high-strung & unruly, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nis proud and inconsiderate, there will be those who speak about him and say:"}, {"key": "mn69:7.3", "pali": "‘Idaṁ nūnimassāyasmato āraññikassa ekassāraññe serivihārena viharato uddhaccaṁ cāpalyaṁ bahulīkataṁ,\ntamenaṁ saṅghagatampi samudācaratī’ti—", "sujato": "‘This wilderness venerable, staying alone and autonomous in the wilderness,\nmust be used to being restless and fickle, since he behaves like this when he’s come to the Saṅgha.’", "thanissaro": "‘Surely this venerable wilderness-dweller, alone in the wilderness, living independently,\nspends his time being high-strung & unruly, given that he behaves this way even in the Saṅgha.’", "pts": "'Is not this pride and inconsiderateness frequently practised by this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, and does not he also boast about it to one who is in the Order? -"}, {"key": "mn69:7.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those that speak about him."}, {"key": "mn69:7.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena anuddhatena bhavitabbaṁ acapalena.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha shouldn’t be restless and fickle.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not be high-strung & unruly.", "pts": "Therefore a monk who is forest-gone and who comes back to an Order\nand is staying with an Order should not be proud and inconsiderate. ■"}]}, {"id": "8", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:8.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena amukharena bhavitabbaṁ avikiṇṇavācena.", "sujato": "A wilderness monk who has come to stay in the Saṅgha shouldn’t be scurrilous and loose-tongued.", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not be talkative & loose in his words.", "pts": "Your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nshould not be scurrilous or of loose talk."}, {"key": "mn69:8.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto mukharo hoti vikiṇṇavāco, tassa bhavanti vattāro.", "sujato": "If he is, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nis talkative & loose in his words, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nis scurrilous and of loose talk, there will be those who speak about him and say:"}, {"key": "mn69:8.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā mukharo vikiṇṇavāco’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s scurrilous and loose-tongued?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is talkative & loose in his words?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is scurrilous and of loose talk?' -"}, {"key": "mn69:8.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:8.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena amukharena bhavitabbaṁ avikiṇṇavācena.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha shouldn’t be scurrilous and loose-tongued.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should not be talkative & loose in his words.", "pts": "Therefore a monk who is forest-gone and who comes back to an Order and\nis staying with an Order should not be scurrilous or of loose talk. ■"}]}, {"id": "9", "label": "A wilderness monk who has come to…", "rows": [{"key": "mn69:9.1", "pali": "Āraññikenāvuso, bhikkhunā saṅghagatena saṅghe viharantena suvacena bhavitabbaṁ kalyāṇamittena.", "sujato": "A wilderness monk who has come to stay in the Saṅgha should be easy to admonish, with good friends.", "thanissaro": "“When a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should be easy to instruct & have admirable friends.", "pts": "Your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nshould be of pleasant speech, a friend of the lovely."}, {"key": "mn69:9.2", "pali": "Sace, āvuso, āraññiko bhikkhu saṅghagato saṅghe viharanto dubbaco hoti pāpamitto, tassa bhavanti vattāro.", "sujato": "If he’s hard to admonish, with bad friends, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk, coming into the Saṅgha and living in the Saṅgha,\nis hard to instruct & has evil friends, there are those who would say of him,", "pts": "If, .your reverences, a monk who is forest-gone comes back to an Order and is staying with an Order,\nis of wrong speech,, a friend of the evil, there will be those who speak about him and say:"}, {"key": "mn69:9.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā dubbaco pāpamitto’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s hard to admonish, with bad friends?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is hard to instruct & has evil friends?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is of wrong speech, a friend of the evil?' -"}, {"key": "mn69:9.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:9.5", "pali": "Tasmā āraññikena bhikkhunā saṅghagatena saṅghe viharantena suvacena bhavitabbaṁ kalyāṇamittena.", "sujato": "That’s why a wilderness monk who has come to stay in the Saṅgha should be easy to admonish, with good friends.", "thanissaro": "when a wilderness-dwelling monk has come into the Saṅgha and is living in the Saṅgha,\nhe should be easy to instruct & have admirable friends.", "pts": "Therefore a monk who is forest-gone comes back to an Order and is staying with an Order,\nshould be of pleasant speech, a friend of the lovely. ■"}]}, {"id": "10", "label": "A wilderness monk should guard the sense…", "rows": [{"key": "mn69:10.1", "pali": "Āraññikenāvuso, bhikkhunā indriyesu guttadvārena bhavitabbaṁ.", "sujato": "A wilderness monk should guard the sense doors.", "thanissaro": "“A wilderness-dwelling monk should guard the doors of his senses.", "pts": "Your reverences, a monk who is forest-gone should be guarded as to the doors of his sense-organs."}, {"key": "mn69:10.2", "pali": "Sace, āvuso, āraññiko bhikkhu indriyesu aguttadvāro hoti, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk does not guard the doors of his senses, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is not guarded as to the doors of his sense-organs,\nthere will be those who speak about him and say:"}, {"key": "mn69:10.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā indriyesu aguttadvāro’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he doesn’t guard the sense doors?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he doesn’t guard the doors to his senses?’", "pts": "'What is the good of this venerable one who is forest-gone, living alone in a forest doing as he pleases,\nbut who is not guarded as to the doors of his sense-organs?' -"}, {"key": "mn69:10.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:10.5", "pali": "Tasmā āraññikena bhikkhunā indriyesu guttadvārena bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should guard the sense doors.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should guard the doors of his senses.", "pts": "Therefore a monk who is forest-gone should be guarded as to the doors of his sense-organs. ■"}]}, {"id": "11", "label": "A wilderness monk should eat in moderation.", "rows": [{"key": "mn69:11.1", "pali": "Āraññikenāvuso, bhikkhunā bhojane mattaññunā bhavitabbaṁ.", "sujato": "A wilderness monk should eat in moderation.", "thanissaro": "“A wilderness-dwelling monk should know moderation in eating.", "pts": "Your reverences, a monk who is forest-gone should be moderate in eating."}, {"key": "mn69:11.2", "pali": "Sace, āvuso, āraññiko bhikkhu bhojane amattaññū hoti, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk doesn’t know moderation in eating, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is not moderate in eating,\nthere will be those who speak about him and say:"}, {"key": "mn69:11.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā bhojane amattaññū’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he eats too much?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he doesn’t know moderation in eating?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is not moderate in eating?' -"}, {"key": "mn69:11.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:11.5", "pali": "Tasmā āraññikena bhikkhunā bhojane mattaññunā bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should eat in moderation.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should know moderation in eating.", "pts": "Therefore a monk who is forest-gone should be moderate in eating. ■"}]}, {"id": "12", "label": "A wilderness monk should be committed to…", "rows": [{"key": "mn69:12.1", "pali": "Āraññikenāvuso, bhikkhunā jāgariyaṁ anuyuttena bhavitabbaṁ.", "sujato": "A wilderness monk should be committed to wakefulness.", "thanissaro": "“A wilderness-dwelling monk should be devoted to wakefulness.", "pts": "Your reverences, a monk who is forest-gone should be intent on vigilance."}, {"key": "mn69:12.2", "pali": "Sace, āvuso, āraññiko bhikkhu jāgariyaṁ ananuyutto hoti, tassa bhavanti vattāro.", "sujato": "If he isn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk is not devoted to wakefulness, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is not intent on vigilance,\nthere will be those who speak about him and say:"}, {"key": "mn69:12.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā jāgariyaṁ ananuyutto’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s not committed to wakefulness?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he isn’t devoted to wakefulness?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is not intent on vigilance?' -"}, {"key": "mn69:12.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:12.5", "pali": "Tasmā āraññikena bhikkhunā jāgariyaṁ anuyuttena bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should be committed to wakefulness.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should be devoted to wakefulness.", "pts": "Therefore a monk who is forest-gone should be intent on vigilance. ■"}]}, {"id": "13", "label": "A wilderness monk should be energetic.", "rows": [{"key": "mn69:13.1", "pali": "Āraññikenāvuso, bhikkhunā āraddhavīriyena bhavitabbaṁ.", "sujato": "A wilderness monk should be energetic.", "thanissaro": "“A wilderness-dwelling monk should be one with aroused persistence.", "pts": "Your reverences, a monk who is forest-gone should be put forth energy."}, {"key": "mn69:13.2", "pali": "Sace, āvuso, āraññiko bhikkhu kusīto hoti, tassa bhavanti vattāro.", "sujato": "If he isn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk is lazy, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is lazy, there will be those who speak about him and say:"}, {"key": "mn69:13.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā kusīto’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s not energetic?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is lazy?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is lazy?' -"}, {"key": "mn69:13.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:13.5", "pali": "Tasmā āraññikena bhikkhunā āraddhavīriyena bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should be energetic.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should be one with aroused persistence.", "pts": "Therefore a monk who is forest-gone should put forth energy. ■"}]}, {"id": "14", "label": "A wilderness monk should be mindful.", "rows": [{"key": "mn69:14.1", "pali": "Āraññikenāvuso, bhikkhunā upaṭṭhitassatinā bhavitabbaṁ.", "sujato": "A wilderness monk should be mindful.", "thanissaro": "“A wilderness-dwelling monk should be one with established mindfulness.", "pts": "Your reverences, a monk who is forest-gone should arouse mindfulness."}, {"key": "mn69:14.2", "pali": "Sace, āvuso, āraññiko bhikkhu muṭṭhassatī hoti, tassa bhavanti vattāro.", "sujato": "If he isn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk is confused in his mindfulness, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is of muddled mindfulness,"}, {"key": "mn69:14.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā muṭṭhassatī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he’s not mindful?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is confused in his mindfulness?’", "pts": "there will be those who speak about him and say:\n'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is of muddled mindfulness?' -"}, {"key": "mn69:14.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:14.5", "pali": "Tasmā āraññikena bhikkhunā upaṭṭhitassatinā bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should be mindful.", "thanissaro": "a wilderness-dwelling monk should be one with established mindfulness.", "pts": "Therefore a monk who is forest-gone should arouse mindfulness. ■"}]}, {"id": "15", "label": "A wilderness monk should have immersion.", "rows": [{"key": "mn69:15.1", "pali": "Āraññikenāvuso, bhikkhunā samāhitena bhavitabbaṁ.", "sujato": "A wilderness monk should have immersion.", "thanissaro": "“A wilderness-dwelling monk should be one with concentration.", "pts": "Your reverences, a monk who is forest-gone should have concentration."}, {"key": "mn69:15.2", "pali": "Sace, āvuso, āraññiko bhikkhu asamāhito hoti, tassa bhavanti vattāro.", "sujato": "If he doesn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk is without concentration, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone has not concentration, there will be those who speak about him and say:"}, {"key": "mn69:15.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā asamāhito’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he doesn’t have immersion?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is without concentration?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who has not concentration?' -"}, {"key": "mn69:15.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:15.5", "pali": "Tasmā āraññikena bhikkhunā samāhitena bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should have immersion.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should be one with concentration.", "pts": "Therefore a monk who is forest-gone should have concentration. ■"}]}, {"id": "16", "label": "A wilderness monk should be wise.", "rows": [{"key": "mn69:16.1", "pali": "Āraññikenāvuso, bhikkhunā paññavatā bhavitabbaṁ.", "sujato": "A wilderness monk should be wise.", "thanissaro": "“A wilderness-dwelling monk should be one with discernment.", "pts": "Your reverences, a monk who is forest-gone should have wisdom."}, {"key": "mn69:16.2", "pali": "Sace, āvuso, āraññiko bhikkhu duppañño hoti, tassa bhavanti vattāro.", "sujato": "If he isn’t, there’ll be some who say:", "thanissaro": "If a wilderness-dwelling monk is of dull discernment, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone is poor in wisdom, there will be those who speak about him and say:"}, {"key": "mn69:16.3", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā duppañño’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness, since he’s not wise?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, when he is of dull discernment?’", "pts": "'What is the good of this venerable one who is forest-gone,\nliving alone in a forest doing as he pleases, but who is poor in wisdom?' -"}, {"key": "mn69:16.4", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "", "pts": "there will be those who speak about him."}, {"key": "mn69:16.5", "pali": "Tasmā āraññikena bhikkhunā paññavatā bhavitabbaṁ.", "sujato": "That’s why a wilderness monk should be wise.", "thanissaro": "Because there are those who would say that of him, a wilderness-dwelling monk should be one with discernment.", "pts": "Therefore a monk who is forest-gone should have wisdom. ■"}]}, {"id": "17", "label": "A wilderness monk should make an effort…", "rows": [{"key": "mn69:17.1", "pali": "Āraññikenāvuso, bhikkhunā abhidhamme abhivinaye yogo karaṇīyo.", "sujato": "A wilderness monk should make an effort in regards to the teaching and training.", "thanissaro": "“A wilderness-dwelling monk should apply himself to the higher Dhamma & higher Vinaya.", "pts": "Your reverences, earnest study in Further-Dhamma, in Further-Discipline should be made by a monk who is forest-gone."}, {"key": "mn69:17.2", "pali": "Santāvuso, āraññikaṁ bhikkhuṁ abhidhamme abhivinaye pañhaṁ pucchitāro.", "sujato": "There are those who will question a wilderness monk about the teaching and training.", "thanissaro": "There are those who will ask the wilderness-dwelling monk a question about the higher Dhamma & higher Vinaya.", "pts": "Your reverences, there are those who will question a monk who is forest-gone on Further-Dhamma and Further-Discipline."}, {"key": "mn69:17.3", "pali": "Sace, āvuso, āraññiko bhikkhu abhidhamme abhivinaye pañhaṁ puṭṭho na sampāyati, tassa bhavanti vattāro.", "sujato": "If he is stumped, there’ll be some who say:", "thanissaro": "If he, when asked a question about the higher Dhamma & higher Vinaya,\nisn’t able to answer, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone, on being asked a question on Further-Dhamma,\non Further-Discipline, does not succeed (in answering it), there will be those who speak about him and say:"}, {"key": "mn69:17.4", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo\nayamāyasmā abhidhamme abhivinaye pañhaṁ puṭṭho na sampāyatī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he is stumped by a question about the teaching and training?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness, living independently,\nif he, when asked a question about the higher Dhamma & higher Vinaya, isn’t able to answer?’", "pts": "'What is the good of this venerable one who is forest-gone, living alone in a forest doing as he pleases, but who,\non being asked a question on Further-Dhamma, on Further-Discipline,\ndoes not succeed (in answering it)? - there will be those who speak about him."}, {"key": "mn69:17.5", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": ""}, {"key": "mn69:17.6", "pali": "Tasmā āraññikena bhikkhunā abhidhamme abhivinaye yogo karaṇīyo.", "sujato": "That’s why a wilderness monk should make an effort to learn the teaching and training.", "thanissaro": "a wilderness-dwelling monk should apply himself to the higher Dhamma & higher Vinaya.", "pts": "Therefore earnest study should be made in Further-Dhamma, in Further-Disciphne by a monk who is forest-gone. ■"}]}, {"id": "18", "label": "A wilderness monk should practice meditation to…", "rows": [{"key": "mn69:18.1", "pali": "Āraññikenāvuso, bhikkhunā ye te santā vimokkhā atikkamma rūpe āruppā tattha yogo karaṇīyo.", "sujato": "A wilderness monk should practice meditation to realize the peaceful liberations that are formless, transcending form.", "thanissaro": "“A wilderness-dwelling monk should apply himself to the peaceful emancipations,", "pts": "Your reverences, earnest study should be made by a monk who is forest-gone concerning those\nthat are the peaceful Deliverances and are incorporeal having transcended material shapes."}, {"key": "mn69:18.2", "pali": "Santāvuso, āraññikaṁ bhikkhuṁ ye te santā vimokkhā atikkamma rūpe āruppā tattha pañhaṁ pucchitāro.", "sujato": "There are those who will question a wilderness monk about the formless liberations.", "thanissaro": "formlessnesses beyond forms.\nThere are those who will ask the wilderness-dwelling monk a question about the peaceful emancipations,\nformlessnesses beyond forms.", "pts": "There are, your reverences,\nthose who will question a monk who is forest-gone about those that are the\npeaceful Deliverances and are incorporeal having transcended material shapes."}, {"key": "mn69:18.3", "pali": "Sace, āvuso, āraññiko bhikkhu ye te santā vimokkhā atikkamma rūpe āruppā tattha pañhaṁ puṭṭho na sampāyati,\ntassa bhavanti vattāro.", "sujato": "If he is stumped, there’ll be some who say:", "thanissaro": "If he, when asked a question about the peaceful emancipations,\nformlessnesses beyond forms, isn’t able to answer, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone,\non being asked a question about those that are the peaceful\nDeliverances and are incorporeal having transcended material shapes,"}, {"key": "mn69:18.4", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā ye\nte santā vimokkhā atikkamma rūpe āruppā tattha pañhaṁ puṭṭho na sampāyatī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he is stumped by a question about the formless liberations?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness, living independently,\nif he, when asked a question about the peaceful emancipations, formlessnesses beyond forms, isn’t able to answer?’", "pts": "does not succeed (in answering it) there will be those who speak about him and say:\n'What is the good of this venerable one who is forest-gone, living alone in a forest doing as he pleases, but who,\non being asked a question about those that are the peaceful\nDeliverances and are incorporeal having transcended material shapes,\ndoes not succeed (in answering it)? -"}, {"key": "mn69:18.5", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:18.6", "pali": "Tasmā āraññikena bhikkhunā ye te santā vimokkhā atikkamma rūpe āruppā tattha yogo karaṇīyo.", "sujato": "That’s why a wilderness monk should practice meditation to realize\nthe peaceful liberations that are formless, transcending form.", "thanissaro": "a wilderness-dwelling monk should apply himself to the peaceful emancipations, formlessnesses beyond forms.", "pts": "Therefore earnest study should be made by a monk who is forest-gone concerning those that\nare the peaceful Deliverances and are incorporeal having transcended material shapes. ■"}]}, {"id": "19", "label": "A wilderness monk should practice meditation to…", "rows": [{"key": "mn69:19.1", "pali": "Āraññikenāvuso, bhikkhunā uttari manussadhamme yogo karaṇīyo.", "sujato": "A wilderness monk should practice meditation to realize the superhuman state.", "thanissaro": "“A wilderness-dwelling monk should apply himself to a superior human attainment.", "pts": "Your reverences, earnest study in states of further-men should be made by a monk who is forest-gone."}, {"key": "mn69:19.2", "pali": "Santāvuso, āraññikaṁ bhikkhuṁ uttari manussadhamme pañhaṁ pucchitāro.", "sujato": "There are those who will question a wilderness monk about the superhuman state.", "thanissaro": "There are those who will ask the wilderness-dwelling monk a question about a superior human attainment.\nIf he,", "pts": "There are, your reverences, those who will question a monk who is forest-gone about states of further-men."}, {"key": "mn69:19.3", "pali": "Sace, āvuso, āraññiko bhikkhu uttari manussadhamme pañhaṁ puṭṭho na sampāyati, tassa bhavanti vattāro.", "sujato": "If he is stumped, there’ll be some who say:", "thanissaro": "when asked a question about a superior human attainment, isn’t able to answer, there are those who would say of him,", "pts": "If, your reverences, a monk who is forest-gone, on being asked a question about states of further-men,\ndoes not succeed (in answering it), there will be those who speak about him and say:"}, {"key": "mn69:19.4", "pali": "‘Kiṁ panimassāyasmato āraññikassa ekassāraññe serivihārena yo ayamāyasmā yassatthāya pabbajito tamatthaṁ na jānātī’ti—", "sujato": "‘What’s the point of this wilderness venerable’s staying alone and autonomous in the wilderness,\nsince he doesn’t know the goal for which he went forth?’", "thanissaro": "‘What good has it done for this venerable wilderness-dweller to be alone in the wilderness,\nliving independently, if he, when asked a question about a superior human attainment, isn’t able to answer?’", "pts": "'What is the good of this venerable one who is forest-gone, living alone in a forest doing as he pleases,\nbut who does not even know the goal for the sake of which he has gone forth? -"}, {"key": "mn69:19.5", "pali": "tassa bhavanti vattāro.", "sujato": "", "thanissaro": "Because there are those who would say that of him,", "pts": "there will be those who speak about him."}, {"key": "mn69:19.6", "pali": "Tasmā āraññikena bhikkhunā uttari manussadhamme yogo karaṇīyo”ti.", "sujato": "That’s why a wilderness monk should practice meditation to realize the superhuman state.”", "thanissaro": "a wilderness-dwelling monk should apply himself to a superior human attainment.”", "pts": "Therefore earnest study in states of further-men should be made by a monk who is forest-gone.\""}, {"key": "mn69:19.7", "pali": "Evaṁ vutte, āyasmā mahāmoggallāno āyasmantaṁ sāriputtaṁ etadavoca:", "sujato": "When Venerable Sāriputta said this, Venerable Mahāmoggallāna said to him,", "thanissaro": "When this was said, Ven. Mahā Moggallāna said to Ven. Sāriputta,", "pts": "This said, the venerable Moggallāna the Great spoke thus to the venerable Sāriputta:"}, {"key": "mn69:19.8", "pali": "“āraññikeneva nu kho, āvuso sāriputta, bhikkhunā ime dhammā samādāya vattitabbā udāhu gāmantavihārināpī”ti?", "sujato": "“Reverend Sāriputta, should these things be undertaken and followed only by wilderness monks,\nor by those who live within a village as well?”", "thanissaro": "“Sāriputta my friend, are these qualities to be undertaken & practiced only by a wilderness-dwelling monk,\nor also by a village-dwelling monk?”", "pts": "\"Reverend Sāriputta,\nare these things to be taken up and practised only by a monk who is forest-gone or also by one staying near a village?\""}, {"key": "mn69:19.9", "pali": "“Āraññikenāpi kho, āvuso moggallāna, bhikkhunā ime dhammā samādāya vattitabbā pageva gāmantavihārinā”ti.", "sujato": "“Reverend Moggallāna, these things should be undertaken and followed by wilderness monks,\nand still more by those who live within a village.”", "thanissaro": "“Moggallāna my friend, these qualities are to be undertaken & practiced by a wilderness-dwelling monk,\nand even more so by a village-dwelling monk.”", "pts": "\"These things, reverend Moggallāna, are certainly to be taken up and practised by a monk who is forest-gone,\nall the more by one staying near a village.\""}, {"key": "mn69:19.10", "pali": "Goliyānisuttaṁ niṭṭhitaṁ navamaṁ.", "sujato": "", "thanissaro": "", "pts": "Discourse on Gulissāni"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn69:2.1": ["Gulissāni (variant Goliyāni) is on
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

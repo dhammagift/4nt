@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 50", "rows": [{"key": "mn50:0.1", "pali": "Majjhima Nikāya 50", "sujato": "Middle Discourses 50", "pts": ""}, {"key": "mn50:0.2", "pali": "Māratajjanīyasutta", "sujato": "The Condemnation of Māra", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn50:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn50:1.2", "pali": "ekaṁ samayaṁ āyasmā mahāmoggallāno bhaggesu viharati susumāragire bhesakaḷāvane migadāye.", "sujato": "At one time Venerable Mahāmoggallāna was staying in the land of the Bhaggas at Crocodile’s Bellow,\nin the deer park at Bhesakaḷā’s Wood.", "pts": "At one time the venerable Moggallāna the Great was staying among\nthe Bhaggas in Sumsumāragira in Bhesakaḷā Grove in the deer-park."}]}, {"id": "2", "label": "At that time Moggallāna was walking mindfully…", "rows": [{"key": "mn50:2.1", "pali": "Tena kho pana samayena āyasmā mahāmoggallāno abbhokāse caṅkamati.", "sujato": "At that time Moggallāna was walking mindfully in the open air.", "pts": "Now at that time the venerable Moggallāna the Great was pacing up and down in the open."}, {"key": "mn50:2.2", "pali": "Tena kho pana samayena māro pāpimā āyasmato mahāmoggallānassa kucchigato hoti koṭṭhamanupaviṭṭho.", "sujato": "Now at that time Māra the Wicked had got inside Moggallāna’s belly.", "pts": "Now at that time Māra the Evil One, entering the venerable Moggallāna the Great's belly, got into his stomach."}, {"key": "mn50:2.3", "pali": "Atha kho āyasmato mahāmoggallānassa etadahosi:", "sujato": "Moggallāna thought,", "pts": "Then it occurred to the venerable Moggallāna the Great:"}, {"key": "mn50:2.4", "pali": "“kiṁ nu kho me kucchi garugaro viya?", "sujato": "“Why now is my belly so very heavy,", "pts": "\"Now why is my belly heavy as if it were heaped full?\"[]"}, {"key": "mn50:2.5", "pali": "Māsācitaṁ maññe”ti.", "sujato": "like I’ve just eaten a load of beans?”", "pts": ""}, {"key": "mn50:2.6", "pali": "Atha kho āyasmā mahāmoggallāno caṅkamā orohitvā vihāraṁ pavisitvā paññatte āsane nisīdi.", "sujato": "Then he stepped down from the walking path, entered his dwelling, sat down on the seat spread out,", "pts": "Then the venerable Moggallāna the Great, having come down from the place for pacing up and down in,\nhaving entered the dwelling-place, sat down on a seat made ready."}]}, {"id": "3", "label": "and investigated inside himself.", "rows": [{"key": "mn50:3.1", "pali": "Nisajja kho āyasmā mahāmoggallāno paccattaṁ yoniso manasākāsi.", "sujato": "and investigated inside himself.", "pts": "As he was sitting down, the venerable Moggallāna the Great reflected carefully about himself."}, {"key": "mn50:3.2", "pali": "Addasā kho āyasmā mahāmoggallāno māraṁ pāpimantaṁ kucchigataṁ koṭṭhamanupaviṭṭhaṁ.", "sujato": "He saw that Māra the Wicked had got inside his belly.", "pts": "Then the venerable Moggallāna the Great saw that Māra the Evil One, having entered his belly, had got into his stomach;"}, {"key": "mn50:3.3", "pali": "Disvāna māraṁ pāpimantaṁ etadavoca:", "sujato": "So he said to Māra,", "pts": "seeing him, he spoke thus to Māra the Evil One:"}, {"key": "mn50:3.4", "pali": "“nikkhama, pāpima;", "sujato": "“Come out, Wicked One,", "pts": "\"Get out, Evil One;"}, {"key": "mn50:3.5", "pali": "nikkhama, pāpima.", "sujato": "come out!", "pts": "Evil One, get out;"}, {"key": "mn50:3.6", "pali": "Mā tathāgataṁ vihesesi, mā tathāgatasāvakaṁ.", "sujato": "Do not harass the Realized One or his disciple.", "pts": ""}, {"key": "mn50:3.7", "pali": "Mā te ahosi dīgharattaṁ ahitāya dukkhāyā”ti.", "sujato": "Don’t create lasting harm and suffering for yourself!”", "pts": "do not annoy a Tathāgata or a Tathāgata's disciple, lest for a long time there be woe and sorrow for you.\""}]}, {"id": "4", "label": "Then Māra thought,", "rows": [{"key": "mn50:4.1", "pali": "Atha kho mārassa pāpimato etadahosi:", "sujato": "Then Māra thought,", "pts": "Then it occurred to Māra the Evil One:"}, {"key": "mn50:4.2", "pali": "“ajānameva kho maṁ ayaṁ samaṇo apassaṁ evamāha:", "sujato": "“This ascetic doesn’t really know me or see me when he tells me to come out.", "pts": "\"This recluse speaks thus not even knowing, not even seeing me:"}, {"key": "mn50:4.3", "pali": "‘nikkhama, pāpima;", "sujato": "", "pts": "'Get out, Evil One, Evil One, get out."}, {"key": "mn50:4.4", "pali": "nikkhama, pāpima.", "sujato": "", "pts": ""}, {"key": "mn50:4.5", "pali": "Mā tathāgataṁ vihesesi, mā tathāgatasāvakaṁ.", "sujato": "", "pts": "Do not annoy a Tathāgata or a Tathāgata's disciple, lest for a long time there be woe and sorrow for you.'"}, {"key": "mn50:4.6", "pali": "Mā te ahosi dīgharattaṁ ahitāya dukkhāyā’ti.", "sujato": "", "pts": ""}, {"key": "mn50:4.7", "pali": "Yopissa so satthā sopi maṁ neva khippaṁ jāneyya, kuto pana maṁ ayaṁ sāvako jānissatī”ti?", "sujato": "Not even the Teacher could recognize me so quickly, so how could a disciple?”", "pts": "Even his teacher could not know me so quickly, so how can this disciple know me?\""}]}, {"id": "5", "label": "Then Moggallāna said to Māra,", "rows": [{"key": "mn50:5.1", "pali": "Atha kho āyasmā mahāmoggallāno māraṁ pāpimantaṁ etadavoca:", "sujato": "Then Moggallāna said to Māra,", "pts": "Then the venerable Moggallāna the Great spoke thus to Māra the Evil One:"}, {"key": "mn50:5.2", "pali": "“evampi kho tāhaṁ, pāpima, jānāmi, mā tvaṁ maññittho:", "sujato": "“I know you even when you’re like this, Wicked One.\nDo not think,", "pts": "\"But I do know you, Evil One.\nDo not you think:"}, {"key": "mn50:5.3", "pali": "‘na maṁ jānātī’ti.", "sujato": "‘He doesn’t know me.’", "pts": "'He does not know me.'"}, {"key": "mn50:5.4", "pali": "Māro tvamasi, pāpima;", "sujato": "You are Māra the Wicked.", "pts": "You, Evil One, are Māra."}, {"key": "mn50:5.5", "pali": "tuyhañhi, pāpima, evaṁ hoti:", "sujato": "And you think,", "pts": "It occurred to you, Evil One:"}, {"key": "mn50:5.6", "pali": "‘ajānameva kho maṁ ayaṁ samaṇo apassaṁ evamāha—", "sujato": "‘This ascetic doesn’t really know me or see me when he tells me to come out.", "pts": "\"This recluse speaks thus not even knowing, not even seeing me:"}, {"key": "mn50:5.7", "pali": "nikkhama, pāpima;", "sujato": "", "pts": "'Get out, Evil One, Evil One, get out."}, {"key": "mn50:5.8", "pali": "nikkhama, pāpima.", "sujato": "", "pts": ""}, {"key": "mn50:5.9", "pali": "Mā tathāgataṁ vihesesi, mā tathāgatasāvakaṁ.", "sujato": "", "pts": "Do not annoy a Tathāgata or a Tathāgata's disciple, lest for a long time there be woe and sorrow for you.'"}, {"key": "mn50:5.10", "pali": "Mā te ahosi dīgharattaṁ ahitāya dukkhāyāti.", "sujato": "", "pts": ""}, {"key": "mn50:5.11", "pali": "Yopissa so satthā sopi maṁ neva khippaṁ jāneyya, kuto pana maṁ ayaṁ sāvako jānissatī’”ti?", "sujato": "Not even the Teacher could recognize me so quickly, so how could a disciple?’”", "pts": "Even his teacher could not know me so quickly, so how can this disciple know me?\""}]}, {"id": "6", "label": "Then Māra thought,", "rows": [{"key": "mn50:6.1", "pali": "Atha kho mārassa pāpimato etadahosi:", "sujato": "Then Māra thought,", "pts": "Then it occurred to Māra the Evil One:"}, {"key": "mn50:6.2", "pali": "“jānameva kho maṁ ayaṁ samaṇo passaṁ evamāha:", "sujato": "“This ascetic really does know me and see me when he tells me to come out.”", "pts": "\"It is because this recluse knows and sees me that he speaks thus:"}, {"key": "mn50:6.3", "pali": "‘nikkhama, pāpima;", "sujato": "", "pts": "'Get out, Evil One, Evil One, get out."}, {"key": "mn50:6.4", "pali": "nikkhama, pāpima.", "sujato": "", "pts": ""}, {"key": "mn50:6.5", "pali": "Mā tathāgataṁ vihesesi, mā tathāgatasāvakaṁ.", "sujato": "", "pts": "Do not annoy a Tathāgata or a Tathāgata's disciple, lest for a long time there be woe and sorrow for you.'"}, {"key": "mn50:6.6", "pali": "Mā te ahosi dīgharattaṁ ahitāya dukkhāyā’”ti.", "sujato": "", "pts": ""}, {"key": "mn50:6.7", "pali": "Atha kho māro pāpimā āyasmato mahāmoggallānassa mukhato uggantvā paccaggaḷe aṭṭhāsi.", "sujato": "Then Māra came up out of Moggallāna’s mouth and stood against the door.", "pts": "Then Māra the Evil One, having gone out through the venerable Moggallāna the Great's mouth, stood against the door.[]"}]}, {"id": "7", "label": "Moggallāna saw him there", "rows": [{"key": "mn50:7.1", "pali": "Addasā kho āyasmā mahāmoggallāno māraṁ pāpimantaṁ paccaggaḷe ṭhitaṁ;", "sujato": "Moggallāna saw him there", "pts": "Then the venerable Moggallāna the Great saw Māra the Evil One standing against the door;"}, {"key": "mn50:7.2", "pali": "disvāna māraṁ pāpimantaṁ etadavoca:", "sujato": "and said,", "pts": "seeing him, he spoke thus to Māra the Evil One:"}, {"key": "mn50:7.3", "pali": "“etthāpi kho tāhaṁ, pāpima, passāmi;\nmā tvaṁ maññittho", "sujato": "“I see you even there, Wicked One.\nDo not think,", "pts": "\"Indeed I do see you now, Evil One.\nDo not think:"}, {"key": "mn50:7.4", "pali": "‘na maṁ passatī’ti.", "sujato": "‘He doesn’t see me.’", "pts": "'He does not see me';"}, {"key": "mn50:7.5", "pali": "Eso tvaṁ, pāpima, paccaggaḷe ṭhito.", "sujato": "That’s you, Wicked One, standing against the door.", "pts": "it is you, Evil One, standing against the door."}]}, {"id": "8", "label": "Once upon a time, Wicked One, I…", "rows": [{"key": "mn50:8.1", "pali": "Bhūtapubbāhaṁ, pāpima, dūsī nāma māro ahosiṁ, tassa me kāḷī nāma bhaginī.", "sujato": "Once upon a time, Wicked One, I was a Māra named Dūsī, and I had a sister named Kāḷī.", "pts": "Once upon a time, I, Evil One, was the Māra called Dūsin;[] as such Kāḷi was the name of my sister,"}, {"key": "mn50:8.2", "pali": "Tassā tvaṁ putto.", "sujato": "You were her son,", "pts": "you were her son, thus you were my nephew."}, {"key": "mn50:8.3", "pali": "So me tvaṁ bhāgineyyo ahosi.", "sujato": "which made you my nephew.", "pts": ""}]}, {"id": "9", "label": "At that time Kakusandha, the Blessed One,…", "rows": [{"key": "mn50:9.1", "pali": "Tena kho pana, pāpima, samayena kakusandho bhagavā arahaṁ sammāsambuddho loke uppanno hoti.", "sujato": "At that time Kakusandha, the Blessed One, the perfected one, the fully awakened Buddha arose in the world.", "pts": "Now at that time, Evil One, Kakusandha, the Lord, the perfected one, fully self-awakened one, had uprisen in the world."}, {"key": "mn50:9.2", "pali": "Kakusandhassa kho pana, pāpima,\nbhagavato arahato sammāsambuddhassa vidhurasañjīvaṁ nāma sāvakayugaṁ ahosi aggaṁ bhaddayugaṁ.", "sujato": "Kakusandha had a fine pair of chief disciples named Vidhura and Sañjīva.", "pts": "Now, Evil One, Vidhura and Sañjīva were the pair of disciples which was the chief,\nthe lucky pair of Kakusandha,[] the Lord, the perfected one, the fully self-awakened one."}, {"key": "mn50:9.3", "pali": "Yāvatā kho pana, pāpima, kakusandhassa bhagavato arahato sammāsambuddhassa sāvakā.", "sujato": "Of all the disciples of the Buddha Kakusandha,", "pts": "Of all the disciples, Evil One, of Kakusandha, the Lord, perfected one, fully self-awakened one,"}, {"key": "mn50:9.4", "pali": "Tesu na ca koci āyasmatā vidhurena samasamo hoti yadidaṁ dhammadesanāya.", "sujato": "none were the equal of Venerable Vidhura in teaching Dhamma.", "pts": "there was none there equal to the venerable Vidhura in regard to teaching Dhamma."}, {"key": "mn50:9.5", "pali": "Iminā kho evaṁ, pāpima, pariyāyena āyasmato vidhurassa vidhuroteva samaññā udapādi.", "sujato": "And that’s how he came to be known as Vidhura.", "pts": "It was because of this, Evil One, that the venerable Vidhura's name came to be Vidhura, the Peerless."}]}, {"id": "10", "label": "But when Venerable Sañjīva had gone to…", "rows": [{"key": "mn50:10.1", "pali": "Āyasmā pana, pāpima,\nsañjīvo araññagatopi rukkhamūlagatopi suññāgāragatopi appakasireneva saññāvedayitanirodhaṁ samāpajjati.", "sujato": "But when Venerable Sañjīva had gone to a wilderness, or to the root of a tree,\nor to an empty hut, he easily attained the cessation of perception and feeling.", "pts": "But the venerable Sañjīva, Evil One, forest-gone, gone to the roots of trees and gone to empty places,\nwith no trouble attained the stopping of perceiving and feeling."}, {"key": "mn50:10.2", "pali": "Bhūtapubbaṁ, pāpima, āyasmā sañjīvo aññatarasmiṁ rukkhamūle saññāvedayitanirodhaṁ samāpanno nisinno hoti.", "sujato": "Once upon a time, Sañjīva was sitting at the root of a certain\ntree having attained the cessation of perception and feeling.", "pts": "Once upon a time, Evil One,\nthe venerable Sañjīva was sitting at the root of a certain tree attaining the stopping of perceiving and feeling."}, {"key": "mn50:10.3", "pali": "Addasaṁsu kho, pāpima,\ngopālakā pasupālakā kassakā pathāvino āyasmantaṁ sañjīvaṁ\naññatarasmiṁ rukkhamūle saññāvedayitanirodhaṁ samāpannaṁ nisinnaṁ;", "sujato": "Some cowherds, shepherds, farmers, and passers-by saw him sitting there", "pts": "Then, Evil One, cowherds, goatherds, yeoman farmers,\ntravellers,[] saw the venerable Sañjīva sitting at the root of\nthat tree attaining the stopping of perceiving and feeling;"}, {"key": "mn50:10.4", "pali": "disvāna tesaṁ etadahosi:", "sujato": "and said,", "pts": "having seen him, it occurred to them:"}, {"key": "mn50:10.5", "pali": "‘acchariyaṁ vata bho, abbhutaṁ vata, bho.", "sujato": "‘Oh lord, how incredible, how amazing!", "pts": "'Indeed it is wonderful, indeed it is marvellous, that this recluse is just sitting dead."}, {"key": "mn50:10.6", "pali": "Ayaṁ samaṇo nisinnakova kālaṅkato.", "sujato": "This ascetic passed away while seated.", "pts": ""}, {"key": "mn50:10.7", "pali": "Handa naṁ dahāmā’ti.", "sujato": "We should cremate him.’", "pts": "Come, we will cremate him.'"}, {"key": "mn50:10.8", "pali": "Atha kho te, pāpima,\ngopālakā pasupālakā kassakā pathāvino tiṇañca kaṭṭhañca gomayañca\nsaṅkaḍḍhitvā āyasmato sañjīvassa kāye upacinitvā aggiṁ datvā pakkamiṁsu.", "sujato": "They collected grass, wood, and cow-dung, heaped it all on Sañjīva’s body, set it on fire, and left.", "pts": "Then, Evil One, these cowherds, goatherds, yeomen farmers, travellers,\nhaving collected grass and sticks and cow-dung and having heaped them over the venerable Sañjīva's body,\nlit the fire and departed."}]}, {"id": "11", "label": "Then, when the night had passed, Sañjīva…", "rows": [{"key": "mn50:11.1", "pali": "Atha kho, pāpima, āyasmā sañjīvo tassā rattiyā accayena tāya samāpattiyā vuṭṭhahitvā\ncīvarāni papphoṭetvā pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya gāmaṁ piṇḍāya pāvisi.", "sujato": "Then, when the night had passed, Sañjīva emerged from that attainment, shook out his robes,\nand, since it was morning, he robed up and entered the village for alms.", "pts": "Then, Evil One, the venerable Sañjīva, having emerged towards the end of that night from that attainment,\nhaving shaken his robes, having dressed in the morning, taking his bowl and robe, entered a village for almsfood."}, {"key": "mn50:11.2", "pali": "Addasaṁsu kho te, pāpima, gopālakā pasupālakā kassakā pathāvino āyasmantaṁ sañjīvaṁ piṇḍāya carantaṁ;", "sujato": "Those cowherds, shepherds, farmers, and passers-by saw him wandering for alms", "pts": "Evil One, those cowherds, goatherds, yeomen farmers and travellers saw the venerable Sañjīva walking for almsfood;"}, {"key": "mn50:11.3", "pali": "disvāna nesaṁ etadahosi:", "sujato": "and said,", "pts": "having seen him, it occurred to them:"}, {"key": "mn50:11.4", "pali": "‘acchariyaṁ vata bho, abbhutaṁ vata, bho.", "sujato": "‘Oh lord, how incredible, how amazing!", "pts": "'Indeed it is wonderful,"}, {"key": "mn50:11.5", "pali": "Ayaṁ samaṇo nisinnakova kālaṅkato, svāyaṁ paṭisañjīvito’ti.", "sujato": "This ascetic passed away while seated, and now he has come back to life!’", "pts": "indeed it is marvellous that this recluse who was just sitting dead - that he has come back to life.'[]"}, {"key": "mn50:11.6", "pali": "Iminā kho evaṁ, pāpima, pariyāyena āyasmato sañjīvassa sañjīvoteva samaññā udapādi.", "sujato": "And that’s how he came to be known as Sañjīva.", "pts": "It was because of this, Evil One, that the venerable Sañjīva's name came to be Sañjīva, the Quick."}]}, {"id": "12", "label": "Then it occurred to Māra Dūsī,", "rows": [{"key": "mn50:12.1", "pali": "Atha kho, pāpima, dūsissa mārassa etadahosi:", "sujato": "Then it occurred to Māra Dūsī,", "pts": "Then, Evil One, it occurred to the Māra Dūsin:"}, {"key": "mn50:12.2", "pali": "‘imesaṁ kho ahaṁ bhikkhūnaṁ sīlavantānaṁ kalyāṇadhammānaṁ neva jānāmi āgatiṁ vā gatiṁ vā.", "sujato": "‘I don’t know the course of rebirth of these ethical mendicants of good character.", "pts": "'I simply do not know either the coming or the going of these monks who are of moral habit, lovely in character."}, {"key": "mn50:12.3", "pali": "Yannūnāhaṁ brāhmaṇagahapatike anvāviseyyaṁ—", "sujato": "Why don’t I take possession of these brahmins and householders and say,", "pts": "Suppose I were to visit brahmans and householders (and say):"}, {"key": "mn50:12.4", "pali": "etha, tumhe bhikkhū sīlavante kalyāṇadhamme akkosatha paribhāsatha rosetha vihesetha.", "sujato": "“Come, all of you, abuse, attack, harass, and trouble the ethical mendicants of good character.", "pts": "\"Come, do you revile, abuse, vex, annoy the monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reviled,\nabused, vexed and annoyed by you there will be a change of heart so that Dūsin the Māra might get a chance over them.\""}, {"key": "mn50:12.5", "pali": "Appeva nāma tumhehi akkosiyamānānaṁ paribhāsiyamānānaṁ rosiyamānānaṁ vihesiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran’ti.", "sujato": "Hopefully by doing this we can upset their minds so that Māra Dūsī can find a vulnerability.”’", "pts": ""}, {"key": "mn50:12.6", "pali": "Atha kho te, pāpima, dūsī māro brāhmaṇagahapatike anvāvisi:", "sujato": "And that’s exactly what he did.", "pts": "'Then, Evil One, the Māra Dūsin visited brahmans and householders (and said):"}, {"key": "mn50:12.7", "pali": "‘etha, tumhe bhikkhū sīlavante kalyāṇadhamme akkosatha paribhāsatha rosetha vihesetha.", "sujato": "", "pts": "\"Come, do you revile, abuse, vex, annoy the monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reviled,\nabused, vexed and annoyed by you there will be a change of heart so that Dūsin the Māra might get a chance over them.\""}, {"key": "mn50:12.8", "pali": "Appeva nāma tumhehi akkosiyamānānaṁ paribhāsiyamānānaṁ rosiyamānānaṁ vihesiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran’ti.", "sujato": "", "pts": ""}]}, {"id": "13", "label": "Then those brahmins and householders abused, attacked,…", "rows": [{"key": "mn50:13.1", "pali": "Atha kho te, pāpima,\nbrāhmaṇagahapatikā anvāvisiṭṭhā dūsinā mārena bhikkhū sīlavante kalyāṇadhamme akkosanti paribhāsanti rosenti vihesenti:", "sujato": "Then those brahmins and householders abused, attacked, harassed, and troubled the ethical mendicants of good character:", "pts": "Then, Evil One, those brahmans and householders who had been visited by the Māra Dūsin reviled,\nabused, vexed and annoyed the monks who were of good moral habit, lovely in character, saying:"}, {"key": "mn50:13.2", "pali": "‘ime pana muṇḍakā samaṇakā ibbhā kiṇhā bandhupādāpaccā “jhāyinosmā jhāyinosmā”ti\npattakkhandhā adhomukhā madhurakajātā jhāyanti pajjhāyanti nijjhāyanti apajjhāyanti.", "sujato": "‘These shavelings, fake ascetics, primitives, black spawn from the feet of our kinsman, say,\n“We practice absorption meditation!\nWe practice absorption meditation!”\nShoulders drooping, downcast, and dopey, they meditate and concentrate and contemplate and ruminate.", "pts": "'But these little shaveling recluses are menials, black, the offscourings of our kins- man's feet.[] They say,\n\"We are meditatives, we are meditatives\", and with their shoulders drooping, with their faces cast down,\nas if drugged,[] they meditate, they meditate absorbed, they meditate more absorbed, they meditate quite absorbed.[]"}, {"key": "mn50:13.3", "pali": "Seyyathāpi nāma ulūko rukkhasākhāyaṁ mūsikaṁ maggayamāno jhāyati pajjhāyati nijjhāyati apajjhāyati;", "sujato": "They’re just like an owl on a branch,\nwhich meditates and concentrates and contemplates and ruminates as it hunts a mouse.", "pts": "As an owl on the branch of a tree when tracking a mouse meditates,\nmeditates absorbed, meditates more absorbed, meditates quite absorbed,"}, {"key": "mn50:13.4", "pali": "evamevime muṇḍakā samaṇakā ibbhā kiṇhā bandhupādāpaccā “jhāyinosmā jhāyinosmā”ti\npattakkhandhā adhomukhā madhurakajātā jhāyanti pajjhāyanti nijjhāyanti apajjhāyanti.", "sujato": "", "pts": "so do these little shaveling recluses, menials, black the offscourings of our kinsman's feet meditate quite absorbed."}, {"key": "mn50:13.5", "pali": "Seyyathāpi nāma kotthu nadītīre macche maggayamāno jhāyati pajjhāyati nijjhāyati apajjhāyati;", "sujato": "They’re just like a jackal on a river-bank,\nwhich meditates and concentrates and contemplates and ruminates as it hunts a fish.", "pts": "And as a jackal on the bank of a river when tracking fish meditates,\nmeditates absorbed, meditates more absorbed, meditates quite absorbed,"}, {"key": "mn50:13.6", "pali": "evamevime muṇḍakā samaṇakā ibbhā kiṇhā bandhupādāpaccā “jhāyinosmā jhāyinosmā”ti\npattakkhandhā adhomukhā madhurakajātā jhāyanti pajjhāyanti nijjhāyanti apajjhāyanti.", "sujato": "", "pts": "so do these little shaveling recluses, menials, black the offscourings of our kinsman's feet meditate quite absorbed."}, {"key": "mn50:13.7", "pali": "Seyyathāpi nāma biḷāro sandhisamalasaṅkaṭīre mūsikaṁ maggayamāno jhāyati pajjhāyati nijjhāyati apajjhāyati;", "sujato": "They’re just like a cat by an alley or a drain or a dustbin,\nwhich meditates and concentrates and contemplates and ruminates as it hunts a mouse.", "pts": "And as a cat on the edge of a refuse heap when tracking a mouse[] meditates,\nmeditates absorbed, meditates more absorbed,"}, {"key": "mn50:13.8", "pali": "evamevime muṇḍakā samaṇakā ibbhā kiṇhā bandhupādāpaccā “jhāyinosmā jhāyinosmā”ti\npattakkhandhā adhomukhā madhurakajātā jhāyanti pajjhāyanti nijjhāyanti apajjhāyanti.", "sujato": "", "pts": "meditates quite absorbed, so do these little shaveling recluses, menials,\nblack the offscourings of our kinsman's feet meditate quite absorbed."}, {"key": "mn50:13.9", "pali": "Seyyathāpi nāma gadrabho vahacchinno sandhisamalasaṅkaṭīre jhāyati pajjhāyati nijjhāyati apajjhāyati;", "sujato": "They’re just like an unladen donkey by an alley or a drain or a dustbin,\nwhich meditates and concentrates and contemplates and ruminates.", "pts": "And as an ass at the edge of a refuse-heap, its burden removed, meditates, meditates absorbed,\nmeditates more absorbed, meditates quite absorbed, so do these little shaveling recluses,"}, {"key": "mn50:13.10", "pali": "evamevime muṇḍakā samaṇakā ibbhā kiṇhā bandhupādāpaccā “jhāyinosmā jhāyinosmā”ti\npattakkhandhā adhomukhā madhurakajātā jhāyanti pajjhāyanti nijjhāyanti apajjhāyantī’ti.", "sujato": "In the same way, these shavelings, fake ascetics, primitives, black spawn from the feet of our kinsman, say,\n“We practice absorption meditation!\nWe practice absorption meditation!”\nShoulders drooping, downcast, and dopey, they meditate and concentrate and contemplate and ruminate.’", "pts": "menials, black, the offscourings of our kinsman's feet, saying:\n'We are meditatives, we are meditatives,' with their shoulders drooping, with their faces cast down,\nas if drugged, meditate, meditate absorbed, meditate more absorbed, meditate quite absorbed."}, {"key": "mn50:13.11", "pali": "Ye kho pana, pāpima,\ntena samayena manussā kālaṁ karonti yebhuyyena kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjanti.", "sujato": "Most of the people who died at that time—when their body broke up,\nafter death—were reborn in a place of loss, a bad place, the underworld, hell.", "pts": "Evil One, nearly all the people who passed away at that time,\nat the breaking up of the body after dying arose in a sorrowful state, a bad bourn, the abyss, Niraya Hell."}]}, {"id": "14", "label": "Then Kakusandha the Blessed One, the perfected…", "rows": [{"key": "mn50:14.1", "pali": "Atha kho, pāpima, kakusandho bhagavā arahaṁ sammāsambuddho bhikkhū āmantesi:", "sujato": "Then Kakusandha the Blessed One, the perfected one, the fully awakened Buddha, addressed the mendicants:", "pts": "Then, Evil One, Kakusandha, the Lord, perfected one, fully self-awakened one, addressed the monks, saying:"}, {"key": "mn50:14.2", "pali": "‘anvāviṭṭhā kho, bhikkhave, brāhmaṇagahapatikā dūsinā mārena—", "sujato": "‘Mendicants, the brahmins and householders have been possessed by Māra Dūsī.", "pts": "\"Monks, brahmans and householders have been visited by the Māra Dūsin (who said):"}, {"key": "mn50:14.3", "pali": "etha, tumhe bhikkhū sīlavante kalyāṇadhamme akkosatha paribhāsatha rosetha vihesetha,\nappeva nāma tumhehi akkosiyamānānaṁ paribhāsiyamānānaṁ rosiyamānānaṁ vihesiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran’ti.", "sujato": "He told them to abuse you in the hope of upsetting your minds so that he can find a vulnerability.", "pts": "\"Come, do you revile, abuse, vex, annoy the monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reviled,\nabused, vexed and annoyed by you there will be a change of heart so that Dūsin the Māra might get a chance over them.\""}, {"key": "mn50:14.4", "pali": "Etha, tumhe, bhikkhave, mettāsahagatena cetasā ekaṁ disaṁ pharitvā viharatha,\ntathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ mettāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā viharatha.", "sujato": "Come, all of you mendicants, meditate spreading a heart full of love to one direction,\nand to the second, and to the third, and to the fourth.\nIn the same way above, below, across, everywhere, all around,\nspread a heart full of love to the whole world—abundant, expansive, limitless, free of enmity and ill will.", "pts": "Come, do you, monks, abide, having suffused the first quarter with a mind of friendliness,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:14.5", "pali": "Karuṇāsahagatena cetasā …pe…", "sujato": "Meditate spreading a heart full of compassion …", "pts": "Abide, having suffused the first quarter with a mind of compassion,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:14.6", "pali": "muditāsahagatena cetasā …pe…", "sujato": "Meditate spreading a heart full of rejoicing …", "pts": "Abide, having suffused the first quarter with a mind of sympathetic joy,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:14.7", "pali": "upekkhāsahagatena cetasā ekaṁ disaṁ pharitvā viharatha, tathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ upekkhāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā viharathā’ti.", "sujato": "Meditate spreading a heart full of equanimity to one direction, and to the second, and to the third, and to the fourth.\nIn the same way above, below, across, everywhere, all around,\nspread a heart full of equanimity to the whole world—abundant, expansive, limitless, free of enmity and ill will.’", "pts": "Abide, having suffused the first quarter with a mind of equanimity,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}]}, {"id": "15", "label": "When those mendicants were instructed and advised…", "rows": [{"key": "mn50:15.1", "pali": "Atha kho te, pāpima,\nbhikkhū kakusandhena bhagavatā arahatā sammāsambuddhena evaṁ ovadiyamānā evaṁ anusāsiyamānā\naraññagatāpi rukkhamūlagatāpi suññāgāragatāpi mettāsahagatena cetasā ekaṁ disaṁ pharitvā vihariṁsu,\ntathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ mettāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā vihariṁsu.", "sujato": "When those mendicants were instructed and advised by the Buddha Kakusandha in this way, they went to a wilderness,\nor to the root of a tree, or to an empty hut, where they meditated spreading a heart full of love …", "pts": "Then, Evil One, these monks, forest-gone and gone to the roots of trees and gone to empty places,\nthus exhorted, thus instructed by Kakusandha, the Lord, perfected one,\nfully self-awakened one, abided, having suffused the first quarter with a mind of friendliness,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:15.2", "pali": "Karuṇāsahagatena cetasā …pe…", "sujato": "compassion …", "pts": "Abided, having suffused the first quarter with a mind of compassion,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:15.3", "pali": "muditāsahagatena cetasā …pe…", "sujato": "rejoicing …", "pts": "Abided, having suffused the first quarter with a mind of sympathetic joy,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}, {"key": "mn50:15.4", "pali": "upekkhāsahagatena cetasā ekaṁ disaṁ pharitvā vihariṁsu, tathā dutiyaṁ, tathā tatiyaṁ, tathā catutthaṁ.\nIti uddhamadho tiriyaṁ sabbadhi sabbattatāya sabbāvantaṁ lokaṁ upekkhāsahagatena\ncetasā vipulena mahaggatena appamāṇena averena abyābajjhena pharitvā vihariṁsu.", "sujato": "equanimity.", "pts": "Abided, having suffused the first quarter with a mind of equanimity,\nlikewise the second, like wise the third, likewise the fourth;\njust so above, below, across;\nabide having suffused the whole world, everywhere, in every way with a mind of friendliness,\nthat is far-reaching, widespread, immeasurable, without enmity, without malevolence."}]}, {"id": "16", "label": "Then it occurred to Māra Dūsī,", "rows": [{"key": "mn50:16.1", "pali": "Atha kho, pāpima, dūsissa mārassa etadahosi:", "sujato": "Then it occurred to Māra Dūsī,", "pts": "Then, Evil One, it occurred to the Māra Dūsin:"}, {"key": "mn50:16.2", "pali": "‘evampi kho ahaṁ karonto imesaṁ bhikkhūnaṁ sīlavantānaṁ kalyāṇadhammānaṁ neva jānāmi āgatiṁ vā gatiṁ vā,\nyannūnāhaṁ brāhmaṇagahapatike anvāviseyyaṁ:", "sujato": "‘Even when I do this I don’t know the course of rebirth of these ethical mendicants of good character.\nWhy don’t I take possession of these brahmins and householders and say,", "pts": "'Even although I am working thus,\nI do not know the coming or the going of these monks who are of good moral habit, lovely in character.\nSuppose I were to visit brahmans and householders (and say):"}, {"key": "mn50:16.3", "pali": "“etha, tumhe bhikkhū sīlavante kalyāṇadhamme sakkarotha garuṁ karotha mānetha pūjetha,", "sujato": "“Come, all of you, honor, respect, esteem, and venerate the ethical mendicants of good character.", "pts": "\"Come, do you reverence, revere, respect, honour the monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reverenced,\nrevered, respected and honoured by you, there will be a change of heart,\nso that Dūsin the Māra can get a chance over them.\"'"}, {"key": "mn50:16.4", "pali": "appeva nāma tumhehi sakkariyamānānaṁ garukariyamānānaṁ māniyamānānaṁ pūjiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran”’ti.", "sujato": "Hopefully by doing this we can upset their minds so that Māra Dūsī can find a vulnerability.”’", "pts": ""}]}, {"id": "17", "label": "And that’s exactly what he did.", "rows": [{"key": "mn50:17.1", "pali": "Atha kho te, pāpima, dūsī māro brāhmaṇagahapatike anvāvisi:", "sujato": "And that’s exactly what he did.", "pts": "Then, Evil One, the Māra Dūsin visited these brahmans and householders (and said):"}, {"key": "mn50:17.2", "pali": "‘etha, tumhe bhikkhū sīlavante kalyāṇadhamme sakkarotha garuṁ karotha mānetha pūjetha,", "sujato": "", "pts": "\"Come, do you reverence, revere, respect, honour the monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reverenced,\nrevered, respected and honoured by you, there will be a change of heart,\nso that Dūsin the Māra can get a chance over them.\"'"}, {"key": "mn50:17.3", "pali": "appeva nāma tumhehi sakkariyamānānaṁ garukariyamānānaṁ māniyamānānaṁ pūjiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran’ti.", "sujato": "", "pts": ""}, {"key": "mn50:17.4", "pali": "Atha kho te, pāpima,\nbrāhmaṇagahapatikā anvāviṭṭhā dūsinā mārena bhikkhū sīlavante kalyāṇadhamme sakkaronti garuṁ karonti mānenti pūjenti.", "sujato": "Then those brahmins and householders honored, respected,\nesteemed, and venerated the ethical mendicants of good character.", "pts": "Then, Evil One, these brahmans and householders who had been visited by Dūsin the Māra, reverenced,\nrevered, respected and honoured those monks who were of good moral habit, lovely in character."}, {"key": "mn50:17.5", "pali": "Ye kho pana, pāpima,\ntena samayena manussā kālaṁ karonti yebhuyyena kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjanti.", "sujato": "Most of the people who died at that time—when their body broke up,\nafter death—were reborn in a good place, a heavenly realm.", "pts": "Evil One, nearly all the people who passed away at that time,\nat the breaking up of the body after dying arose in a good bourn, a heaven world."}]}, {"id": "18", "label": "Then Kakusandha the Blessed One, the perfected…", "rows": [{"key": "mn50:18.1", "pali": "Atha kho, pāpima, kakusandho bhagavā arahaṁ sammāsambuddho bhikkhū āmantesi:", "sujato": "Then Kakusandha the Blessed One, the perfected one, the fully awakened Buddha, addressed the mendicants:", "pts": "Then, Evil One, Kakusandha, the Lord, perfected one, fully self-awakened one, addressed the monks, saying:"}, {"key": "mn50:18.2", "pali": "‘anvāviṭṭhā kho, bhikkhave, brāhmaṇagahapatikā dūsinā mārena:", "sujato": "‘Mendicants, the brahmins and householders have been possessed by Māra Dūsī.", "pts": "\"Monks, brahmans and householders have been visited by the Māra Dūsin (who said):"}, {"key": "mn50:18.3", "pali": "“etha, tumhe bhikkhū sīlavante kalyāṇadhamme sakkarotha garuṁ karotha mānetha pūjetha,", "sujato": "He told them to venerate you", "pts": "\"Come, do you reverence, revere, respect, honour those monks who are of good moral habit,\nlovely in character, for it is likely that when they are being reverenced,\nrevered, respected and honoured by you there will be a change\nof heart so that Dūsin the Māra can get a chance over them.\""}, {"key": "mn50:18.4", "pali": "appeva nāma tumhehi sakkariyamānānaṁ garukariyamānānaṁ māniyamānānaṁ pūjiyamānānaṁ siyā cittassa aññathattaṁ,\nyathā taṁ dūsī māro labhetha otāran”ti.", "sujato": "in the hope of upsetting your minds so that he can find a vulnerability.", "pts": ""}, {"key": "mn50:18.5", "pali": "Etha, tumhe, bhikkhave, asubhānupassino kāye viharatha, āhāre paṭikūlasaññino,\nsabbaloke anabhiratisaññino, sabbasaṅkhāresu aniccānupassino’ti.", "sujato": "Come, all you mendicants, meditate observing the ugliness of the body, perceiving the repulsiveness of food,\nperceiving dissatisfaction with the whole world, and observing the impermanence of all conditions.’", "pts": "Come, do you, monks,\ndwell beholding what is unlovely in the body,[] conscious of the cloying of food,[] conscious of\nthere being no delight in the whole world,[] beholding[] the impermanence of all constructions.'[]"}]}, {"id": "19", "label": "When those mendicants were instructed and advised…", "rows": [{"key": "mn50:19.1", "pali": "Atha kho te, pāpima,\nbhikkhū kakusandhena bhagavatā arahatā sammāsambuddhena evaṁ ovadiyamānā evaṁ anusāsiyamānā\naraññagatāpi rukkhamūlagatāpi suññāgāragatāpi asubhānupassino kāye vihariṁsu,\nāhāre paṭikūlasaññino, sabbaloke anabhiratisaññino, sabbasaṅkhāresu aniccānupassino.", "sujato": "When those mendicants were instructed and advised by the Buddha Kakusandha in this way,\nthey went to a wilderness, or to the root of a tree, or to an empty hut,\nwhere they meditated observing the ugliness of the body, perceiving the repulsiveness of food,\nperceiving dissatisfaction with the whole world, and observing the impermanence of all conditions.", "pts": "Then, Evil One, these monks, forest-gone, gone to the roots of trees and gone to empty places,\nbeing exhorted thus, being instructed thus by Kakusandha, the Lord, perfected one, fully self-awakened one,\ndwelt beholding what is unlovely in the body, conscious of the cloying of food,\nconscious of there being no delight in the whole world, beholding the impermanence of all constructions."}]}, {"id": "20", "label": "Then the Buddha Kakusandha robed up in…", "rows": [{"key": "mn50:20.1", "pali": "Atha kho, pāpima, kakusandho bhagavā arahaṁ sammāsambuddho pubbaṇhasamayaṁ\nnivāsetvā pattacīvaramādāya āyasmatā vidhurena pacchāsamaṇena gāmaṁ piṇḍāya pāvisi.", "sujato": "Then the Buddha Kakusandha robed up in the morning and, taking this bowl and robe,\nentered the village for alms with Venerable Vidhura as his second monk.", "pts": "Then, Evil One, Kakusandha, the Lord, perfected one, fully self-awakened one, having dressed in the morning,\ntaking his bowl and robe, entered a village for almsfood with the venerable Vidhura as his attendant."}]}, {"id": "21", "label": "Then Māra Dūsī took possession of a…", "rows": [{"key": "mn50:21.1", "pali": "Atha kho, pāpima, dūsī māro aññataraṁ kumārakaṁ anvāvisitvā sakkharaṁ gahetvā āyasmato vidhurassa sīse pahāramadāsi;\nsīsaṁ vobhindi.", "sujato": "Then Māra Dūsī took possession of a certain boy, picked up a rock, and hit Vidhura on the head, cracking it open.", "pts": "Then, Evil One, Dūsin the Māra, having visited a certain young man,\nhaving taken up a stone, gave a blow to the venerable Vidhura's head;\nhis head split."}, {"key": "mn50:21.2", "pali": "Atha kho, pāpima, āyasmā vidhuro bhinnena sīsena lohitena gaḷantena\nkakusandhaṁyeva bhagavantaṁ arahantaṁ sammāsambuddhaṁ piṭṭhito piṭṭhito anubandhi.", "sujato": "Then Vidhura, with blood pouring from his cracked skull, still followed behind the Buddha Kakusandha.", "pts": "Then, Evil One, the venerable Vidhura with his head broken and dripping with blood,\n- even so followed close after Kakusandha, the Lord, the perfected one, fully self-awakened one."}, {"key": "mn50:21.3", "pali": "Atha kho, pāpima, kakusandho bhagavā arahaṁ sammāsambuddho nāgāpalokitaṁ apalokesi:", "sujato": "Then the Buddha Kakusandha turned to gaze back, the way that elephants do, saying,", "pts": "Then, Evil One, Kakusandha, the Lord, perfected one, fully self-awakened one,\nlooked around with the \"elephant-look.\"[] and thought:"}, {"key": "mn50:21.4", "pali": "‘na vāyaṁ dūsī māro mattamaññāsī’ti.", "sujato": "‘This Māra Dūsī knows no limit.’", "pts": "\"Indeed, this Dūsin the Māra does not know moderation.\""}, {"key": "mn50:21.5", "pali": "Sahāpalokanāya ca pana, pāpima, dūsī māro tamhā ca ṭhānā cavi mahānirayañca upapajji.", "sujato": "And as he was gazing, Māra Dūsī fell from that place and was reborn in the Great Hell.", "pts": "While he was looking around, Evil One, Dūsin the Māra deceased from that place and arose in the Great Niraya Hell."}]}, {"id": "22", "label": "Now that Great Hell is known by…", "rows": [{"key": "mn50:22.1", "pali": "Tassa kho pana, pāpima, mahānirayassa tayo nāmadheyyā honti—", "sujato": "Now that Great Hell is known by three names:", "pts": "Evil One, there are three appellations of that Great Niraya Hell:"}, {"key": "mn50:22.2", "pali": "chaphassāyataniko itipi, saṅkusamāhato itipi, paccattavedaniyo itipi.", "sujato": "‘Related to the Six Fields of Contact’ and also ‘The Impaling With Spikes’ and also ‘Uniquely Painful’.", "pts": "it is called \"Belonging to the sphere of the Six Sensory Impingements\"[] and it\nis called \"The Meeting of the Spikes\"[] and it is called \"The Separate Feelings.\""}, {"key": "mn50:22.3", "pali": "Atha kho maṁ, pāpima, nirayapālā upasaṅkamitvā etadavocuṁ:", "sujato": "Then the wardens of hell came to me and said,", "pts": "Then, Evil One, the guardian of Niraya Hell, having approached me, spoke thus:"}, {"key": "mn50:22.4", "pali": "‘yadā kho te, mārisa, saṅkunā saṅku hadaye samāgaccheyya.", "sujato": "‘When spike meets spike in your heart,", "pts": "'When, good sir, spike shall meet spike within your heart, then you should understand this:"}, {"key": "mn50:22.5", "pali": "Atha naṁ tvaṁ jāneyyāsi:", "sujato": "you will know that", "pts": ""}, {"key": "mn50:22.6", "pali": "“vassasahassaṁ me niraye paccamānassā”’ti.", "sujato": "you’ve been roasting in hell for a thousand years.’", "pts": "There will be a thousand years of boiling in Niraya Hell for me.'"}]}, {"id": "23", "label": "I roasted for many years, many centuries,…", "rows": [{"key": "mn50:23.1", "pali": "So kho ahaṁ, pāpima, bahūni vassāni bahūni vassasatāni bahūni vassasahassāni tasmiṁ mahāniraye apacciṁ.", "sujato": "I roasted for many years, many centuries, many millennia in that Great Hell.", "pts": "Then I, Evil One, for many years, for many a hundred, for many a thousand years, boiled in that Great Niraya Hell."}, {"key": "mn50:23.2", "pali": "Dasavassasahassāni tasseva mahānirayassa ussade apacciṁ vuṭṭhānimaṁ nāma vedanaṁ vediyamāno.", "sujato": "For ten thousand years I roasted in the annex of that Great Hell, experiencing the pain called ‘this is emergence’.", "pts": "After ten thousand years of that Great Niraya Hell itself,\nfeeling a feeling called vuṭṭhānima (pain), I was boiled in Ussada (Hell)."}, {"key": "mn50:23.3", "pali": "Tassa mayhaṁ, pāpima, evarūpo kāyo hoti, seyyathāpi manussassa.", "sujato": "My body was in human form,", "pts": "Because of this, Evil One, my body came to be such, like a man's;"}, {"key": "mn50:23.4", "pali": "Evarūpaṁ sīsaṁ hoti, seyyathāpi macchassa.", "sujato": "but I had the head of a fish.", "pts": "my head came to be such, like a fish's.\""}]}, {"id": "24", "label": "What kind of hell was that,", "rows": [{"key": "mn50:24.1", "pali": "Kīdiso nirayo āsi,", "sujato": "What kind of hell was that,", "pts": "[]What was that Niraya Hell like where Dūsin was boiled For striking the disciple Vidhura and the brahman[] Kakusandha?"}, {"key": "mn50:24.2", "pali": "yattha dūsī apaccatha;", "sujato": "where Dūsī was roasted", "pts": ""}, {"key": "mn50:24.3", "pali": "Vidhuraṁ sāvakamāsajja,", "sujato": "after attacking the disciple Vidhura", "pts": ""}, {"key": "mn50:24.4", "pali": "kakusandhañca brāhmaṇaṁ.", "sujato": "along with the brahmin Kakusandha?", "pts": ""}, {"key": "mn50:24.5", "pali": "Sataṁ āsi ayosaṅkū,", "sujato": "There were 100 iron spikes,", "pts": "It was that of the hundred iron spikes,"}, {"key": "mn50:24.6", "pali": "sabbe paccattavedanā;", "sujato": "each one uniquely painful.", "pts": ""}, {"key": "mn50:24.7", "pali": "Īdiso nirayo āsi,", "sujato": "That’s the kind of hell", "pts": "all suffered separately - This[] was the Niraya Hell where Dūsin was\nboiled For striking the disciple Vidhura and the brahman Kakusandha."}, {"key": "mn50:24.8", "pali": "yattha dūsī apaccatha;", "sujato": "where Dūsī was roasted", "pts": ""}, {"key": "mn50:24.9", "pali": "Vidhuraṁ sāvakamāsajja,", "sujato": "after attacking the disciple Vidhura", "pts": ""}, {"key": "mn50:24.10", "pali": "kakusandhañca brāhmaṇaṁ.", "sujato": "along with the brahmin Kakusandha.", "pts": ""}, {"key": "mn50:24.11", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One,"}, {"key": "mn50:24.12", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:24.13", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": "for striking such a monk you go to suffering.[]"}, {"key": "mn50:24.14", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "25", "label": "There are mansions that last an eon", "rows": [{"key": "mn50:25.1", "pali": "Majjhe sarassa tiṭṭhanti,", "sujato": "There are mansions that last an eon", "pts": "Mansions[] stand for an eon in the middle of the sea, The hue of beryl-stones,[] brilliant, glowing, radiant;"}, {"key": "mn50:25.2", "pali": "vimānā kappaṭṭhāyino;", "sujato": "standing in the middle of a lake.", "pts": ""}, {"key": "mn50:25.3", "pali": "Veḷuriyavaṇṇā rucirā,", "sujato": "Sapphire-colored, brilliant,", "pts": ""}, {"key": "mn50:25.4", "pali": "accimanto pabhassarā;", "sujato": "they sparkle and shine.", "pts": ""}, {"key": "mn50:25.5", "pali": "Accharā tattha naccanti,", "sujato": "Dancing there are nymphs", "pts": "There dance full many nymphs in divers hues."}, {"key": "mn50:25.6", "pali": "puthu nānattavaṇṇiyo.", "sujato": "shining in all different colors.", "pts": ""}, {"key": "mn50:25.7", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:25.8", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:25.9", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:25.10", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "26", "label": "I’m the one who, urged by the…", "rows": [{"key": "mn50:26.1", "pali": "Yo ve buddhena codito,", "sujato": "I’m the one who, urged by the Buddha,", "pts": "Whoever, urged on by the Awakened One, watched by the Order of monks,"}, {"key": "mn50:26.2", "pali": "bhikkhu saṅghassa pekkhato;", "sujato": "shook the stilt longhouse of Migāra’s mother", "pts": ""}, {"key": "mn50:26.3", "pali": "Migāramātupāsādaṁ,", "sujato": "with his big toe", "pts": "With his great toe shakes the palace of Migāra's mother[]-"}, {"key": "mn50:26.4", "pali": "pādaṅguṭṭhena kampayi.", "sujato": "as the Saṅgha of mendicants watched.", "pts": ""}, {"key": "mn50:26.5", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:26.6", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:26.7", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:26.8", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "27", "label": "I’m the one who shook the Palace…", "rows": [{"key": "mn50:27.1", "pali": "Yo vejayantaṁ pāsādaṁ,", "sujato": "I’m the one who shook the Palace of Victory", "pts": "Whoever with his great toe shakes Vejayanta Palace,[] Rigid through psychic power and strongly moves the devatās -"}, {"key": "mn50:27.2", "pali": "pādaṅguṭṭhena kampayi;", "sujato": "with his big toe", "pts": ""}, {"key": "mn50:27.3", "pali": "Iddhibalenupatthaddho,", "sujato": "owing to psychic power,", "pts": ""}, {"key": "mn50:27.4", "pali": "saṁvejesi ca devatā.", "sujato": "inspiring deities to awe.", "pts": ""}, {"key": "mn50:27.5", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:27.6", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:27.7", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:27.8", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "28", "label": "I’m the one who asked Sakka", "rows": [{"key": "mn50:28.1", "pali": "Yo vejayantapāsāde,", "sujato": "I’m the one who asked Sakka", "pts": "Whoever inquires of Sakka in the Vejayanta Palace,"}, {"key": "mn50:28.2", "pali": "sakkaṁ so paripucchati;", "sujato": "in the Palace of Victory:", "pts": ""}, {"key": "mn50:28.3", "pali": "Api vāsava jānāsi,", "sujato": "‘Vāsava, I hope you recall", "pts": "'Have you, friend, found the freedoms by the destruction of\ncraving?[] To whom Sakka truthfully answers the question put to him -"}, {"key": "mn50:28.4", "pali": "taṇhākkhayavimuttiyo;", "sujato": "the one who is freed through the ending of craving?’", "pts": ""}, {"key": "mn50:28.5", "pali": "Tassa sakko viyākāsi,", "sujato": "And I’m the one to whom Sakka", "pts": ""}, {"key": "mn50:28.6", "pali": "pañhaṁ puṭṭho yathātathaṁ.", "sujato": "admitted the truth when asked.", "pts": ""}, {"key": "mn50:28.7", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:28.8", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:28.9", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:28.10", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "29", "label": "I’m the one who asked the Divinity", "rows": [{"key": "mn50:29.1", "pali": "Yo brahmaṁ paripucchati,", "sujato": "I’m the one who asked the Divinity", "pts": "Whoever inquires of Brahmā in conclave in Sudhammmā's hall,[] 'Do you,[] friend,"}, {"key": "mn50:29.2", "pali": "sudhammāyābhito sabhaṁ;", "sujato": "in the Hall of Clear Right before the assembly:", "pts": ""}, {"key": "mn50:29.3", "pali": "Ajjāpi tyāvuso diṭṭhi,", "sujato": "‘Respectable sir, do you still have the same view", "pts": "even today hold those views which formerly were views of yours?"}, {"key": "mn50:29.4", "pali": "yā te diṭṭhi pure ahu;", "sujato": "that you had in the past?", "pts": ""}, {"key": "mn50:29.5", "pali": "Passasi vītivattantaṁ,", "sujato": "Or do you see the radiance", "pts": "Do you see the passing radiance in the Brahma-world?'[] To whom,"}, {"key": "mn50:29.6", "pali": "brahmaloke pabhassaraṁ.", "sujato": "surpassing the realm of divinity?’", "pts": ""}, {"key": "mn50:29.7", "pali": "Tassa brahmā viyākāsi,", "sujato": "And I’m the one to whom the Divinity", "pts": "Brahmā truthfully answers (those questions) in succession:[] 'Good sir,"}, {"key": "mn50:29.8", "pali": "anupubbaṁ yathātathaṁ;", "sujato": "truthfully admitted his progress:", "pts": ""}, {"key": "mn50:29.9", "pali": "Na me mārisa sā diṭṭhi,", "sujato": "‘Good fellow, I don’t have that view", "pts": "those views are not mine which formerly were views of mine;"}, {"key": "mn50:29.10", "pali": "yā me diṭṭhi pure ahu.", "sujato": "that I had in the past.", "pts": ""}, {"key": "mn50:29.11", "pali": "Passāmi vītivattantaṁ,", "sujato": "I see the radiance", "pts": "I see the passing radiance in the Brahma-world;"}, {"key": "mn50:29.12", "pali": "brahmaloke pabhassaraṁ;", "sujato": "surpassing the realm of divinity.", "pts": ""}, {"key": "mn50:29.13", "pali": "Sohaṁ ajja kathaṁ vajjaṁ,", "sujato": "So how could I say today", "pts": "How could I say today:"}, {"key": "mn50:29.14", "pali": "ahaṁ niccomhi sassato.", "sujato": "that I am permanent and eternal?’", "pts": "I am permanent, eternal?' -"}, {"key": "mn50:29.15", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:29.16", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:29.17", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:29.18", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "30", "label": "I’m the one who touched the peak…", "rows": [{"key": "mn50:30.1", "pali": "Yo mahāmeruno kūṭaṁ,", "sujato": "I’m the one who touched the peak of Mount Meru", "pts": "Who, by deliverance,[] has gained great Neru's[] peak,"}, {"key": "mn50:30.2", "pali": "vimokkhena aphassayi;", "sujato": "using the power of meditative liberation.", "pts": ""}, {"key": "mn50:30.3", "pali": "Vanaṁ pubbavidehānaṁ,", "sujato": "I’ve visited the forests of the people", "pts": "The forest[] of the Eastern Videhas,[] and whatever men sleep on the ground[] -"}, {"key": "mn50:30.4", "pali": "ye ca bhūmisayā narā.", "sujato": "who dwell in the land east of Videha.", "pts": ""}, {"key": "mn50:30.5", "pali": "Yo etamabhijānāti,", "sujato": "Dark One, if you attack", "pts": "Whatever monk, the Awakened One's disciple, understands this - Dark One, for striking such a monk you go to suffering."}, {"key": "mn50:30.6", "pali": "bhikkhu buddhassa sāvako;", "sujato": "a mendicant who directly knows this,", "pts": ""}, {"key": "mn50:30.7", "pali": "Tādisaṁ bhikkhumāsajja,", "sujato": "a disciple of the Buddha,", "pts": ""}, {"key": "mn50:30.8", "pali": "kaṇha dukkhaṁ nigacchasi.", "sujato": "you’ll fall into suffering.", "pts": ""}]}, {"id": "31", "label": "Though a fire doesn’t think,", "rows": [{"key": "mn50:31.1", "pali": "Na ve aggi cetayati,", "sujato": "Though a fire doesn’t think,", "pts": "Verily, a fire does not think,"}, {"key": "mn50:31.2", "pali": "‘ahaṁ bālaṁ ḍahāmī’ti;", "sujato": "‘I’ll burn the fool!’", "pts": ""}, {"key": "mn50:31.3", "pali": "Bālo ca jalitaṁ aggiṁ,", "sujato": "Still the fool who attacks", "pts": "'I am burning a fool,' For the fool is burnt by assailing the blazing fire;"}, {"key": "mn50:31.4", "pali": "āsajja naṁ sa ḍayhati.", "sujato": "the fire gets burnt.", "pts": ""}, {"key": "mn50:31.5", "pali": "Evameva tuvaṁ māra,", "sujato": "In the same way, Māra,", "pts": "Even so, you, Māra, by assailing the Tathāgata, Will yourself burn yourself like a fool touching a fire."}, {"key": "mn50:31.6", "pali": "āsajja naṁ tathāgataṁ;", "sujato": "in attacking the Realized One,", "pts": ""}, {"key": "mn50:31.7", "pali": "Sayaṁ ḍahissasi attānaṁ,", "sujato": "you’ll only burn yourself,", "pts": ""}, {"key": "mn50:31.8", "pali": "bālo aggiṁva samphusaṁ.", "sujato": "like a fool touching the flames.", "pts": ""}, {"key": "mn50:31.9", "pali": "Apuññaṁ pasavī māro,", "sujato": "Māra’s done a bad thing", "pts": "Māra[] acquires demerit for assailing a Tathāgata."}, {"key": "mn50:31.10", "pali": "āsajja naṁ tathāgataṁ;", "sujato": "in attacking the Realized One.", "pts": ""}, {"key": "mn50:31.11", "pali": "Kiṁ nu maññasi pāpima,", "sujato": "Wicked One, do you imagine that", "pts": "But do you not think, Evil One:"}, {"key": "mn50:31.12", "pali": "na me pāpaṁ vipaccati.", "sujato": "your wickedness won’t bear fruit?", "pts": "Evil does not mature for me?"}, {"key": "mn50:31.13", "pali": "Karoto cīyati pāpaṁ,", "sujato": "Your deeds heap up wickedness", "pts": "The evil done (by you) must be heaped up[] for a long time, End-maker."}, {"key": "mn50:31.14", "pali": "cirarattāya antaka;", "sujato": "that will last a long time, terminator!", "pts": ""}, {"key": "mn50:31.15", "pali": "Māra nibbinda buddhamhā,", "sujato": "Give up on the Buddha, Māra!", "pts": "Māra, turn away from the Wake,[] have no hopes among the monks."}, {"key": "mn50:31.16", "pali": "āsaṁ mākāsi bhikkhusu.", "sujato": "And hold no hope for the mendicants!”", "pts": ""}, {"key": "mn50:31.17", "pali": "Iti māraṁ atajjesi,", "sujato": "That is how, in the Bhesekaḷā grove,", "pts": "Thus did a monk tilt at[] Māra in the Bhesakaḷā Grove,"}, {"key": "mn50:31.18", "pali": "bhikkhu bhesakaḷāvane;", "sujato": "the mendicant condemned Māra.", "pts": ""}, {"key": "mn50:31.19", "pali": "Tato so dummano yakkho,", "sujato": "That spirit, downcast,", "pts": "Wherefore that dejected fiend[] vanished then and there.\"[]"}, {"key": "mn50:31.20", "pali": "tatthevantaradhāyathā”ti.", "sujato": "disappeared right there.", "pts": ""}, {"key": "mn50:31.21", "pali": "Māratajjanīyasuttaṁ niṭṭhitaṁ dasamaṁ.", "sujato": "", "pts": "Discourse on a Rebuke to Māra"}, {"key": "mn50:31.22", "pali": "Cūḷayamakavaggo niṭṭhito pañcamo.", "sujato": "", "pts": "Lesser Division of the Pairs"}]}, {"id": "32", "label": "Tassuddānaṁ", "rows": [{"key": "mn50:32.0", "pali": "Tassuddānaṁ", "sujato": "", "pts": ""}, {"key": "mn50:32.1", "pali": "Sāleyya verañjaduve ca tuṭṭhi,", "sujato": "", "pts": ""}, {"key": "mn50:32.2", "pali": "Cūḷamahādhammasamādānañca;", "sujato": "", "pts": ""}, {"key": "mn50:32.3", "pali": "Vīmaṁsakā kosambi ca brāhmaṇo,", "sujato": "", "pts": ""}, {"key": "mn50:32.4", "pali": "Dūsī ca māro dasamo ca vaggo.", "sujato": "", "pts": ""}]}, {"id": "33", "label": "Idaṁ vaggānamuddānaṁ", "rows": [{"key": "mn50:33.0", "pali": "Idaṁ vaggānamuddānaṁ", "sujato": "", "pts": ""}, {"key": "mn50:33.1", "pali": "Mūlapariyāyo ceva,", "sujato": "", "pts": ""}, {"key": "mn50:33.2", "pali": "sīhanādo ca uttamo;", "sujato": "", "pts": ""}, {"key": "mn50:33.3", "pali": "Kakaco ceva gosiṅgo,", "sujato": "", "pts": ""}, {"key": "mn50:33.4", "pali": "sāleyyo ca ime pañca.", "sujato": "", "pts": ""}, {"key": "mn50:33.5", "pali": "Mūlapaṇṇāsakaṁ samattaṁ.", "sujato": "", "pts": ""}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn50:1.2": ["This sutta serves as a showcase for 
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

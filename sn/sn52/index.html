@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn52-rahogatavagga", "label": "Rahogatavagga — The Chapter on In Private", "children": [{"id": "sn52.1", "label": "SN 52.1 · In Private (1st)", "children": [{"id": "sn52.1/0", "label": "Linked Discourses 52.1", "rows": [{"key": "sn52.1:0.1", "pali": "Saṁyutta Nikāya 52.1", "sujato": "Linked Discourses 52.1"}, {"key": "sn52.1:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.1:0.3", "pali": "Paṭhamarahogatasutta", "sujato": "In Private (1st)"}]}, {"id": "sn52.1/1", "label": "So I have heard.", "rows": [{"key": "sn52.1:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn52.1:1.2", "pali": "ekaṁ samayaṁ āyasmā anuruddho sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time Venerable Anuruddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn52.1:1.3", "pali": "Atha kho āyasmato anuruddhassa rahogatassa paṭisallīnassa evaṁ cetaso parivitakko udapādi:", "sujato": "Then as Anuruddha was in private retreat this thought came to his mind:"}, {"key": "sn52.1:1.4", "pali": "“yesaṁ kesañci cattāro satipaṭṭhānā viraddhā, viraddho tesaṁ ariyo maggo sammā dukkhakkhayagāmī.", "sujato": "“Whoever has missed out on these four kinds of mindfulness meditation\nhas missed out on the noble path to the complete ending of suffering."}, {"key": "sn52.1:1.5", "pali": "Yesaṁ kesañci cattāro satipaṭṭhānā āraddhā, āraddho tesaṁ ariyo maggo sammā dukkhakkhayagāmī”ti.", "sujato": "Whoever has undertaken these four kinds of mindfulness meditation\nhas undertaken the noble path to the complete ending of suffering.”"}]}, {"id": "sn52.1/2", "label": "Then Venerable Mahāmoggallāna knew what Venerable Anuruddha…", "rows": [{"key": "sn52.1:2.1", "pali": "Atha kho āyasmā mahāmoggallāno āyasmato anuruddhassa cetasā\ncetoparivitakkamaññāya—seyyathāpi nāma balavā puriso samiñjitaṁ vā bāhaṁ pasāreyya,\npasāritaṁ vā bāhaṁ samiñjeyya;\nevameva—āyasmato anuruddhassa sammukhe pāturahosi.", "sujato": "Then Venerable Mahāmoggallāna knew what Venerable Anuruddha was thinking.\nAs easily as a strong person would extend or contract their arm, he reappeared in front of Anuruddha,"}, {"key": "sn52.1:2.2", "pali": "Atha kho āyasmā mahāmoggallāno āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "and said to him:"}, {"key": "sn52.1:2.3", "pali": "“kittāvatā nu kho, āvuso anuruddha, bhikkhuno cattāro satipaṭṭhānā āraddhā hontī”ti?", "sujato": "“Reverend Anuruddha, how do you define the undertaking of the four kinds of mindfulness meditation by a mendicant?”"}]}, {"id": "sn52.1/3", "label": "“Reverend, it’s when a mendicant, with respect…", "rows": [{"key": "sn52.1:3.1", "pali": "“Idhāvuso, bhikkhu ajjhattaṁ kāye samudayadhammānupassī viharati, ajjhattaṁ kāye vayadhammānupassī viharati,\najjhattaṁ kāye samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "“Reverend, it’s when a mendicant, with respect to the body internally, meditates observing the liability to originate,\nto vanish, and to originate and vanish—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.1:3.2", "pali": "Bahiddhā kāye samudayadhammānupassī viharati, bahiddhā kāye vayadhammānupassī viharati,\nbahiddhā kāye samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "With respect to the body externally, they meditate observing the liability to originate, to vanish,\nand to originate and vanish—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.1:3.3", "pali": "Ajjhattabahiddhā kāye samudayadhammānupassī viharati, ajjhattabahiddhā kāye vayadhammānupassī viharati,\najjhattabahiddhā kāye samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "With respect to the body internally and externally, they meditate observing the liability to originate, to vanish,\nand to originate and vanish—keen, aware, and mindful, rid of covetousness and displeasure for the world."}]}, {"id": "sn52.1/4", "label": "If they wish: ‘May I meditate perceiving…", "rows": [{"key": "sn52.1:4.1", "pali": "So sace ākaṅkhati:\n‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati;", "sujato": "If they wish:\n‘May I meditate perceiving the repulsive in the unrepulsive,’ that’s what they do."}, {"key": "sn52.1:4.2", "pali": "sace ākaṅkhati:\n‘paṭikūle appaṭikūlasaññī vihareyyan’ti, appaṭikūlasaññī tattha viharati;", "sujato": "If they wish:\n‘May I meditate perceiving the unrepulsive in the repulsive,’ that’s what they do."}, {"key": "sn52.1:4.3", "pali": "sace ākaṅkhati:\n‘appaṭikūle ca paṭikūle ca paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati;", "sujato": "If they wish:\n‘May I meditate perceiving the repulsive in the unrepulsive and the repulsive,’ that’s what they do."}, {"key": "sn52.1:4.4", "pali": "sace ākaṅkhati:\n‘paṭikūle ca appaṭikūle ca appaṭikūlasaññī vihareyyan’ti, appaṭikūlasaññī tattha viharati;", "sujato": "If they wish:\n‘May I meditate perceiving the unrepulsive in the repulsive and the unrepulsive,’ that’s what they do."}, {"key": "sn52.1:4.5", "pali": "sace ākaṅkhati:\n‘appaṭikūlañca paṭikūlañca tadubhayaṁ abhinivajjetvā upekkhako vihareyyaṁ sato sampajāno’ti,\nupekkhako tattha viharati sato sampajāno.", "sujato": "If they wish:\n‘May I meditate staying equanimous, mindful and aware,\nshunning both the repulsive and the unrepulsive,’ that’s what they do."}]}, {"id": "sn52.1/5", "label": "With respect to feelings internally …", "rows": [{"key": "sn52.1:5.1", "pali": "Ajjhattaṁ vedanāsu samudayadhammānupassī viharati, ajjhattaṁ vedanāsu vayadhammānupassī viharati,\najjhattaṁ vedanāsu samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "With respect to feelings internally …"}, {"key": "sn52.1:5.2", "pali": "Bahiddhā vedanāsu samudayadhammānupassī viharati, bahiddhā vedanāsu vayadhammānupassī viharati,\nbahiddhā vedanāsu samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "externally …"}, {"key": "sn52.1:5.3", "pali": "Ajjhattabahiddhā vedanāsu samudayadhammānupassī viharati, ajjhattabahiddhā vedanāsu vayadhammānupassī viharati,\najjhattabahiddhā vedanāsu samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally, they meditate observing the liability to originate, to vanish, and to originate and vanish …"}]}, {"id": "sn52.1/6", "label": "So sace ākaṅkhati: ‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī…", "rows": [{"key": "sn52.1:6.1", "pali": "So sace ākaṅkhati:\n‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati;", "sujato": ""}, {"key": "sn52.1:6.2", "pali": "sace ākaṅkhati:\n‘paṭikūle appaṭikūlasaññī vihareyyan’ti, appaṭikūlasaññī tattha viharati;", "sujato": ""}, {"key": "sn52.1:6.3", "pali": "sace ākaṅkhati:\n‘appaṭikūle ca paṭikūle ca paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati;", "sujato": ""}, {"key": "sn52.1:6.4", "pali": "sace ākaṅkhati:\n‘paṭikūle ca appaṭikūle ca appaṭikūlasaññī vihareyyan’ti, appaṭikūlasaññī tattha viharati;", "sujato": ""}, {"key": "sn52.1:6.5", "pali": "sace ākaṅkhati:\n‘appaṭikūlañca paṭikūlañca tadubhayaṁ abhinivajjetvā upekkhako vihareyyaṁ sato sampajāno’ti,\nupekkhako tattha viharati sato sampajāno.", "sujato": ""}]}, {"id": "sn52.1/7", "label": "With respect to the mind internally …", "rows": [{"key": "sn52.1:7.1", "pali": "Ajjhattaṁ citte …pe…", "sujato": "With respect to the mind internally …"}, {"key": "sn52.1:7.2", "pali": "bahiddhā citte …pe…", "sujato": "externally …"}, {"key": "sn52.1:7.3", "pali": "ajjhattabahiddhā citte samudayadhammānupassī viharati … ajjhattabahiddhā citte vayadhammānupassī viharati …\najjhattabahiddhā citte samudayavayadhammānupassī viharati ātāpī …pe… abhijjhādomanassaṁ.", "sujato": "internally and externally, they meditate observing the liability to originate, to vanish, and to originate and vanish …"}]}, {"id": "sn52.1/8", "label": "So sace ākaṅkhati: ‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī…", "rows": [{"key": "sn52.1:8.1", "pali": "So sace ākaṅkhati:\n‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati …pe…", "sujato": ""}, {"key": "sn52.1:8.2", "pali": "upekkhako tattha viharati sato sampajāno.", "sujato": ""}]}, {"id": "sn52.1/9", "label": "With respect to principles internally …", "rows": [{"key": "sn52.1:9.1", "pali": "Ajjhattaṁ dhammesu …pe…", "sujato": "With respect to principles internally …"}, {"key": "sn52.1:9.2", "pali": "bahiddhā dhammesu …pe…", "sujato": "externally …"}, {"key": "sn52.1:9.3", "pali": "ajjhattabahiddhā dhammesu samudayadhammānupassī viharati … ajjhattabahiddhā dhammesu vayadhammānupassī viharati …\najjhattabahiddhā dhammesu samudayavayadhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally, they meditate observing the liability to originate, to vanish, and to originate and vanish …"}]}, {"id": "sn52.1/10", "label": "If they wish: ‘May I meditate perceiving…", "rows": [{"key": "sn52.1:10.1", "pali": "So sace ākaṅkhati:\n‘appaṭikūle paṭikūlasaññī vihareyyan’ti, paṭikūlasaññī tattha viharati …pe…", "sujato": "If they wish:\n‘May I meditate perceiving the repulsive in the unrepulsive,’ that’s what they do. …"}, {"key": "sn52.1:10.2", "pali": "upekkhako tattha viharati sato sampajāno.", "sujato": "If they wish:\n‘May I meditate staying equanimous, mindful and aware,\nignoring both the repulsive and the unrepulsive,’ that’s what they do."}, {"key": "sn52.1:10.3", "pali": "Ettāvatā kho, āvuso, bhikkhuno cattāro satipaṭṭhānā āraddhā hontī”ti.", "sujato": "That’s how to define the undertaking of the four kinds of mindfulness meditation by a mendicant.”"}, {"key": "sn52.1:10.4", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn52.2", "label": "SN 52.2 · In Private (2nd)", "children": [{"id": "sn52.2/0", "label": "Linked Discourses 52.2", "rows": [{"key": "sn52.2:0.1", "pali": "Saṁyutta Nikāya 52.2", "sujato": "Linked Discourses 52.2"}, {"key": "sn52.2:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.2:0.3", "pali": "Dutiyarahogatasutta", "sujato": "In Private (2nd)"}]}, {"id": "sn52.2/1", "label": "At Sāvatthī.", "rows": [{"key": "sn52.2:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn52.2:1.2", "pali": "Atha kho āyasmato anuruddhassa rahogatassa paṭisallīnassa evaṁ cetaso parivitakko udapādi:", "sujato": "Then as Anuruddha was in private retreat this thought came to his mind:"}, {"key": "sn52.2:1.3", "pali": "“yesaṁ kesañci cattāro satipaṭṭhānā viraddhā, viraddho tesaṁ ariyo maggo sammā dukkhakkhayagāmī;", "sujato": "“Whoever has missed out on these four kinds of mindfulness meditation\nhas missed out on the noble path to the complete ending of suffering."}, {"key": "sn52.2:1.4", "pali": "yesaṁ kesañci cattāro satipaṭṭhānā āraddhā, āraddho tesaṁ ariyo maggo sammā dukkhakkhayagāmī”ti.", "sujato": "Whoever has undertaken these four kinds of mindfulness meditation\nhas undertaken the noble path to the complete ending of suffering.”"}]}, {"id": "sn52.2/2", "label": "Then Venerable Mahāmoggallāna knew what Venerable Anuruddha…", "rows": [{"key": "sn52.2:2.1", "pali": "Atha kho āyasmā mahāmoggallāno āyasmato anuruddhassa cetasā\ncetoparivitakkamaññāya—seyyathāpi nāma balavā puriso samiñjitaṁ vā bāhaṁ pasāreyya,\npasāritaṁ vā bāhaṁ samiñjeyya;\nevameva—āyasmato anuruddhassa sammukhe pāturahosi.\nAtha kho āyasmā mahāmoggallāno āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "Then Venerable Mahāmoggallāna knew what Venerable Anuruddha was thinking.\nAs easily as a strong person would extend or contract their arm, he reappeared in front of Anuruddha and said to him:"}]}, {"id": "sn52.2/3", "label": "“Reverend Anuruddha, how do you define the…", "rows": [{"key": "sn52.2:3.1", "pali": "“kittāvatā nu kho, āvuso anuruddha, bhikkhuno cattāro satipaṭṭhānā āraddhā hontī”ti?", "sujato": "“Reverend Anuruddha, how do you define the undertaking of the four kinds of mindfulness meditation by a mendicant?”"}]}, {"id": "sn52.2/4", "label": "“Reverend, it’s when a mendicant meditates by…", "rows": [{"key": "sn52.2:4.1", "pali": "“Idhāvuso, bhikkhu ajjhattaṁ kāye kāyānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "“Reverend, it’s when a mendicant meditates by observing an aspect of the body internally—keen,\naware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.2:4.2", "pali": "Bahiddhā kāye kāyānupassī viharati …pe…", "sujato": "They meditate observing an aspect of the body externally …"}, {"key": "sn52.2:4.3", "pali": "ajjhattabahiddhā kāye kāyānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally—keen, aware, and mindful, rid of covetousness and displeasure for the world."}]}, {"id": "sn52.2/5", "label": "They meditate observing an aspect of feelings…", "rows": [{"key": "sn52.2:5.1", "pali": "Ajjhattaṁ vedanāsu vedanānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "They meditate observing an aspect of feelings internally …"}, {"key": "sn52.2:5.2", "pali": "Bahiddhā vedanāsu vedanānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "externally …"}, {"key": "sn52.2:5.3", "pali": "Ajjhattabahiddhā vedanāsu vedanānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally …"}]}, {"id": "sn52.2/6", "label": "They meditate observing an aspect of the…", "rows": [{"key": "sn52.2:6.1", "pali": "Ajjhattaṁ citte …pe…", "sujato": "They meditate observing an aspect of the mind internally …"}, {"key": "sn52.2:6.2", "pali": "bahiddhā citte …pe…", "sujato": "externally …"}, {"key": "sn52.2:6.3", "pali": "ajjhattabahiddhā citte cittānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally …"}]}, {"id": "sn52.2/7", "label": "They meditate observing an aspect of principles…", "rows": [{"key": "sn52.2:7.1", "pali": "Ajjhattaṁ dhammesu …pe…", "sujato": "They meditate observing an aspect of principles internally …"}, {"key": "sn52.2:7.2", "pali": "bahiddhā dhammesu …pe…", "sujato": "externally …"}, {"key": "sn52.2:7.3", "pali": "ajjhattabahiddhā dhammesu dhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "internally and externally—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.2:7.4", "pali": "Ettāvatā kho, āvuso, bhikkhuno cattāro satipaṭṭhānā āraddhā hontī”ti.", "sujato": "That’s how to define the undertaking of the four kinds of mindfulness meditation by a mendicant.”"}, {"key": "sn52.2:7.5", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn52.3", "label": "SN 52.3 · On the Bank of the Sutanu", "children": [{"id": "sn52.3/0", "label": "Linked Discourses 52.3", "rows": [{"key": "sn52.3:0.1", "pali": "Saṁyutta Nikāya 52.3", "sujato": "Linked Discourses 52.3"}, {"key": "sn52.3:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.3:0.3", "pali": "Sutanusutta", "sujato": "On the Bank of the Sutanu"}]}, {"id": "sn52.3/1", "label": "At one time Venerable Anuruddha was staying…", "rows": [{"key": "sn52.3:1.1", "pali": "Ekaṁ samayaṁ āyasmā anuruddho sāvatthiyaṁ viharati sutanutīre.", "sujato": "At one time Venerable Anuruddha was staying near Sāvatthī on the bank of the Sutanu."}, {"key": "sn52.3:1.2", "pali": "Atha kho sambahulā bhikkhū yenāyasmā anuruddho tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmatā anuruddhena saddhiṁ sammodiṁsu.", "sujato": "Then several mendicants went up to Venerable Anuruddha, and exchanged greetings with him."}, {"key": "sn52.3:1.3", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho te bhikkhū āyasmantaṁ anuruddhaṁ etadavocuṁ:", "sujato": "When the greetings and polite conversation were over, they sat down to one side, and said to him:"}, {"key": "sn52.3:1.4", "pali": "“katamesaṁ āyasmā anuruddho dhammānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto”ti?", "sujato": "“What things has Venerable Anuruddha developed and cultivated to attain great direct knowledge?”"}]}, {"id": "sn52.3/2", "label": "“Reverends, I attained great direct knowledge by…", "rows": [{"key": "sn52.3:2.1", "pali": "“Catunnaṁ khvāhaṁ, āvuso, satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "“Reverends, I attained great direct knowledge by developing and cultivating the four kinds of mindfulness meditation."}, {"key": "sn52.3:2.2", "pali": "Katamesaṁ catunnaṁ?", "sujato": "What four?"}, {"key": "sn52.3:2.3", "pali": "Idhāhaṁ, āvuso, kāye kāyānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ;", "sujato": "I meditate observing an aspect of the body—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.3:2.4", "pali": "vedanāsu …pe…", "sujato": "I meditate observing an aspect of feelings …"}, {"key": "sn52.3:2.5", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.3:2.6", "pali": "dhammesu dhammānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.3:2.7", "pali": "imesaṁ khvāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "I attained great direct knowledge by developing and cultivating these four kinds of mindfulness meditation."}, {"key": "sn52.3:2.8", "pali": "Imesañca panāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā hīnaṁ dhammaṁ hīnato abbhaññāsiṁ,\nmajjhimaṁ dhammaṁ majjhimato abbhaññāsiṁ, paṇītaṁ dhammaṁ paṇītato abbhaññāsin”ti.", "sujato": "And it was by developing and cultivating these four kinds of mindfulness\nmeditation that I directly knew the lower principle as lower,\nthe middle principle as middle, and the higher principle as higher.”"}, {"key": "sn52.3:2.9", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn52.4", "label": "SN 52.4 · At Thorny Wood (1st)", "children": [{"id": "sn52.4/0", "label": "Linked Discourses 52.4", "rows": [{"key": "sn52.4:0.1", "pali": "Saṁyutta Nikāya 52.4", "sujato": "Linked Discourses 52.4"}, {"key": "sn52.4:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.4:0.3", "pali": "Paṭhamakaṇḍakīsutta", "sujato": "At Thorny Wood (1st)"}]}, {"id": "sn52.4/1", "label": "At one time the venerables Anuruddha, Sāriputta,…", "rows": [{"key": "sn52.4:1.1", "pali": "Ekaṁ samayaṁ āyasmā ca anuruddho āyasmā ca sāriputto āyasmā ca mahāmoggallāno sākete viharanti kaṇḍakīvane.", "sujato": "At one time the venerables Anuruddha, Sāriputta, and Mahāmoggallāna were staying near Sāketa, in the Thorny Wood."}, {"key": "sn52.4:1.2", "pali": "Atha kho āyasmā ca sāriputto āyasmā ca mahāmoggallāno sāyanhasamayaṁ\npaṭisallānā vuṭṭhitā yenāyasmā anuruddho tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmatā anuruddhena saddhiṁ sammodiṁsu.", "sujato": "Then in the late afternoon, Sāriputta and Mahāmoggallāna came out of retreat,\nwent to Anuruddha, and exchanged greetings with him."}, {"key": "sn52.4:1.3", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinno kho āyasmā sāriputto āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, they sat down to one side.\nSāriputta said to Anuruddha:"}, {"key": "sn52.4:1.4", "pali": "“sekhenāvuso anuruddha, bhikkhunā katame dhammā upasampajja vihātabbā”ti?", "sujato": "“Reverend Anuruddha, what things should a trainee mendicant enter and remain in?”"}]}, {"id": "sn52.4/2", "label": "“Reverend Sāriputta, a trainee mendicant should enter…", "rows": [{"key": "sn52.4:2.1", "pali": "“Sekhenāvuso sāriputta, bhikkhunā cattāro satipaṭṭhānā upasampajja vihātabbā.", "sujato": "“Reverend Sāriputta, a trainee mendicant should enter and remain in the four kinds of mindfulness meditation."}, {"key": "sn52.4:2.2", "pali": "Katame cattāro?", "sujato": "What four?"}, {"key": "sn52.4:2.3", "pali": "Idhāvuso, bhikkhu kāye kāyānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ;", "sujato": "It’s when a mendicant meditates by observing an aspect of the body—keen,\naware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.4:2.4", "pali": "vedanāsu …pe…", "sujato": "They meditate observing an aspect of feelings …"}, {"key": "sn52.4:2.5", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.4:2.6", "pali": "dhammesu dhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.4:2.7", "pali": "sekhenāvuso sāriputta, bhikkhunā ime cattāro satipaṭṭhānā upasampajja vihātabbā”ti.", "sujato": "A trainee mendicant should enter and remain in these four kinds of mindfulness meditation.”"}, {"key": "sn52.4:2.8", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn52.5", "label": "SN 52.5 · At Thorny Wood (2nd)", "children": [{"id": "sn52.5/0", "label": "Linked Discourses 52.5", "rows": [{"key": "sn52.5:0.1", "pali": "Saṁyutta Nikāya 52.5", "sujato": "Linked Discourses 52.5"}, {"key": "sn52.5:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.5:0.3", "pali": "Dutiyakaṇḍakīsutta", "sujato": "At Thorny Wood (2nd)"}]}, {"id": "sn52.5/1", "label": "At Sāketa.", "rows": [{"key": "sn52.5:1.1", "pali": "Sāketanidānaṁ.", "sujato": "At Sāketa."}, {"key": "sn52.5:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā sāriputto āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "Sāriputta said to Anuruddha:"}, {"key": "sn52.5:1.3", "pali": "“asekhenāvuso anuruddha, bhikkhunā katame dhammā upasampajja vihātabbā”ti?", "sujato": "“Reverend Anuruddha, what things should a mendicant who is an adept enter and remain in?”"}, {"key": "sn52.5:1.4", "pali": "“Asekhenāvuso sāriputta, bhikkhunā cattāro satipaṭṭhānā upasampajja vihātabbā.", "sujato": "“Reverend Sāriputta, a mendicant who is an adept should enter and remain in the four kinds of mindfulness meditation."}, {"key": "sn52.5:1.5", "pali": "Katame cattāro?", "sujato": "What four?"}, {"key": "sn52.5:1.6", "pali": "Idhāvuso, bhikkhu kāye kāyānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ;", "sujato": "It’s when a mendicant meditates by observing an aspect of the body—keen,\naware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.5:1.7", "pali": "vedanāsu …pe…", "sujato": "They meditate observing an aspect of feelings …"}, {"key": "sn52.5:1.8", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.5:1.9", "pali": "dhammesu dhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.5:1.10", "pali": "asekhenāvuso sāriputta, bhikkhunā ime cattāro satipaṭṭhānā upasampajja vihātabbā”ti.", "sujato": "A mendicant who is an adept should enter and remain in these four kinds of mindfulness meditation.”"}, {"key": "sn52.5:1.11", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn52.6", "label": "SN 52.6 · At Thorny Wood (3rd)", "children": [{"id": "sn52.6/0", "label": "Linked Discourses 52.6", "rows": [{"key": "sn52.6:0.1", "pali": "Saṁyutta Nikāya 52.6", "sujato": "Linked Discourses 52.6"}, {"key": "sn52.6:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.6:0.3", "pali": "Tatiyakaṇḍakīsutta", "sujato": "At Thorny Wood (3rd)"}]}, {"id": "sn52.6/1", "label": "At Sāketa.", "rows": [{"key": "sn52.6:1.1", "pali": "Sāketanidānaṁ.", "sujato": "At Sāketa."}, {"key": "sn52.6:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā sāriputto āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "Sāriputta said to Anuruddha:"}, {"key": "sn52.6:1.3", "pali": "“katamesaṁ āyasmā anuruddho dhammānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto”ti?", "sujato": "“What things has Venerable Anuruddha developed and cultivated to attain great direct knowledge?”"}, {"key": "sn52.6:1.4", "pali": "“Catunnaṁ khvāhaṁ, āvuso, satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "“Reverend, I attained great direct knowledge by developing and cultivating the four kinds of mindfulness meditation."}, {"key": "sn52.6:1.5", "pali": "Katamesaṁ catunnaṁ?", "sujato": "What four?"}, {"key": "sn52.6:1.6", "pali": "Idhāhaṁ, āvuso, kāye kāyānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ;", "sujato": "I meditate observing an aspect of the body—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.6:1.7", "pali": "vedanāsu …pe…", "sujato": "I meditate observing an aspect of feelings …"}, {"key": "sn52.6:1.8", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.6:1.9", "pali": "dhammesu dhammānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.6:1.10", "pali": "imesaṁ khvāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "I attained great direct knowledge by developing and cultivating these four kinds of mindfulness meditation."}, {"key": "sn52.6:1.11", "pali": "Imesañca panāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā sahassaṁ lokaṁ abhijānāmī”ti.", "sujato": "And it’s because of developing and cultivating these four kinds of\nmindfulness meditation that I directly know the thousandfold galaxy.”"}, {"key": "sn52.6:1.12", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn52.7", "label": "SN 52.7 · The Ending of Craving", "children": [{"id": "sn52.7/0", "label": "Linked Discourses 52.7", "rows": [{"key": "sn52.7:0.1", "pali": "Saṁyutta Nikāya 52.7", "sujato": "Linked Discourses 52.7"}, {"key": "sn52.7:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.7:0.3", "pali": "Taṇhākkhayasutta", "sujato": "The Ending of Craving"}]}, {"id": "sn52.7/1", "label": "At Sāvatthī.", "rows": [{"key": "sn52.7:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn52.7:1.2", "pali": "Tatra kho āyasmā anuruddho bhikkhū āmantesi:", "sujato": "There Venerable Anuruddha addressed the mendicants:"}, {"key": "sn52.7:1.3", "pali": "“āvuso bhikkhavo”ti.", "sujato": "“Reverends, mendicants!”"}, {"key": "sn52.7:1.4", "pali": "“Āvuso”ti kho te bhikkhū āyasmato anuruddhassa paccassosuṁ.", "sujato": "“Reverend,” they replied."}, {"key": "sn52.7:1.5", "pali": "Āyasmā anuruddho etadavoca:", "sujato": "Anuruddha said this:"}]}, {"id": "sn52.7/2", "label": "“Reverends, when these four kinds of mindfulness…", "rows": [{"key": "sn52.7:2.1", "pali": "“Cattārome, āvuso, satipaṭṭhānā bhāvitā bahulīkatā taṇhākkhayāya saṁvattanti.", "sujato": "“Reverends, when these four kinds of mindfulness meditation are\ndeveloped and cultivated they lead to the ending of craving."}, {"key": "sn52.7:2.2", "pali": "Katame cattāro?", "sujato": "What four?"}, {"key": "sn52.7:2.3", "pali": "Idhāvuso, bhikkhu kāye kāyānupassī viharati …pe…", "sujato": "It’s when a mendicant meditates by observing an aspect of the body …"}, {"key": "sn52.7:2.4", "pali": "vedanāsu …pe…", "sujato": "feelings …"}, {"key": "sn52.7:2.5", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.7:2.6", "pali": "dhammesu dhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.7:2.7", "pali": "ime kho, āvuso, cattāro satipaṭṭhānā bhāvitā bahulīkatā taṇhākkhayāya saṁvattantī”ti.", "sujato": "When these four kinds of mindfulness meditation are developed and cultivated they lead to the ending of craving.”"}, {"key": "sn52.7:2.8", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn52.8", "label": "SN 52.8 · The Salaḷa Tree Hut", "children": [{"id": "sn52.8/0", "label": "Linked Discourses 52.8", "rows": [{"key": "sn52.8:0.1", "pali": "Saṁyutta Nikāya 52.8", "sujato": "Linked Discourses 52.8"}, {"key": "sn52.8:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.8:0.3", "pali": "Salaḷāgārasutta", "sujato": "The Salaḷa Tree Hut"}]}, {"id": "sn52.8/1", "label": "At one time Venerable Anuruddha was staying…", "rows": [{"key": "sn52.8:1.1", "pali": "Ekaṁ samayaṁ āyasmā anuruddho sāvatthiyaṁ viharati salaḷāgāre.", "sujato": "At one time Venerable Anuruddha was staying near Sāvatthī in the <i lang='pi' translate='no'>salaḷa</i> tree hut."}, {"key": "sn52.8:1.2", "pali": "Tatra kho āyasmā anuruddho bhikkhū āmantesi …pe… etadavoca:", "sujato": "There Venerable Anuruddha addressed the mendicants:"}, {"key": "sn52.8:1.3", "pali": "“seyyathāpi, āvuso, gaṅgā nadī pācīnaninnā pācīnapoṇā pācīnapabbhārā.", "sujato": "“Reverends, suppose that, although the Ganges river slants, slopes, and inclines to the east,"}, {"key": "sn52.8:1.4", "pali": "Atha mahājanakāyo āgaccheyya kudālapiṭakaṁ ādāya:", "sujato": "a large crowd were to come along with a spade and basket, saying:"}, {"key": "sn52.8:1.5", "pali": "‘mayaṁ imaṁ gaṅgānadiṁ pacchāninnaṁ karissāma pacchāpoṇaṁ pacchāpabbhāran’ti.", "sujato": "‘We’ll make this Ganges river slant, slope, and incline to the west!’"}, {"key": "sn52.8:1.6", "pali": "Taṁ kiṁ maññathāvuso, api nu so mahājanakāyo gaṅgānadiṁ pacchāninnaṁ kareyya pacchāpoṇaṁ pacchāpabbhāran”ti?", "sujato": "What do you think, reverends?\nWould they succeed?”"}, {"key": "sn52.8:1.7", "pali": "“No hetaṁ, āvuso”.", "sujato": "“No, reverend."}, {"key": "sn52.8:1.8", "pali": "“Taṁ kissa hetu”?", "sujato": "Why is that?"}, {"key": "sn52.8:1.9", "pali": "“Gaṅgā, āvuso, nadī pācīnaninnā pācīnapoṇā pācīnapabbhārā.", "sujato": "The Ganges river slants, slopes, and inclines to the east."}, {"key": "sn52.8:1.10", "pali": "Sā na sukarā pacchāninnaṁ kātuṁ pacchāpoṇaṁ pacchāpabbhāraṁ.", "sujato": "It’s not easy to make it slant, slope, and incline to the west."}, {"key": "sn52.8:1.11", "pali": "Yāvadeva ca pana so mahājanakāyo kilamathassa vighātassa bhāgī assā”ti.", "sujato": "That large crowd will eventually get weary and frustrated.”"}]}, {"id": "sn52.8/2", "label": "“In the same way, while a mendicant…", "rows": [{"key": "sn52.8:2.1", "pali": "“Evameva kho, āvuso,\nbhikkhuṁ cattāro satipaṭṭhāne bhāventaṁ cattāro satipaṭṭhāne bahulīkarontaṁ rājāno vā\nrājamahāmattā vā mittā vā amaccā vā ñātī vā sālohitā vā bhogehi abhihaṭṭhuṁ pavāreyyuṁ:", "sujato": "“In the same way, while a mendicant develops and cultivates the four kinds of mindfulness meditation,\nif rulers or their chief ministers, friends or colleagues,\nrelatives or family should invite them to accept wealth, saying:"}, {"key": "sn52.8:2.2", "pali": "‘ehambho purisa, kiṁ te ime kāsāvā anudahanti?", "sujato": "‘Please, my friend, why let these ocher robes torment you?"}, {"key": "sn52.8:2.3", "pali": "Kiṁ muṇḍo kapālamanusañcarasi?", "sujato": "Why follow the practice of shaving your head and carrying an alms bowl?"}, {"key": "sn52.8:2.4", "pali": "Ehi hīnāyāvattitvā bhoge ca bhuñjassu puññāni ca karohī’ti.", "sujato": "Come, return to a lesser life, enjoy wealth, and make merit!’"}]}, {"id": "sn52.8/3", "label": "It is quite impossible for a mendicant…", "rows": [{"key": "sn52.8:3.1", "pali": "So vata, āvuso, bhikkhu cattāro satipaṭṭhāne bhāvento cattāro satipaṭṭhāne\nbahulīkaronto sikkhaṁ paccakkhāya hīnāyāvattissatīti—netaṁ ṭhānaṁ vijjati.", "sujato": "It is quite impossible for a mendicant who is developing and cultivating the four\nkinds of mindfulness meditation to resign the training and return to a lesser life."}, {"key": "sn52.8:3.2", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn52.8:3.3", "pali": "Yañhi taṁ, āvuso, cittaṁ dīgharattaṁ vivekaninnaṁ vivekapoṇaṁ\nvivekapabbhāraṁ taṁ vata hīnāyāvattissatīti—netaṁ ṭhānaṁ vijjati.", "sujato": "Because for a long time that mendicant’s mind has slanted, sloped, and inclined to seclusion.\nSo it’s impossible for them to return to a lesser life."}, {"key": "sn52.8:3.4", "pali": "Kathañcāvuso, bhikkhu cattāro satipaṭṭhāne bhāveti, cattāro satipaṭṭhāne bahulīkarotīti?", "sujato": "And how does a mendicant develop and cultivate the four kinds of mindfulness meditation?"}, {"key": "sn52.8:3.5", "pali": "Idhāvuso, bhikkhu kāye kāyānupassī viharati …pe…", "sujato": "It’s when a mendicant meditates by observing an aspect of the body …"}, {"key": "sn52.8:3.6", "pali": "vedanāsu …pe…", "sujato": "feelings …"}, {"key": "sn52.8:3.7", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.8:3.8", "pali": "dhammesu dhammānupassī viharati ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ.", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.8:3.9", "pali": "Evaṁ kho, āvuso, bhikkhu cattāro satipaṭṭhāne bhāveti, cattāro satipaṭṭhāne bahulīkarotī”ti.", "sujato": "That’s how a mendicant develops and cultivates the four kinds of mindfulness meditation.”"}, {"key": "sn52.8:3.10", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn52.9", "label": "SN 52.9 · In Ambapālī’s Mango Grove", "children": [{"id": "sn52.9/0", "label": "Linked Discourses 52.9", "rows": [{"key": "sn52.9:0.1", "pali": "Saṁyutta Nikāya 52.9", "sujato": "Linked Discourses 52.9"}, {"key": "sn52.9:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.9:0.3", "pali": "Ambapālivanasutta", "sujato": "In Ambapālī’s Mango Grove"}]}, {"id": "sn52.9/1", "label": "At one time the venerables Anuruddha and…", "rows": [{"key": "sn52.9:1.1", "pali": "Ekaṁ samayaṁ āyasmā ca anuruddho āyasmā ca sāriputto vesāliyaṁ viharanti ambapālivane.", "sujato": "At one time the venerables Anuruddha and Sāriputta were staying near Vesālī, in Ambapālī’s Mango Grove."}, {"key": "sn52.9:1.2", "pali": "Atha kho āyasmā sāriputto sāyanhasamayaṁ paṭisallānā vuṭṭhito …pe…\nekamantaṁ nisinno kho āyasmā sāriputto āyasmantaṁ anuruddhaṁ etadavoca:", "sujato": "Then in the late afternoon, Sāriputta came out of retreat, went to Anuruddha, and said to him:"}]}, {"id": "sn52.9/2", "label": "“Reverend Anuruddha, your faculties are so very…", "rows": [{"key": "sn52.9:2.1", "pali": "“Vippasannāni kho te, āvuso anuruddha, indriyāni, parisuddho mukhavaṇṇo pariyodāto.", "sujato": "“Reverend Anuruddha, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn52.9:2.2", "pali": "Katamenāyasmā anuruddho vihārena etarahi bahulaṁ viharatī”ti?", "sujato": "What kind of meditation are you usually practicing these days?”"}, {"key": "sn52.9:2.3", "pali": "“Catūsu khvāhaṁ, āvuso, satipaṭṭhānesu suppatiṭṭhitacitto etarahi bahulaṁ viharāmi.", "sujato": "“These days, reverend, I usually meditate with my mind firmly established in the four kinds of mindfulness meditation."}, {"key": "sn52.9:2.4", "pali": "Katamesu catūsu?", "sujato": "What four?"}, {"key": "sn52.9:2.5", "pali": "Idhāhaṁ, āvuso, kāye kāyānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ;", "sujato": "I meditate observing an aspect of the body …"}, {"key": "sn52.9:2.6", "pali": "vedanāsu …pe…", "sujato": "feelings …"}, {"key": "sn52.9:2.7", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.9:2.8", "pali": "dhammesu dhammānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.9:2.9", "pali": "imesu khvāhaṁ, āvuso, catūsu satipaṭṭhānesu suppatiṭṭhitacitto etarahi bahulaṁ viharāmi.", "sujato": "These days I usually meditate with my mind firmly established in these four kinds of mindfulness meditation."}, {"key": "sn52.9:2.10", "pali": "Yo so, āvuso, bhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro\nanuppattasadattho parikkhīṇabhavasaṁyojano sammadaññāvimutto,\nso imesu catūsu satipaṭṭhānesu suppatiṭṭhitacitto bahulaṁ viharatī”ti.", "sujato": "A mendicant who is perfected—with defilements ended, who has completed the spiritual journey,\ndone what had to be done, laid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence,\nand is rightly freed through enlightenment—usually meditates with their\nmind firmly established in these four kinds of mindfulness meditation.”"}]}, {"id": "sn52.9/3", "label": "“We’re so fortunate, reverend, so very fortunate,", "rows": [{"key": "sn52.9:3.1", "pali": "“Lābhā vata no, āvuso, suladdhaṁ vata no, āvuso.", "sujato": "“We’re so fortunate, reverend, so very fortunate,"}, {"key": "sn52.9:3.2", "pali": "Ye mayaṁ āyasmato anuruddhassa sammukhāva assumha āsabhiṁ vācaṁ bhāsamānassā”ti.", "sujato": "to have heard such a dramatic statement in the presence of Venerable Anuruddha.”"}, {"key": "sn52.9:3.3", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn52.10", "label": "SN 52.10 · Gravely Ill", "children": [{"id": "sn52.10/0", "label": "Linked Discourses 52.10", "rows": [{"key": "sn52.10:0.1", "pali": "Saṁyutta Nikāya 52.10", "sujato": "Linked Discourses 52.10"}, {"key": "sn52.10:0.2", "pali": "1.\nRahogatavagga", "sujato": "1.\nIn Private"}, {"key": "sn52.10:0.3", "pali": "Bāḷhagilānasutta", "sujato": "Gravely Ill"}]}, {"id": "sn52.10/1", "label": "At one time Venerable Anuruddha was staying…", "rows": [{"key": "sn52.10:1.1", "pali": "Ekaṁ samayaṁ āyasmā anuruddho sāvatthiyaṁ viharati andhavanasmiṁ ābādhiko dukkhito bāḷhagilāno.", "sujato": "At one time Venerable Anuruddha was staying near Sāvatthī in the Dark Forest.\nAnd he was sick, suffering, gravely ill."}, {"key": "sn52.10:1.2", "pali": "Atha kho sambahulā bhikkhū yenāyasmā anuruddho tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmantaṁ anuruddhaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to Venerable Anuruddha, and said to him:"}]}, {"id": "sn52.10/2", "label": "“What meditation does Venerable Anuruddha practice so…", "rows": [{"key": "sn52.10:2.1", "pali": "“Katamenāyasmato anuruddhassa vihārena viharato uppannā sārīrikā dukkhā vedanā cittaṁ na pariyādāya tiṭṭhantī”ti?", "sujato": "“What meditation does Venerable Anuruddha practice so that physical pain doesn’t occupy his mind?”"}, {"key": "sn52.10:2.2", "pali": "“Catūsu kho me, āvuso,\nsatipaṭṭhānesu suppatiṭṭhitacittassa viharato uppannā sārīrikā dukkhā vedanā cittaṁ na pariyādāya tiṭṭhanti.", "sujato": "“Reverends, I meditate with my mind firmly established in the four kinds\nof mindfulness meditation so that physical pain doesn’t occupy my mind."}, {"key": "sn52.10:2.3", "pali": "Katamesu catūsu?", "sujato": "What four?"}, {"key": "sn52.10:2.4", "pali": "Idhāhaṁ, āvuso, kāye kāyānupassī viharāmi …pe…", "sujato": "I meditate observing an aspect of the body …"}, {"key": "sn52.10:2.5", "pali": "vedanāsu …pe…", "sujato": "feelings …"}, {"key": "sn52.10:2.6", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.10:2.7", "pali": "dhammesu dhammānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.10:2.8", "pali": "imesu kho me, āvuso,\ncatūsu satipaṭṭhānesu suppatiṭṭhitacittassa viharato uppannā sārīrikā dukkhā vedanā cittaṁ na pariyādāya tiṭṭhantī”ti.", "sujato": "I meditate with my mind firmly established in these four kinds of\nmindfulness meditation so that physical pain doesn’t occupy my mind.”"}, {"key": "sn52.10:2.9", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn52.10:2.10", "pali": "Rahogatavaggo paṭhamo.", "sujato": ""}]}, {"id": "sn52.10/3", "label": "Tassuddānaṁ", "rows": [{"key": "sn52.10:3.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn52.10:3.1", "pali": "Rahogatena dve vuttā,", "sujato": ""}, {"key": "sn52.10:3.2", "pali": "sutanu kaṇḍakī tayo;", "sujato": ""}, {"key": "sn52.10:3.3", "pali": "Taṇhākkhayasalaḷāgāraṁ,", "sujato": ""}, {"key": "sn52.10:3.4", "pali": "ambapāli ca gilānanti.", "sujato": ""}]}]}]}, {"id": "sn52-dutiyavagga", "label": "Dutiyavagga — Chapter Two", "children": [{"id": "sn52.11", "label": "SN 52.11 · A Thousand Eons", "children": [{"id": "sn52.11/0", "label": "Linked Discourses 52.11", "rows": [{"key": "sn52.11:0.1", "pali": "Saṁyutta Nikāya 52.11", "sujato": "Linked Discourses 52.11"}, {"key": "sn52.11:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.11:0.3", "pali": "Kappasahassasutta", "sujato": "A Thousand Eons"}]}, {"id": "sn52.11/1", "label": "At one time Venerable Anuruddha was staying…", "rows": [{"key": "sn52.11:1.1", "pali": "Ekaṁ samayaṁ āyasmā anuruddho sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time Venerable Anuruddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn52.11:1.2", "pali": "Atha kho sambahulā bhikkhū yenāyasmā anuruddho tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmatā anuruddhena saddhiṁ …pe… ekamantaṁ nisinnā kho te bhikkhū āyasmantaṁ anuruddhaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to Venerable Anuruddha, exchanged greetings with him … and said:"}]}, {"id": "sn52.11/2", "label": "“What things has Venerable Anuruddha developed and…", "rows": [{"key": "sn52.11:2.1", "pali": "“Katamesaṁ āyasmā anuruddho dhammānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto”ti?", "sujato": "“What things has Venerable Anuruddha developed and cultivated to attain great direct knowledge?”"}, {"key": "sn52.11:2.2", "pali": "“Catunnaṁ khvāhaṁ, āvuso, satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "“Reverends, I attained great direct knowledge by developing and cultivating the four kinds of mindfulness meditation."}, {"key": "sn52.11:2.3", "pali": "Katamesaṁ catunnaṁ?", "sujato": "What four?"}, {"key": "sn52.11:2.4", "pali": "Idhāhaṁ, āvuso, kāye kāyānupassī viharāmi …pe…", "sujato": "I meditate observing an aspect of the body …"}, {"key": "sn52.11:2.5", "pali": "vedanāsu …pe…", "sujato": "feelings …"}, {"key": "sn52.11:2.6", "pali": "citte …pe…", "sujato": "mind …"}, {"key": "sn52.11:2.7", "pali": "dhammesu dhammānupassī viharāmi ātāpī sampajāno satimā, vineyya loke abhijjhādomanassaṁ—", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world."}, {"key": "sn52.11:2.8", "pali": "imesaṁ khvāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā mahābhiññataṁ patto.", "sujato": "I attained great direct knowledge by developing and cultivating these four kinds of mindfulness meditation."}, {"key": "sn52.11:2.9", "pali": "Imesañca panāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā kappasahassaṁ anussarāmī”ti.", "sujato": "And it’s because of developing and cultivating these four kinds\nof mindfulness meditation that I recollect a thousand eons.”"}, {"key": "sn52.11:2.10", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn52.12", "label": "SN 52.12 · Psychic Powers", "children": [{"id": "sn52.12/0", "label": "Linked Discourses 52.12", "rows": [{"key": "sn52.12:0.1", "pali": "Saṁyutta Nikāya 52.12", "sujato": "Linked Discourses 52.12"}, {"key": "sn52.12:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.12:0.3", "pali": "Iddhividhasutta", "sujato": "Psychic Powers"}]}, {"id": "sn52.12/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.12:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā anekavihitaṁ iddhividhaṁ paccanubhomi—ekopi hutvā bahudhā homi …pe…\nyāva brahmalokāpi kāyena vasaṁ vattemī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of\nmindfulness meditation that I wield the many kinds of psychic power:\nmultiplying myself and becoming one again … controlling the body as far as the realm of divinity.”"}, {"key": "sn52.12:1.2", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn52.13", "label": "SN 52.13 · Clairaudience", "children": [{"id": "sn52.13/0", "label": "Linked Discourses 52.13", "rows": [{"key": "sn52.13:0.1", "pali": "Saṁyutta Nikāya 52.13", "sujato": "Linked Discourses 52.13"}, {"key": "sn52.13:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.13:0.3", "pali": "Dibbasotasutta", "sujato": "Clairaudience"}]}, {"id": "sn52.13/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.13:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā dibbāya sotadhātuyā visuddhāya\natikkantamānusikāya ubho sadde suṇāmi dibbe ca mānuse ca ye dūre santike cā”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness meditation that,\nwith clairaudience that is purified and superhuman,\nI hear both kinds of sounds, human and heavenly, whether near or far.”"}, {"key": "sn52.13:1.2", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn52.14", "label": "SN 52.14 · Encompassing the Mind", "children": [{"id": "sn52.14/0", "label": "Linked Discourses 52.14", "rows": [{"key": "sn52.14:0.1", "pali": "Saṁyutta Nikāya 52.14", "sujato": "Linked Discourses 52.14"}, {"key": "sn52.14:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.14:0.3", "pali": "Cetopariyasutta", "sujato": "Encompassing the Mind"}]}, {"id": "sn52.14/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.14:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā parasattānaṁ parapuggalānaṁ cetasā ceto paricca pajānāmi—", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness\nmeditation that I understand the minds of other beings and individuals,\nhaving encompassed them with my mind."}, {"key": "sn52.14:1.2", "pali": "sarāgaṁ vā cittaṁ ‘sarāgaṁ cittan’ti pajānāmi …pe…", "sujato": "I understand mind with greed as ‘mind with greed’ …"}, {"key": "sn52.14:1.3", "pali": "avimuttaṁ vā cittaṁ ‘avimuttaṁ cittan’ti pajānāmī”ti.", "sujato": "I understand unfreed mind as ‘unfreed mind’.”"}, {"key": "sn52.14:1.4", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn52.15", "label": "SN 52.15 · Possible", "children": [{"id": "sn52.15/0", "label": "Linked Discourses 52.15", "rows": [{"key": "sn52.15:0.1", "pali": "Saṁyutta Nikāya 52.15", "sujato": "Linked Discourses 52.15"}, {"key": "sn52.15:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.15:0.3", "pali": "Ṭhānasutta", "sujato": "Possible"}]}, {"id": "sn52.15/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.15:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā ṭhānañca ṭhānato aṭṭhānañca aṭṭhānato yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness meditation\nthat I truly understand the possible as possible and the impossible as impossible.”"}, {"key": "sn52.15:1.2", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn52.16", "label": "SN 52.16 · The Results of Deeds Undertaken", "children": [{"id": "sn52.16/0", "label": "Linked Discourses 52.16", "rows": [{"key": "sn52.16:0.1", "pali": "Saṁyutta Nikāya 52.16", "sujato": "Linked Discourses 52.16"}, {"key": "sn52.16:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.16:0.3", "pali": "Kammasamādānasutta", "sujato": "The Results of Deeds Undertaken"}]}, {"id": "sn52.16/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.16:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā atītānāgatapaccuppannānaṁ\nkammasamādānānaṁ ṭhānaso hetuso vipākaṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness\nmeditation that I truly understand the result of deeds undertaken in the past,\nfuture, and present in terms of grounds and causes.”"}, {"key": "sn52.16:1.2", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn52.17", "label": "SN 52.17 · Where All Paths of Practice Lead", "children": [{"id": "sn52.17/0", "label": "Linked Discourses 52.17", "rows": [{"key": "sn52.17:0.1", "pali": "Saṁyutta Nikāya 52.17", "sujato": "Linked Discourses 52.17"}, {"key": "sn52.17:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.17:0.3", "pali": "Sabbatthagāminisutta", "sujato": "Where All Paths of Practice Lead"}]}, {"id": "sn52.17/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.17:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā sabbatthagāminippaṭipadaṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness\nmeditation that I truly understand where all paths of practice lead.”"}, {"key": "sn52.17:1.2", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn52.18", "label": "SN 52.18 · Diverse Elements", "children": [{"id": "sn52.18/0", "label": "Linked Discourses 52.18", "rows": [{"key": "sn52.18:0.1", "pali": "Saṁyutta Nikāya 52.18", "sujato": "Linked Discourses 52.18"}, {"key": "sn52.18:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.18:0.3", "pali": "Nānādhātusutta", "sujato": "Diverse Elements"}]}, {"id": "sn52.18/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.18:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā anekadhātunānādhātulokaṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness\nmeditation that I truly understand the world with its many and diverse elements.”"}, {"key": "sn52.18:1.2", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn52.19", "label": "SN 52.19 · Diverse Beliefs", "children": [{"id": "sn52.19/0", "label": "Linked Discourses 52.19", "rows": [{"key": "sn52.19:0.1", "pali": "Saṁyutta Nikāya 52.19", "sujato": "Linked Discourses 52.19"}, {"key": "sn52.19:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.19:0.3", "pali": "Nānādhimuttisutta", "sujato": "Diverse Beliefs"}]}, {"id": "sn52.19/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.19:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā sattānaṁ nānādhimuttikataṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness\nmeditation that I truly understand the diverse convictions of sentient beings.”"}, {"key": "sn52.19:1.2", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn52.20", "label": "SN 52.20 · Comprehending the Faculties of Others", "children": [{"id": "sn52.20/0", "label": "Linked Discourses 52.20", "rows": [{"key": "sn52.20:0.1", "pali": "Saṁyutta Nikāya 52.20", "sujato": "Linked Discourses 52.20"}, {"key": "sn52.20:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.20:0.3", "pali": "Indriyaparopariyattasutta", "sujato": "Comprehending the Faculties of Others"}]}, {"id": "sn52.20/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.20:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā parasattānaṁ\nparapuggalānaṁ indriyaparopariyattaṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness meditation that I truly\nunderstand the faculties of other sentient beings and other individuals after encompassing them with my mind.”"}, {"key": "sn52.20:1.2", "pali": "Dasamaṁ.", "sujato": ""}]}]}, {"id": "sn52.21", "label": "SN 52.21 · Absorptions, Etc.", "children": [{"id": "sn52.21/0", "label": "Linked Discourses 52.21", "rows": [{"key": "sn52.21:0.1", "pali": "Saṁyutta Nikāya 52.21", "sujato": "Linked Discourses 52.21"}, {"key": "sn52.21:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.21:0.3", "pali": "Jhānādisutta", "sujato": "Absorptions, Etc."}]}, {"id": "sn52.21/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.21:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā jhānavimokkhasamādhisamāpattīnaṁ\nsaṅkilesaṁ vodānaṁ vuṭṭhānaṁ yathābhūtaṁ pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds\nof mindfulness meditation that I truly understand corruption,\ncleansing, and emergence regarding the absorptions, liberations, immersions, and attainments.”"}, {"key": "sn52.21:1.2", "pali": "Ekādasamaṁ.", "sujato": ""}]}]}, {"id": "sn52.22", "label": "SN 52.22 · Past Lives", "children": [{"id": "sn52.22/0", "label": "Linked Discourses 52.22", "rows": [{"key": "sn52.22:0.1", "pali": "Saṁyutta Nikāya 52.22", "sujato": "Linked Discourses 52.22"}, {"key": "sn52.22:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.22:0.3", "pali": "Pubbenivāsasutta", "sujato": "Past Lives"}]}, {"id": "sn52.22/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.22:1.1", "pali": "“Imesañca panāhaṁ, āvuso, catunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā anekavihitaṁ pubbenivāsaṁ anussarāmi,\nseyyathidaṁ—ekampi jātiṁ dvepi jātiyo …pe… iti sākāraṁ sauddesaṁ anekavihitaṁ pubbenivāsaṁ anussarāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of\nmindfulness meditation that I recollect my many kinds of past lives,\nwith features and details.”"}, {"key": "sn52.22:1.2", "pali": "Dvādasamaṁ.", "sujato": ""}]}]}, {"id": "sn52.23", "label": "SN 52.23 · Clairvoyance", "children": [{"id": "sn52.23/0", "label": "Linked Discourses 52.23", "rows": [{"key": "sn52.23:0.1", "pali": "Saṁyutta Nikāya 52.23", "sujato": "Linked Discourses 52.23"}, {"key": "sn52.23:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.23:0.3", "pali": "Dibbacakkhusutta", "sujato": "Clairvoyance"}]}, {"id": "sn52.23/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.23:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā dibbena cakkhunā\nvisuddhena atikkantamānusakena satte passāmi cavamāne upapajjamāne …pe…\niti dibbena cakkhunā visuddhena atikkantamānusakena yathākammūpage satte pajānāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness meditation that,\nwith clairvoyance that is purified and superhuman, I understand how sentient beings pass on according to their deeds.”"}, {"key": "sn52.23:1.2", "pali": "Terasamaṁ.", "sujato": ""}]}]}, {"id": "sn52.24", "label": "SN 52.24 · The Ending of Defilements", "children": [{"id": "sn52.24/0", "label": "Linked Discourses 52.24", "rows": [{"key": "sn52.24:0.1", "pali": "Saṁyutta Nikāya 52.24", "sujato": "Linked Discourses 52.24"}, {"key": "sn52.24:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nA Thousand"}, {"key": "sn52.24:0.3", "pali": "Āsavakkhayasutta", "sujato": "The Ending of Defilements"}]}, {"id": "sn52.24/1", "label": "“… And it’s because of developing and…", "rows": [{"key": "sn52.24:1.1", "pali": "“Imesañca panāhaṁ, āvuso,\ncatunnaṁ satipaṭṭhānānaṁ bhāvitattā bahulīkatattā āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharāmī”ti.", "sujato": "“…\nAnd it’s because of developing and cultivating these four kinds of mindfulness meditation\nthat I realized the undefiled freedom of heart and freedom by wisdom in this very life.\nAnd I live having realized it with my own insight due to the ending of defilements.”"}, {"key": "sn52.24:1.2", "pali": "Cuddasamaṁ.", "sujato": ""}, {"key": "sn52.24:1.3", "pali": "Dutiyo vaggo.", "sujato": ""}]}, {"id": "sn52.24/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn52.24:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn52.24:2.1", "pali": "Mahābhiññaṁ iddhi dibbaṁ,", "sujato": ""}, {"key": "sn52.24:2.2", "pali": "Cetopariyaṁ ṭhānaṁ kammaṁ;", "sujato": ""}, {"key": "sn52.24:2.3", "pali": "Sabbatthadhātudhimutti,", "sujato": ""}, {"key": "sn52.24:2.4", "pali": "Indriyaṁ jhānaṁ tisso vijjāti.", "sujato": ""}, {"key": "sn52.24:2.5", "pali": "Anuruddhasaṁyuttaṁ aṭṭhamaṁ.", "sujato": "The Linked Discourses with Anuruddha are the eighth section."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn52.1:1.2": ["Anuruddha was the brother of Ānan
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 53", "rows": [{"key": "mn53:0.1", "pali": "Majjhima Nikāya 53", "sujato": "Middle Discourses 53", "thanissaro": "", "pts": ""}, {"key": "mn53:0.2", "pali": "Sekhasutta", "sujato": "A Trainee", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn53:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn53:1.2", "pali": "ekaṁ samayaṁ bhagavā sakkesu viharati kapilavatthusmiṁ nigrodhārāme.", "sujato": "At one time the Buddha was staying in the land of the Sakyans, near Kapilavatthu in the Banyan Tree Monastery.", "thanissaro": "on one occasion the Blessed One was staying among the Sakyans at Kapilavatthu in the Banyan Park.", "pts": "At one time the Lord was staying among the Sakyans near Kapilavatthu in Nigrodha's monastery."}]}, {"id": "2", "label": "Now at that time a new town…", "rows": [{"key": "mn53:2.1", "pali": "Tena kho pana samayena kāpilavatthavānaṁ sakyānaṁ navaṁ santhāgāraṁ acirakāritaṁ\nhoti anajjhāvuṭṭhaṁ samaṇena vā brāhmaṇena vā kenaci vā manussabhūtena.", "sujato": "Now at that time a new town hall had recently been constructed for the Sakyans of Kapilavatthu.\nIt had not yet been occupied by an ascetic or brahmin or any human at all.", "thanissaro": "Now at that time a new reception hall had just been built by the Kapilavatthu Sakyans,\nand it had not yet been dwelled in by any contemplative, brahman, or anyone at all in human form.", "pts": "Now at that time a new conference hall had not long been built for the Sakyans of Kapilavatthu,\nand had never (yet) been occupied by a recluse or brahman or any human being."}, {"key": "mn53:2.2", "pali": "Atha kho kāpilavatthavā sakyā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho kāpilavatthavā sakyā bhagavantaṁ etadavocuṁ:", "sujato": "Then the Sakyans of Kapilavatthu went up to the Buddha, bowed, sat down to one side, and said to him:", "thanissaro": "So the Kapilavatthu Sakyans went to the Blessed One and, on arrival, having bowed down to him, sat to one side.\nAs they were sitting there they said to him,", "pts": "Then the Sakyans of Kapilavatthu approached the Lord;\nhaving approached, having greeted the Lord, they sat down at a respectful distance.\nAs they were sitting down at a respectful distance, the Sakyans of Kapilavatthu spoke thus to the Lord:"}, {"key": "mn53:2.3", "pali": "“idha, bhante, kāpilavatthavānaṁ sakyānaṁ navaṁ santhāgāraṁ acirakāritaṁ\nanajjhāvuṭṭhaṁ samaṇena vā brāhmaṇena vā kenaci vā manussabhūtena.", "sujato": "“Sir, a new town hall has recently been constructed for the Sakyans of Kapilavatthu.\nIt has not yet been occupied by an ascetic or brahmin or any human at all.", "thanissaro": "“Lord, a new reception hall has just been built by the Kapilavatthu Sakyans,\nand it has not yet been dwelled in by any contemplative, brahman, or anyone at all in human form.", "pts": "\"Lord, there is a new conference hall here, built not long ago for the Sakyans of Kapilavatthu,\nwhich has never (yet) been occupied by a recluse or brahman or any human being."}, {"key": "mn53:2.4", "pali": "Taṁ, bhante, bhagavā paṭhamaṁ paribhuñjatu.\nBhagavatā paṭhamaṁ paribhuttaṁ pacchā kāpilavatthavā sakyā paribhuñjissanti.", "sujato": "May the Buddha be the first to use it, and only then will the Sakyans of Kapilavatthu use it.", "thanissaro": "May the Blessed One be the first to use it.\nWhen the Blessed One has used it first, the Kapilavatthu Sakyans will use it afterwards.", "pts": "Lord, let the Lord be the first to use it.\nWhen the Lord has used it first, the Sakyans of Kapilavatthu will use it afterwards,"}, {"key": "mn53:2.5", "pali": "Tadassa kāpilavatthavānaṁ sakyānaṁ dīgharattaṁ hitāya sukhāyā”ti.", "sujato": "That would be for the lasting welfare and happiness of the Sakyans of Kapilavatthu.”", "thanissaro": "That will be for their long-term welfare & happiness.”", "pts": "and for a long time that will be for the welfare and happiness of the Sakyans of Kapilavatthu.\""}]}, {"id": "3", "label": "The Buddha consented with silence.", "rows": [{"key": "mn53:3.1", "pali": "Adhivāsesi bhagavā tuṇhībhāvena.", "sujato": "The Buddha consented with silence.", "thanissaro": "The Blessed One acquiesced with silence.", "pts": "The Lord consented by becoming silent."}, {"key": "mn53:3.2", "pali": "Atha kho kāpilavatthavā sakyā bhagavato adhivāsanaṁ viditvā uṭṭhāyāsanā\nbhagavantaṁ abhivādetvā padakkhiṇaṁ katvā yena navaṁ santhāgāraṁ tenupasaṅkamiṁsu;\nupasaṅkamitvā sabbasanthariṁ santhāgāraṁ santharitvā āsanāni paññapetvā\nudakamaṇikaṁ upaṭṭhapetvā telappadīpaṁ āropetvā yena bhagavā tenupasaṅkamiṁsu;", "sujato": "Then, knowing that the Buddha had consented, the Sakyans got up from their seat,\nbowed, and respectfully circled the Buddha, keeping him on their right.\nThen they went to the new town hall, where they spread carpets all over,\nprepared seats, set up a water jar, and placed an oil lamp.\nThen they went back to the Buddha,", "thanissaro": "Sensing his acquiescence, the Kapilavatthu Sakyans got up from their seats,\nbowed down to him, circumambulated him, and then went to the new reception hall.\nOn arrival, they spread it all over with felt rugs, arranged seats, set out a water vessel, and raised an oil lamp.", "pts": "Then the Sakyans of Kapilavatthu, having understood the Lord's consent, rising from their seats,\nhaving greeted the Lord, approached the conference hall keeping their right sides towards him.\nHaving approached, having spread the conference hall with all the spreadings, having got seats ready,\nhaving set out a water vessel, having hung up an oil lamp, they approached the Lord;"}, {"key": "mn53:3.3", "pali": "upasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ aṭṭhaṁsu.", "sujato": "bowed, stood to one side,", "thanissaro": "Then they went to the Blessed One and, on arrival, having bowed down to him, stood to one side.", "pts": "having approached and greeted the Lord, they stood at a respectful distance."}, {"key": "mn53:3.4", "pali": "Ekamantaṁ ṭhitā kho kāpilavatthavā sakyā bhagavantaṁ etadavocuṁ:", "sujato": "and told him of their preparations, saying,", "thanissaro": "As they were standing there they said to him,", "pts": "As they were standing at a respectful distance, the Sakyans of Kapilavatthu spoke thus to the Lord:"}, {"key": "mn53:3.5", "pali": "“sabbasanthariṁ santhataṁ, bhante, santhāgāraṁ, āsanāni paññattāni, udakamaṇiko upaṭṭhāpito, telappadīpo āropito.", "sujato": "", "thanissaro": "“Lord, the reception hall has been covered all over with felt rugs,\nseats have been arranged, a water vessel has been set out, and an oil lamp raised.", "pts": "\"Lord, the conference hall has been spread with all the spreadings,\nseats have been got ready, a water vessel set out, an oil lamp hung up."}, {"key": "mn53:3.6", "pali": "Yassadāni, bhante, bhagavā kālaṁ maññatī”ti.", "sujato": "“Please, sir, come at your convenience.”", "thanissaro": "It is now time for the Blessed One to do as he sees fit.”", "pts": "Let the Lord now do that for which he thinks it is the right time.\""}]}, {"id": "4", "label": "Then the Buddha robed up and, taking…", "rows": [{"key": "mn53:4.1", "pali": "Atha kho bhagavā nivāsetvā pattacīvaramādāya saddhiṁ bhikkhusaṅghena yena santhāgāraṁ tenupasaṅkami;\nupasaṅkamitvā pāde pakkhāletvā santhāgāraṁ pavisitvā majjhimaṁ thambhaṁ nissāya puratthābhimukho nisīdi.", "sujato": "Then the Buddha robed up and, taking his bowl and robe,\nwent to the new town hall together with the Saṅgha of mendicants.\nHaving washed his feet he entered the town hall and sat against the central column facing east.", "thanissaro": "So the Blessed One—after adjusting his lower robe and taking his bowl & outer robe—\nwent together with a Saṅgha of monks to the reception hall.\nOn arrival he washed his feet, entered the hall, and sat with his back to the central post, facing east.", "pts": "When the Lord had dressed, taking his bowl and robe, he approached the conference hall together with an Order of monks;\nhaving approached, he washed his feet,\nentered the conference hall and sat down against the middle pillar, facing the east."}, {"key": "mn53:4.2", "pali": "Bhikkhusaṅghopi kho pāde pakkhāletvā santhāgāraṁ pavisitvā pacchimaṁ bhittiṁ nissāya puratthābhimukho nisīdi,\nbhagavantaṁyeva purakkhatvā.", "sujato": "The Saṅgha of mendicants also washed their feet, entered the town hall,\nand sat against the west wall facing east, with the Buddha right in front of them.", "thanissaro": "The Saṅgha of monks washed their feet, entered the hall,\nand sat with their backs to the western wall, facing east, ranged around the Blessed One.", "pts": "The Order of monks also washed their feet, entered the conference hall and sat down against the western wall,\nfacing the east with the Lord in front of them."}, {"key": "mn53:4.3", "pali": "Kāpilavatthavāpi kho sakyā pāde pakkhāletvā santhāgāraṁ pavisitvā\npuratthimaṁ bhittiṁ nissāya pacchimābhimukhā nisīdiṁsu,\nbhagavantaṁyeva purakkhatvā.", "sujato": "The Sakyans of Kapilavatthu also washed their feet, entered the town hall,\nand sat against the east wall facing west, with the Buddha right in front of them.", "thanissaro": "The Kapilavatthu Sakyans washed their feet, entered the hall,\nand sat with their backs to the eastern wall, facing west, ranged around the Blessed One.", "pts": "The Sakyans of Kapilavatthu also washed their feet,\nentered the conference hall and sat down against the eastern wall, facing the west with the Lord in front of them."}]}, {"id": "5", "label": "The Buddha spent much of the night…", "rows": [{"key": "mn53:5.1", "pali": "Atha kho bhagavā kāpilavatthave sakye bahudeva rattiṁ dhammiyā kathāya\nsandassetvā samādapetvā samuttejetvā sampahaṁsetvā āyasmantaṁ ānandaṁ āmantesi:", "sujato": "The Buddha spent much of the night educating, encouraging, firing up, and inspiring the Sakyans with a Dhamma talk.\nThen he addressed Venerable Ānanda,", "thanissaro": "Then the Blessed One—having spent most of the night instructing, urging, rousing,\n& encouraging the Kapilavatthu Sakyans with a Dhamma talk—said to Ven. Ānanda,", "pts": "Then the Lord, having gladdened, roused, incited,\ndelighted the Sakyans of Kapilavatthu with reasoned talk far into the night, addressed the venerable Ānanda, saying:"}, {"key": "mn53:5.2", "pali": "“paṭibhātu taṁ, ānanda, kāpilavatthavānaṁ sakyānaṁ sekho pāṭipado.", "sujato": "“Ānanda, speak about the practicing trainee to the Sakyans of Kapilavatthu as you feel inspired.", "thanissaro": "“Ānanda, speak to the Kapilavatthu Sakyans about the person who follows the practice for one in training.\nMy back aches.", "pts": "\"Ānanda, let there occur to you a learner's course for the Sakyans of Kapilavatthu;"}, {"key": "mn53:5.3", "pali": "Piṭṭhi me āgilāyati;", "sujato": "My back is sore,", "thanissaro": "", "pts": "my back is aching, I will stretch it.\""}, {"key": "mn53:5.4", "pali": "tamahaṁ āyamissāmī”ti.", "sujato": "I’ll stretch it.”", "thanissaro": "I will rest it.”", "pts": ""}, {"key": "mn53:5.5", "pali": "“Evaṁ, bhante”ti kho āyasmā ānando bhagavato paccassosi.", "sujato": "“Yes, sir,” Ānanda replied.", "thanissaro": "Ven. Ānanda responded,\n“As you say, lord.”", "pts": "\"Yes, revered sir,\" the venerable Ānanda answered the Lord in assent."}, {"key": "mn53:5.6", "pali": "Atha kho bhagavā catugguṇaṁ saṅghāṭiṁ paññāpetvā dakkhiṇena passena sīhaseyyaṁ kappesi,\npāde pādaṁ accādhāya, sato sampajāno, uṭṭhānasaññaṁ manasi karitvā.", "sujato": "And then the Buddha spread out his outer robe folded in four and laid down in the lion’s posture—on the right side,\nplacing one foot on top of the other—mindful and aware, and focused on the time of getting up.", "thanissaro": "Then the Blessed One, having arranged his outer robe folded in four,\nlay down on his right side in the lion’s sleeping posture,\nwith one foot on top of the other, mindful & alert, having made a mental note to get up.", "pts": "Then the Lord, having folded his outer robe into four, lay down on his right side in the lion posture,\nfoot resting on foot, mindful, clearly conscious, reflecting on the thought of getting up again."}]}, {"id": "6", "label": "Then Ānanda addressed Mahānāma the Sakyan:", "rows": [{"key": "mn53:6.1", "pali": "Atha kho āyasmā ānando mahānāmaṁ sakkaṁ āmantesi:", "sujato": "Then Ānanda addressed Mahānāma the Sakyan:", "thanissaro": "Then Ven. Ānanda addressed Mahānāma the Sakyan:", "pts": "Then the venerable Ānanda addressed Mahānāma the Sakyan, saying:"}, {"key": "mn53:6.2", "pali": "“idha, mahānāma, ariyasāvako sīlasampanno hoti, indriyesu guttadvāro hoti,\nbhojane mattaññū hoti, jāgariyaṁ anuyutto hoti,\nsattahi saddhammehi samannāgato hoti,\ncatunnaṁ jhānānaṁ ābhicetasikānaṁ diṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī.", "sujato": "“Mahānāma, a noble disciple is accomplished in ethics,\nguards the sense doors, eats in moderation, and is dedicated to wakefulness.\nThey have seven good qualities,\nand they get the four absorptions—blissful meditations in this life that belong to the higher mind—when they want,\nwithout trouble or difficulty.", "thanissaro": "“There is the case, Mahānāma, where a disciple of the noble ones is consummate in virtue,\nguards the doors to his sense faculties, knows moderation in eating, is devoted to wakefulness,\nis endowed with seven qualities, and obtains at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now.", "pts": "\"Now, Mahānāma, a disciple of the ariyans is possessed of moral habit,\nhe is one who guards the doors of the sense-organs, he is moderate in eating, intent on vigilance,\npossessed of the seven excellent things, one who acquires at will, without trouble, without difficulty,\nthe four meditations which are of the purest mentality, abidings in ease here and now."}]}, {"id": "7", "label": "And how is a noble disciple accomplished…", "rows": [{"key": "mn53:7.1", "pali": "Kathañca, mahānāma, ariyasāvako sīlasampanno hoti?", "sujato": "And how is a noble disciple accomplished in ethics?", "thanissaro": "“And how is the disciple of the noble ones consummate in virtue?", "pts": "And how, Mahānāma, is an ariyan disciple possessed of moral habit?"}, {"key": "mn53:7.2", "pali": "Idha, mahānāma, ariyasāvako sīlavā hoti,\npātimokkhasaṁvarasaṁvuto viharati ācāragocarasampanno aṇumattesu vajjesu bhayadassāvī, samādāya sikkhati sikkhāpadesu.", "sujato": "It’s when a noble disciple is ethical, restrained in the monastic code,\nconducting themselves well and resorting for alms in suitable places.\nSeeing danger in the slightest fault, they keep the rules they’ve undertaken.", "thanissaro": "There is the case where the disciple of the noble ones is virtuous.\nHe dwells restrained in accordance with the Pāṭimokkha, consummate in his behavior & sphere of activity.\nHe trains himself, having undertaken the training rules, seeing danger in the slightest faults.", "pts": "As to this, Mahānāma, an ariyan disciple is moral;\nhe lives controlled by the control of the Obligations,\npossessed of (right) behaviour and resort, seeing danger in the slightest faults;\nundertaking them rightly, he trains in the rules of training."}, {"key": "mn53:7.3", "pali": "Evaṁ kho, mahānāma, ariyasāvako sīlasampanno hoti.", "sujato": "That’s how a noble disciple is ethical.", "thanissaro": "This is how the disciple of the noble ones is consummate in virtue.", "pts": "It is thus, Mahānāma, that an ariyan disciple is possessed of moral habit."}]}, {"id": "8", "label": "And how does a noble disciple guard…", "rows": [{"key": "mn53:8.1", "pali": "Kathañca, mahānāma, ariyasāvako indriyesu guttadvāro hoti?", "sujato": "And how does a noble disciple guard the sense doors?", "thanissaro": "“And how does the disciple of the noble ones guard the doors to his sense faculties?", "pts": "And how, Mahānāma, is an ariyan disciple one who guards the doors of the sense-organs?"}, {"key": "mn53:8.2", "pali": "Idha, mahānāma, ariyasāvako cakkhunā rūpaṁ disvā na nimittaggāhī hoti nānubyañjanaggāhī.", "sujato": "When a noble disciple sees a sight with their eyes, they don’t get caught up in the features and details.", "thanissaro": "There is the case where the disciple of the noble ones,\non seeing a form with the eye, doesn’t grasp at any theme or variations by which—\nif he were to dwell without restraint over the faculty of the eye—\nevil, unskillful qualities such as greed or distress might assail him.", "pts": "As to this, Mahānāma, an ariyan disciple, having seen a material shape with the eye,\nis not entranced by the general appearance, is not entranced by the detail."}, {"key": "mn53:8.3", "pali": "Yatvādhikaraṇamenaṁ cakkhundriyaṁ asaṁvutaṁ viharantaṁ abhijjhādomanassā\npāpakā akusalā dhammā anvāssaveyyuṁ tassa saṁvarāya paṭipajjati,\nrakkhati cakkhundriyaṁ, cakkhundriye saṁvaraṁ āpajjati.", "sujato": "If the faculty of sight were left unrestrained,\nbad unskillful qualities of covetousness and displeasure would become overwhelming.\nFor this reason, they practice restraint, protecting the faculty of sight, and achieving its restraint.", "thanissaro": "He practices with restraint.\nHe guards the faculty of the eye.\nHe achieves restraint with regard to the faculty of the eye.", "pts": "For if he dwell with the organ of sight uncontrolled,\ncovetousness and dejection, evil unskilled states of mind, might predominate.\nSo he fares along controlling it, he guards the organ of sight;\nhe achieves control over the organ of sight. ■"}, {"key": "mn53:8.4", "pali": "Sotena saddaṁ sutvā …pe…", "sujato": "When they hear a sound with their ears …", "thanissaro": "“On hearing a sound with the ear.…", "pts": "Having heard a sound with the ear, is not entranced by the general appearance, is not entranced by the detail.\nFor if he dwell with the organ of hearing uncontrolled,\ncovetousness and dejection, evil unskilled states of mind, might predominate.\nSo he fares along controlling it, he guards the organ of hearing;\nhe achieves control over the organ of hearing. ■"}, {"key": "mn53:8.5", "pali": "ghānena gandhaṁ ghāyitvā …pe…", "sujato": "When they smell an odor with their nose …", "thanissaro": "“On smelling an aroma with the nose.…", "pts": "Having smelt a smell with the nose, is not entranced by the general appearance, is not entranced by the detail.\nFor if he dwell with the organ of smell uncontrolled,\ncovetousness and dejection, evil unskilled states of mind, might predominate.\nSo he fares along controlling it, he guards the organ of smell;\nhe achieves control over the organ of smell. ■"}, {"key": "mn53:8.6", "pali": "jivhāya rasaṁ sāyitvā …pe…", "sujato": "When they taste a flavor with their tongue …", "thanissaro": "“On tasting a flavor with the tongue.…", "pts": "Having savoured a taste with the tongue, is not entranced by the general appearance, is not entranced by the detail.\nFor if he dwell with the organ of taste uncontrolled,\ncovetousness and dejection, evil unskilled states of mind, might predominate.\nSo he fares along controlling it, he guards the organ of taste;\nhe achieves control over the organ of taste. ■"}, {"key": "mn53:8.7", "pali": "kāyena phoṭṭhabbaṁ phusitvā …pe…", "sujato": "When they feel a touch with their body …", "thanissaro": "“On feeling a tactile sensation with the body.…", "pts": "Having felt a touch with the body, is not entranced by the general appearance, is not entranced by the detail.\nFor if he dwell with the organ of touch uncontrolled,\ncovetousness and dejection, evil unskilled states of mind, might predominate.\nSo he fares along controlling it, he guards the organ of touch;\nhe achieves control over the organ of touch. ■"}, {"key": "mn53:8.8", "pali": "manasā dhammaṁ viññāya na nimittaggāhī hoti nānubyañjanaggāhī.", "sujato": "When they know an idea with their mind, they don’t get caught up in the features and details.", "thanissaro": "“On cognizing an idea with the intellect, he doesn’t grasp at any theme or variations by which—\nif he were to dwell without restraint over the faculty of the intellect—\nevil, unskillful qualities such as greed or distress might assail him.", "pts": "Having cognised a mental state with the mind,\nhe is not entranced by the general appearance, is not entranced by the detail."}, {"key": "mn53:8.9", "pali": "Yatvādhikaraṇamenaṁ manindriyaṁ asaṁvutaṁ viharantaṁ abhijjhādomanassā\npāpakā akusalā dhammā anvāssaveyyuṁ tassa saṁvarāya paṭipajjati,\nrakkhati manindriyaṁ, manindriye saṁvaraṁ āpajjati.", "sujato": "If the faculty of mind were left unrestrained,\nbad unskillful qualities of covetousness and displeasure would become overwhelming.\nFor this reason, they practice restraint, protecting the faculty of mind, and achieving its restraint.", "thanissaro": "He practices with restraint.\nHe guards the faculty of the intellect.\nHe achieves restraint with regard to the faculty of the intellect.", "pts": "If he dwell with the organ of mind uncontrolled, covetousness and dejection, evil unskilled states, might predominate.\nSo he fares along controlling it, he guards the organ of mind;\nhe achieves control over the organ of mind."}, {"key": "mn53:8.10", "pali": "Evaṁ kho, mahānāma, ariyasāvako indriyesu guttadvāro hoti.", "sujato": "That’s how a noble disciple guards the sense doors.", "thanissaro": "This is how the disciple of the noble ones guards the doors to his sense faculties.", "pts": "It is thus, Mahānāma, that an ariyan disciple is one who guards the doors of the sense-organs."}]}, {"id": "9", "label": "And how does a noble disciple eat…", "rows": [{"key": "mn53:9.1", "pali": "Kathañca, mahānāma, ariyasāvako bhojane mattaññū hoti?", "sujato": "And how does a noble disciple eat in moderation?", "thanissaro": "“And how does the disciple of the noble ones know moderation in eating?", "pts": "And how Mahānāma, is an ariyan disciple one who is moderate in eating?"}, {"key": "mn53:9.2", "pali": "Idha, mahānāma, ariyasāvako paṭisaṅkhā yoniso āhāraṁ āhāreti:", "sujato": "It’s when a noble disciple reflects rationally on the food that they eat:", "thanissaro": "There is the case where the disciple of the noble ones, considering it appropriately,", "pts": "As to this, Mahānāma, an ariyan disciple takes food reflecting carefully,"}, {"key": "mn53:9.3", "pali": "‘neva davāya na madāya na maṇḍanāya na vibhūsanāya;\nyāvadeva imassa kāyassa ṭhitiyā yāpanāya vihiṁsūparatiyā brahmacariyānuggahāya.\nIti purāṇañca vedanaṁ paṭihaṅkhāmi, navañca vedanaṁ na uppādessāmi,\nyātrā ca me bhavissati anavajjatā ca phāsuvihāro cā’ti.", "sujato": "‘Not for fun, indulgence, adornment, or decoration,\nbut only to sustain this body, to avoid harm, and to support spiritual practice.\nIn this way, I shall put an end to old discomfort and not give rise to new discomfort,\nand I will have the means to keep going, blamelessness, and a comfortable abiding.’", "thanissaro": "takes his food not playfully, nor for intoxication, nor for putting on bulk, nor for beautification,\nbut simply for the survival & continuance of this body,\nfor ending its afflictions, for the support of the holy life, thinking,\n‘I will destroy old feelings (of hunger) & not create new feelings (from overeating).\nThus I will maintain myself, be blameless, & live in comfort.’", "pts": "not for fun or indulgence or personal charm or beautification,\nbut just enough for maintaining this body and keeping it going,\nfor keeping it unharmed, for furthering the Brahma-faring, with the thought:\n'Thus will I crush out an old feeling, and I will not allow a new feeling to arise,\nand then there will be for me subsistence and blamelessness and abiding in comfort.'"}, {"key": "mn53:9.4", "pali": "Evaṁ kho, mahānāma, ariyasāvako bhojane mattaññū hoti.", "sujato": "That’s how a noble disciple eats in moderation.", "thanissaro": "This is how the disciple of the noble ones knows moderation in eating.", "pts": "It is thus, Mahānāma, that an ariyan disciple is moderate in eating."}]}, {"id": "10", "label": "And how is a noble disciple dedicated…", "rows": [{"key": "mn53:10.1", "pali": "Kathañca, mahānāma, ariyasāvako jāgariyaṁ anuyutto hoti?", "sujato": "And how is a noble disciple dedicated to wakefulness?", "thanissaro": "“And how is the disciple of the noble ones devoted to wakefulness?", "pts": "And how Mahānāma, is an ariyan disciple intent on vigilance?"}, {"key": "mn53:10.2", "pali": "Idha, mahānāma, ariyasāvako divasaṁ caṅkamena nisajjāya āvaraṇīyehi dhammehi cittaṁ parisodheti,", "sujato": "It’s when a noble disciple practices walking and sitting meditation by day, purifying their mind from obstacles.", "thanissaro": "There is the case where a monk during the day, sitting & pacing back & forth,\ncleanses his mind of any qualities that would hold the mind in check.", "pts": "As to this, Mahānāma, an ariyan disciple during the day,\nwhile pacing up and down and while sitting down, cleanses his mind of obstructive mental states;"}, {"key": "mn53:10.3", "pali": "rattiyā paṭhamaṁ yāmaṁ caṅkamena nisajjāya āvaraṇīyehi dhammehi cittaṁ parisodheti,", "sujato": "In the first watch of the night, they continue to practice walking and sitting meditation.", "thanissaro": "During the first watch of the night [dusk to 10 p.m.], sitting & pacing back & forth,\nhe cleanses his mind of any qualities that would hold the mind in check.", "pts": "during the first watch of the night, pacing up and down,\nsitting down, he cleanses his mind of obstructive mental states;"}, {"key": "mn53:10.4", "pali": "rattiyā majjhimaṁ yāmaṁ dakkhiṇena passena sīhaseyyaṁ kappeti,\npāde pādaṁ accādhāya, sato sampajāno, uṭṭhānasaññaṁ manasi karitvā,", "sujato": "In the middle watch, they lie down in the lion’s posture—on the right side,\nplacing one foot on top of the other—mindful and aware, and focused on the time of getting up.", "thanissaro": "During the second watch of the night [10 p.m. to 2 a.m.], reclining on his right side, he takes up the lion’s posture,\none foot placed on top of the other, mindful, alert,\nwith his mind set on getting up [either as soon as he awakens or at a particular time].", "pts": "during the middle watch of the night, he lies down on his right side in the lion posture,\nfoot resting on foot, mindful, clearly conscious, reflecting on the thought of getting up again;"}, {"key": "mn53:10.5", "pali": "rattiyā pacchimaṁ yāmaṁ paccuṭṭhāya caṅkamena nisajjāya āvaraṇīyehi dhammehi cittaṁ parisodheti.", "sujato": "In the last watch, they get up and continue to practice walking and sitting meditation,\npurifying their mind from obstacles.", "thanissaro": "During the last watch of the night [2 a.m. to dawn], sitting & pacing back & forth,\nhe cleanses his mind of any qualities that would hold the mind in check.", "pts": "during the last watch of the night, when he has risen, while pacing up and down,\nwhile sitting down, he cleanses his mind of obstructive mental states."}, {"key": "mn53:10.6", "pali": "Evaṁ kho, mahānāma, ariyasāvako jāgariyaṁ anuyutto hoti.", "sujato": "That’s how a noble disciple is dedicated to wakefulness.", "thanissaro": "This is how the monk is devoted to wakefulness.", "pts": "It is thus, Mahānāma, that an ariyan disciple is intent on vigilance."}]}, {"id": "11", "label": "And how does a noble disciple have…", "rows": [{"key": "mn53:11.1", "pali": "Kathañca, mahānāma, ariyasāvako sattahi saddhammehi samannāgato hoti?", "sujato": "And how does a noble disciple have seven good qualities?", "thanissaro": "“And how is the disciple of the noble ones endowed with seven qualities?", "pts": "And how, Mahānāma, is an ariyan disciple possessed of the seven excellent things?"}, {"key": "mn53:11.2", "pali": "Idha, mahānāma, ariyasāvako saddho hoti, saddahati tathāgatassa bodhiṁ:", "sujato": "It’s when a noble disciple has faith in the Realized One’s awakening:", "thanissaro": "“[1] There is the case where the disciple of the noble ones has conviction, is convinced of the Tathāgata’s awakening:", "pts": "As to this, Mahānāma, the ariyan disciple is of faith;\nhe has faith in the awakening of the Tathāgata, and thinks:"}, {"key": "mn53:11.3", "pali": "‘itipi so bhagavā arahaṁ sammāsambuddho vijjācaraṇasampanno sugato lokavidū\nanuttaro purisadammasārathi satthā devamanussānaṁ buddho bhagavā’ti.", "sujato": "‘That Blessed One is perfected, a fully awakened Buddha, accomplished in knowledge and conduct, holy,\nknower of the world, supreme guide for those fit for training, teacher of gods and humans, awakened, blessed.’", "thanissaro": "‘Indeed, the Blessed One is worthy & rightly self-awakened, consummate in clear-knowing & conduct, well-gone,\nan expert with regard to the cosmos, unexcelled trainer of people fit to be tamed,\nteacher of devas & human beings, awakened, blessed.’", "pts": "'He is indeed Lord, perfected one, fully Self-Awakened One, endowed with right knowledge and conduct, well-farer,\nknower of the world(s), matchless charioteer of men to be tamed, teacher of devas and men, the Awakened One, the Lord."}]}, {"id": "12", "label": "They have a conscience. They’re conscientious about…", "rows": [{"key": "mn53:12.1", "pali": "Hirimā hoti, hirīyati kāyaduccaritena vacīduccaritena manoduccaritena,\nhirīyati pāpakānaṁ akusalānaṁ dhammānaṁ samāpattiyā.", "sujato": "They have a conscience.\nThey’re conscientious about bad conduct by way of body, speech,\nand mind, and conscientious about having any bad, unskillful qualities.", "thanissaro": "“[2] He feels shame at (the thought of engaging in) bodily misconduct, verbal misconduct, mental misconduct.", "pts": "He comes to have shame;\nhe is ashamed of wrong conduct in body, of wrong conduct in speech,\nof wrong conduct in thought, he is ashamed to fall into evil unskilled mental states."}]}, {"id": "13", "label": "They exercise prudence. They’re prudent when it…", "rows": [{"key": "mn53:13.1", "pali": "Ottappī hoti, ottappati kāyaduccaritena vacīduccaritena manoduccaritena,\nottappati pāpakānaṁ akusalānaṁ dhammānaṁ samāpattiyā.", "sujato": "They exercise prudence.\nThey’re prudent when it comes to bad conduct by way of body, speech, and mind,\nand prudent when it comes to acquiring any bad, unskillful qualities.", "thanissaro": "“[3] He feels compunction over (the suffering that would result from) bodily misconduct,\nverbal misconduct, mental misconduct.", "pts": "He has fear of blame;\nhe fears blame for wrong conduct in body, of wrong conduct in speech,\nof wrong conduct in thought, he is ashamed to fall into evil unskilled mental states."}]}, {"id": "14", "label": "They’re very learned, remembering and keeping what…", "rows": [{"key": "mn53:14.1", "pali": "Bahussuto hoti sutadharo sutasannicayo.\nYe te dhammā ādikalyāṇā majjhekalyāṇā pariyosānakalyāṇā sātthā sabyañjanā kevalaparipuṇṇaṁ parisuddhaṁ brahmacariyaṁ\nabhivadanti tathārūpāssa dhammā bahussutā honti dhātā vacasā paricitā manasānupekkhitā diṭṭhiyā suppaṭividdhā.", "sujato": "They’re very learned, remembering and keeping what they’ve learned.\nThese teachings are good in the beginning, good in the middle, and good in the end,\nmeaningful and well-phrased, describing a spiritual practice that’s entirely full and pure.\nThey are very learned in such teachings, remembering them, rehearsing them,\nmentally scrutinizing them, and penetrating them theoretically.", "thanissaro": "“[4] He has heard much, has retained what he has heard, has stored what he has heard.\nWhatever teachings are admirable in the beginning, admirable in the middle, admirable in the end,\nthat—in their meaning & expression—proclaim the holy life that is entirely complete & pure:\nthose he has listened to often, retained, discussed, accumulated,\nexamined with his mind, and well-penetrated in terms of his views.", "pts": "He is one who has heard much, who remembers what he has heard, who stores up what he has heard.\nThose things, lovely in the beginning, lovely in the middle, lovely at the ending which,\nwith the meaning and the spirit, declare the Brahma-faring wholly fulfilled,\nperfectly purified, such things are much heard by him, borne in mind,\nfamiliarised by speech, pondered over in the mind, well penetrated by right view."}]}, {"id": "15", "label": "They live with energy roused up for…", "rows": [{"key": "mn53:15.1", "pali": "Āraddhavīriyo viharati akusalānaṁ dhammānaṁ pahānāya, kusalānaṁ dhammānaṁ upasampadāya,\nthāmavā daḷhaparakkamo anikkhittadhuro kusalesu dhammesu.", "sujato": "They live with energy roused up for giving up unskillful qualities and embracing skillful qualities.\nThey’re strong, staunchly vigorous, not slacking off when it comes to developing skillful qualities.", "thanissaro": "“[5] He keeps his persistence aroused for abandoning unskillful qualities and taking on skillful qualities.\nHe is steadfast, solid in his effort, not shirking his duties with regard to skillful qualities.", "pts": "He dwells with stirred up energy for getting rid of unskilled mental states,\nfor acquiring skilled mental states, steadfast, firm in advance, persevering amid skilled mental states."}]}, {"id": "16", "label": "They’re mindful. They have utmost mindfulness and…", "rows": [{"key": "mn53:16.1", "pali": "Satimā hoti, paramena satinepakkena samannāgato, cirakatampi cirabhāsitampi saritā anussaritā.", "sujato": "They’re mindful.\nThey have utmost mindfulness and alertness, and can remember and recall what was said and done long ago.", "thanissaro": "“[6] He is mindful, highly meticulous, remembering & able to call to mind even things that were done & said long ago.", "pts": "He is mindful, possessed of the highest mindfulness and discrimination,\nremembering, recollecting what he has done and said long ago."}]}, {"id": "17", "label": "They’re wise. They have the wisdom of…", "rows": [{"key": "mn53:17.1", "pali": "Paññavā hoti, udayatthagāminiyā paññāya samannāgato, ariyāya nibbedhikāya sammā dukkhakkhayagāminiyā.", "sujato": "They’re wise.\nThey have the wisdom of arising and passing away which is noble,\npenetrative, and leads to the complete ending of suffering.", "thanissaro": "“[7] He is discerning, endowed with discernment of arising & passing away—\nnoble, penetrating, leading to the right ending of stress.", "pts": "He is one of wisdom, endowed with wisdom leading to (the cutting off of) rise and fall,\nwith the ariyan penetration leading to the complete destruction of anguish."}, {"key": "mn53:17.2", "pali": "Evaṁ kho, mahānāma, ariyasāvako sattahi saddhammehi samannāgato hoti.", "sujato": "That’s how a noble disciple has seven good qualities.", "thanissaro": "“This is how the disciple of the noble ones is endowed with seven qualities.", "pts": "It is thus, Mahānāma, that an ariyan disciple is possessed of the seven excellent things."}]}, {"id": "18", "label": "And how does a noble disciple get…", "rows": [{"key": "mn53:18.1", "pali": "Kathañca, mahānāma, ariyasāvako catunnaṁ jhānānaṁ ābhicetasikānaṁ\ndiṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī?", "sujato": "And how does a noble disciple get the four absorptions—blissful\nmeditations in this life that belong to the higher mind—when they want,\nwithout trouble or difficulty?", "thanissaro": "“And how does the disciple of the noble ones obtain at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now?", "pts": "And how, Mahānāma, is an ariyan disciple one who acquires at will, without trouble, without difficulty,\nthe four meditations which are of the purest mentality, abidings in ease here and now?"}, {"key": "mn53:18.2", "pali": "Idha, mahānāma, ariyasāvako vivicceva kāmehi …pe… paṭhamaṁ jhānaṁ upasampajja viharati;", "sujato": "It’s when a noble disciple, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, enters and remains in the first absorption …", "thanissaro": "There is the case where, quite secluded from sensuality, secluded from unskillful qualities,\nthe disciple of the noble ones enters & remains in the first jhāna:\nrapture & pleasure born of seclusion, accompanied by directed thought & evaluation.", "pts": "As to this, Mahānāma, an ariyan disciple, aloof from pleasure of the senses,\naloof from unskilled states of mind, enters and abides in the first meditation,\nwhich is accompanied by initial thought and discursive thought, is born of aloofness and is rapturous and joyful."}, {"key": "mn53:18.3", "pali": "vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ …pe… dutiyaṁ jhānaṁ upasampajja viharati;", "sujato": "second absorption …", "thanissaro": "With the stilling of directed thoughts & evaluations, he enters & remains in the second jhāna:\nrapture & pleasure born of concentration,\nunification of awareness free from directed thought & evaluation—internal assurance.", "pts": "By allaying initial and discursive thought, with the mind subjectively tranquillised and fixed on one point,\nhe enters and abides in the second meditation which is devoid of initial and discursive thought,\nis born of concentration and is rapturous and joyful"}, {"key": "mn53:18.4", "pali": "pītiyā ca virāgā …pe… tatiyaṁ jhānaṁ upasampajja viharati;", "sujato": "third absorption …", "thanissaro": "With the fading of rapture he remains equanimous, mindful, & alert, and senses pleasure with the body.\nHe enters & remains in the third jhāna, of which the noble ones declare,\n‘Equanimous & mindful, he has a pleasant abiding.’", "pts": "By the fading out of rapture, dwells with equanimity, attentive and clearly conscious,\nand experiences in his person that joy of which the ariyans say:\n'Joyful lives he who has equanimity and is mindful,' and he enters on and abides in the third meditation."}, {"key": "mn53:18.5", "pali": "sukhassa ca pahānā dukkhassa ca pahānā pubbeva somanassadomanassānaṁ atthaṅgamā …pe…\ncatutthaṁ jhānaṁ upasampajja viharati.", "sujato": "fourth absorption.", "thanissaro": "With the abandoning of pleasure & pain—as with the earlier disappearance of elation & distress—\nhe enters & remains in the fourth jhāna:\npurity of equanimity & mindfulness, neither pleasure nor pain.", "pts": "By getting rid of joy, by getting rid of anguish, by the going down of his former pleasures and sorrows,\nenters on and abides in the fourth meditation which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness."}, {"key": "mn53:18.6", "pali": "Evaṁ kho, mahānāma, ariyasāvako catunnaṁ jhānānaṁ ābhicetasikānaṁ\ndiṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī.", "sujato": "That’s how a noble disciple gets the four absorptions—blissful\nmeditations in this life that belong to the higher mind—when they want,\nwithout trouble or difficulty.", "thanissaro": "This is how the disciple of the noble ones obtains at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now.", "pts": "It is thus, Mahānāma, that an ariyan disciple is one who acquires at will, without trouble,\nwithout difficulty, the four meditations which are of the purest mentality, abidings in ease here and now."}]}, {"id": "19", "label": "When a noble disciple is accomplished in…", "rows": [{"key": "mn53:19.1", "pali": "Yato kho, mahānāma, ariyasāvako evaṁ sīlasampanno hoti, evaṁ indriyesu guttadvāro hoti,\nevaṁ bhojane mattaññū hoti, evaṁ jāgariyaṁ anuyutto hoti, evaṁ sattahi saddhammehi samannāgato hoti,\nevaṁ catunnaṁ jhānānaṁ ābhicetasikānaṁ diṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī,\nayaṁ vuccati, mahānāma,\nariyasāvako sekho pāṭipado apuccaṇḍatāya samāpanno, bhabbo abhinibbhidāya,\nbhabbo sambodhāya, bhabbo anuttarassa yogakkhemassa adhigamāya.", "sujato": "When a noble disciple is accomplished in ethics, guards the sense doors,\neats in moderation, and is dedicated to wakefulness;\nand they have seven good qualities,\nand they get the four absorptions—blissful meditations in this life that belong to the higher mind—when they want,\nwithout trouble or difficulty, they are called a noble disciple who is a practicing trainee.\nTheir eggs are unspoiled, and they are capable of breaking out of their shell,\nbecoming awakened, and achieving the supreme sanctuary from the yoke.", "thanissaro": "“Now, when a disciple of the noble ones is consummate in virtue in this way,\nguards the doors to his sense faculties in this way, knows moderation in eating in this way,\nis devoted to wakefulness in this way, is endowed with seven qualities in this way,\nand obtains at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now in this way,\nthen he is called a disciple of the noble ones who follows the practice for one in training,\nwhose eggs are unspoiled, who is capable of breaking out,\ncapable of awakening, capable of attaining the supreme rest from the yoke.", "pts": "When, Mahānāma, an ariyan disciple is endowed with moral habit thus,\nis one who guards the doors of his sense-organs thus, is moderate in eating thus,\nis intent on vigilance thus, is endowed with the seven excellent things thus,\nis one who acquires thus at will, without trouble, without difficulty,\nthe four meditations which are of the purest mentality, abidings in ease here and now,\nthen he, Mahānāma, is called an ariyan disciple who is on a learner's course,\npossessed of (mental) soundness, he becomes one for successful breaking through,\nhe becomes one for self-awakening, he becomes one for winning the matchless security from the bonds."}, {"key": "mn53:19.2", "pali": "Seyyathāpi, mahānāma,\nkukkuṭiyā aṇḍāni aṭṭha vā dasa vā dvādasa vā tānāssu kukkuṭiyā\nsammā adhisayitāni sammā pariseditāni sammā paribhāvitāni,\nkiñcāpi tassā kukkuṭiyā na evaṁ icchā uppajjeyya:", "sujato": "Suppose there was a chicken with eight or ten or twelve eggs.\nAnd she properly sat on them to keep them warm and incubated.\nEven if that chicken doesn’t wish,", "thanissaro": "“Just as if a hen had eight, ten, or twelve eggs that she covered rightly, warmed rightly, & incubated rightly:\nEven though this wish did not occur to her—", "pts": "Mahānāma, it is as if there were eight or ten or a dozen hen's eggs,\nproperly sat on, properly incubated, properly hatched by that hen;\nsuch a wish as this would not arise in that hen:"}, {"key": "mn53:19.3", "pali": "‘aho vatime kukkuṭapotakā pādanakhasikhāya vā mukhatuṇḍakena vā aṇḍakosaṁ padāletvā sotthinā abhinibbhijjeyyun’ti,", "sujato": "‘If only my chicks could break out of the eggshell with their claws and beak and hatch safely!’", "thanissaro": "‘O that my chicks might break through the egg shells with their spiked claws or beaks and hatch out safely!’—", "pts": "'O may my chicks, having pierced through the egg-shell with the point of the claw on their feet or with their beaks,\nbreak forth safely,'"}, {"key": "mn53:19.4", "pali": "atha kho bhabbāva te kukkuṭapotakā pādanakhasikhāya vā mukhatuṇḍakena vā aṇḍakosaṁ padāletvā sotthinā abhinibbhijjituṁ.", "sujato": "Still they can break out and hatch safely.", "thanissaro": "still it is possible that the chicks would break through the\nshells with their spiked claws or beaks and hatch out safely.", "pts": "for these chicks were ones who were able to break forth safely having pierced\nthe egg-shells with the point of the claw on their feet or with their beaks."}, {"key": "mn53:19.5", "pali": "Evameva kho, mahānāma, yato ariyasāvako evaṁ sīlasampanno hoti, evaṁ indriyesu guttadvāro hoti,\nevaṁ bhojane mattaññū hoti, evaṁ jāgariyaṁ anuyutto hoti, evaṁ sattahi saddhammehi samannāgato hoti,\nevaṁ catunnaṁ jhānānaṁ ābhicetasikānaṁ diṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī,\nayaṁ vuccati, mahānāma,\nariyasāvako sekho pāṭipado apuccaṇḍatāya samāpanno, bhabbo abhinibbhidāya,\nbhabbo sambodhāya, bhabbo anuttarassa yogakkhemassa adhigamāya.", "sujato": "In the same way, when a noble disciple is practicing all these\nthings they are called a noble disciple who is a practicing trainee.\nTheir eggs are unspoiled, and they are capable of breaking out of their shell,\nbecoming awakened, and achieving the supreme sanctuary from the yoke.", "thanissaro": "In the same way, when a disciple of the noble ones is consummate in virtue in this way,\nguards the doors to his sense faculties in this way,\nknows moderation in eating in this way, is devoted to wakefulness in this way,\nis endowed with seven qualities in this way, and obtains at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now in this way,\nthen he is called a disciple of the noble ones who follows the practice for one in training,\nwhose eggs are unspoiled, who is capable of breaking out,\ncapable of awakening, capable of attaining the supreme rest from the yoke.", "pts": "Even so, Mahānāma, when an ariyan disciple is endowed with moral habit thus,\nis one who guards the doors of his sense-organs thus, is moderate in eating thus, is intent on vigilance thus,\nis endowed with the seven excellent things thus, is one who acquires thus at will,\nwithout trouble, without difficulty the four meditations which are of the purest mentality,\nabidings in ease here and now, then he, Mahānāma,\nis called an ariyan disciple who is on a learner's course, possessed of (mental) soundness,\nhe becomes one for successful breaking through, he becomes one for self-awakening,\nhe because one for winning the matchless security from the bonds."}]}, {"id": "20", "label": "Relying on this supreme purity of mindfulness…", "rows": [{"key": "mn53:20.1", "pali": "Sa kho so, mahānāma, ariyasāvako imaṁyeva anuttaraṁ upekkhāsatipārisuddhiṁ āgamma anekavihitaṁ pubbenivāsaṁ anussarati,", "sujato": "Relying on this supreme purity of mindfulness and equanimity,\nthat noble disciple recollects their many kinds of past lives.", "thanissaro": "“Now when the disciple of the noble ones has arrived at this purity of equanimity & mindfulness,\nhe recollects his manifold past lives, i.e., one birth, two…", "pts": "That ariyan disciple, Mahānāma, having come to this matchless purification through equanimity and mindfulness,\nrecollects a variety of former habitations, that is to say:"}, {"key": "mn53:20.2", "pali": "seyyathidaṁ—ekampi jātiṁ dvepi jātiyo …pe… iti sākāraṁ sauddesaṁ anekavihitaṁ pubbenivāsaṁ anussarati,", "sujato": "That is:\none, two, three, four, five, ten, twenty, thirty, forty, fifty, a hundred, a thousand, a hundred thousand rebirths;\nmany eons of the world contracting, many eons of the world expanding,\nmany eons of the world contracting and expanding. …\nAnd so they recollect their many kinds of past lives, with features and details.", "thanissaro": "five, ten… fifty, a hundred, a thousand, a hundred thousand, many eons of cosmic contraction,\nmany eons of cosmic expansion, many eons of cosmic contraction & expansion:\n‘There I had such a name, belonged to such a clan, had such an appearance.\nSuch was my food, such my experience of pleasure & pain, such the end of my life.\nPassing away from that state, I re-arose there.\nThere too I had such a name, belonged to such a clan, had such an appearance.\nSuch was my food, such my experience of pleasure & pain, such the end of my life.\nPassing away from that state, I re-arose here.’\nThus he recollects his manifold past lives in their modes & details.", "pts": "one birth, two births, three births, four births, five births, ten births,\ntwenty births, thirty births, forty births, fifty births, a hundred births,\na thousand births, a hundred thousand births,\nand many an eon of integration and many an eon of disintegration and many an eon of integration-disintegration:\n'Such a one was I by name, having such and such a clan, such and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I came to be in another state where I was such a one by name, having such and such a clan,\nsuch and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I arose here.'\nThus in all their mode and detail he recollects a variety of former habitations."}, {"key": "mn53:20.3", "pali": "ayamassa paṭhamābhinibbhidā hoti kukkuṭacchāpakasseva aṇḍakosamhā.", "sujato": "This is their first breaking out, like a chick from an eggshell.", "thanissaro": "This is his first breaking out, like that of the hen’s chicks from their shells.", "pts": "This is his first breaking through as a chick's from the egg-shell."}]}, {"id": "21", "label": "Relying on this supreme purity of mindfulness…", "rows": [{"key": "mn53:21.1", "pali": "Sa kho so, mahānāma,\nariyasāvako imaṁyeva anuttaraṁ upekkhāsatipārisuddhiṁ āgamma dibbena cakkhunā visuddhena\natikkantamānusakena satte passati cavamāne upapajjamāne hīne paṇīte suvaṇṇe dubbaṇṇe sugate duggate …pe…\nyathākammūpage satte pajānāti,", "sujato": "Relying on this supreme purity of mindfulness and equanimity,\nthat noble disciple, with clairvoyance that is purified and superhuman,\nsees sentient beings passing away and being reborn—inferior and superior,\nbeautiful and ugly, in a good place or a bad place. …\nThey understand how sentient beings pass on according to their deeds.", "thanissaro": "“When the disciple of the noble ones has arrived at this purity of equanimity & mindfulness,\nhe sees—by means of the divine eye, purified & surpassing the human—\nbeings passing away & re-appearing, and he discerns how they are inferior & superior,\nbeautiful & ugly, fortunate & unfortunate in accordance with their kamma:\n‘These beings—who were endowed with bad conduct of body, speech & mind, who reviled noble ones,\nheld wrong views and undertook actions under the influence of wrong views—\nwith the break-up of the body, after death,\nhave re-appeared in a plane of deprivation, a bad destination, a lower realm, hell.\nBut these beings—who were endowed with good conduct of body, speech, & mind, who did not revile noble ones,\nwho held right views and undertook actions under the influence of right views—\nwith the break-up of the body, after death, have re-appeared in a good destination, a heavenly world.’\nThus—by means of the divine eye, purified & surpassing the human—he sees beings passing away & re-appearing,\nand he discerns how they are inferior & superior, beautiful & ugly,\nfortunate & unfortunate in accordance with their kamma.", "pts": "Then this ariyan disciple, Mahānāma, having come to this matchless purification through equanimity and mindfulness,\nwith the purified deva-vision surpassing that of men, sees beings as they pass hence or come to be;\nhe comprehends that beings are mean, excellent, comely, ugly, well-going,\nill-going, according to the consequences of deeds, and thinks:\n'Indeed these worthy beings who were possessed of wrong conduct in body,\nspeech and thought, scoffers at the ariyans, holding a wrong view,\nincurring deeds consequent on a wrong view - these, at the breaking up of the body after dying,\nhave arisen in a sorrowful state, a bad bourn, the abyss, Niraya Hell.\nBut these worthy beings who were possessed of good conduct in body,\nspeech and thought, who did not scoff at the ariyans, holding a right view,\nincurring deeds consequent on a right view - these at the breaking up of the body after dying,\nhave arisen in a good bourn, a heaven world.'\nThus with the purified deva-vision surpassing that of men does he see beings as they pass hence, as they arise;\nhe comprehends that beings are mean, excellent, comely, ugly,\nwell-going, ill-going according to the consequences of deeds."}, {"key": "mn53:21.2", "pali": "ayamassa dutiyābhinibbhidā hoti kukkuṭacchāpakasseva aṇḍakosamhā.", "sujato": "This is their second breaking out, like a chick from an eggshell.", "thanissaro": "This is his second breaking out, like that of the hen’s chicks from their shells.", "pts": "This is his second breaking through as a chick's from the egg-shell."}]}, {"id": "22", "label": "Relying on this supreme purity of mindfulness…", "rows": [{"key": "mn53:22.1", "pali": "Sa kho so, mahānāma,\nariyasāvako imaṁyeva anuttaraṁ upekkhāsatipārisuddhiṁ āgamma āsavānaṁ khayā anāsavaṁ\ncetovimuttiṁ paññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharati,", "sujato": "Relying on this supreme purity of mindfulness and equanimity,\nthat noble disciple realizes the undefiled freedom of heart and freedom by wisdom in this very life.\nAnd they live having realized it with their own insight due to the ending of defilements.", "thanissaro": "“When the disciple of the noble ones has arrived at this purity of equanimity & mindfulness,\nhe enters & remains in the effluent-free awareness-release & discernment-release,\nhaving directly known & realized them for himself right in the here & now.\nThis is his third breaking out,", "pts": "Then this ariyan disciple, Mahānāma, having come to this matchless purification through equanimity and mindfulness,\nby the destruction of the cankers having here-now realized by his own super-knowledge\nthe freedom of mind and the freedom through intuitive wisdom that are cankerless,\nenters and abides therein."}, {"key": "mn53:22.2", "pali": "ayamassa tatiyābhinibbhidā hoti kukkuṭacchāpakasseva aṇḍakosamhā.", "sujato": "This is their third breaking out, like a chick from an eggshell.", "thanissaro": "like that of the hen’s chicks from their shells.", "pts": "This is his third breaking through as a chick's from the egg-shell."}]}, {"id": "23", "label": "A noble disciple’s conduct includes the following:…", "rows": [{"key": "mn53:23.1", "pali": "Yampi, mahānāma, ariyasāvako sīlasampanno hoti, idampissa hoti caraṇasmiṁ;", "sujato": "A noble disciple’s conduct includes the following:\nbeing accomplished in ethics,", "thanissaro": "“Now, when the disciple of the noble ones is consummate in virtue, that is a matter of his conduct.", "pts": "Whatever ariyan disciple, Mahānāma, is possessed of moral habit, this is so of him in regard to conduct."}, {"key": "mn53:23.2", "pali": "yampi, mahānāma, ariyasāvako indriyesu guttadvāro hoti, idampissa hoti caraṇasmiṁ;", "sujato": "guarding the sense doors,", "thanissaro": "When he guards the doors to his sense faculties…", "pts": "And, Mahānāma, whatever ariyan disciple is guarded as to the doors of his sense-organs,\nthis too is so of him in regard to conduct."}, {"key": "mn53:23.3", "pali": "yampi, mahānāma, ariyasāvako bhojane mattaññū hoti, idampissa hoti caraṇasmiṁ;", "sujato": "moderation in eating,", "thanissaro": "knows moderation in eating…", "pts": "And, Mahānāma, whatever ariyan disciple is moderate in eating, this too is so of him in regard to conduct."}, {"key": "mn53:23.4", "pali": "yampi, mahānāma, ariyasāvako jāgariyaṁ anuyutto hoti, idampissa hoti caraṇasmiṁ;", "sujato": "being dedicated to wakefulness,", "thanissaro": "is devoted to wakefulness…", "pts": "is intent on vigilance, this too is so of him in regard to conduct."}, {"key": "mn53:23.5", "pali": "yampi, mahānāma, ariyasāvako sattahi saddhammehi samannāgato hoti, idampissa hoti caraṇasmiṁ;", "sujato": "having seven good qualities,", "thanissaro": "is endowed with seven qualities, that is a matter of his conduct.", "pts": "And, Mahānāma, whatever ariyan disciple is possessed of the seven excellent things,\nthis too is so of him in regard to conduct."}, {"key": "mn53:23.6", "pali": "yampi, mahānāma, ariyasāvako catunnaṁ jhānānaṁ ābhicetasikānaṁ\ndiṭṭhadhammasukhavihārānaṁ nikāmalābhī hoti akicchalābhī akasiralābhī,\nidampissa hoti caraṇasmiṁ.", "sujato": "and getting the four absorptions when they want, without trouble or difficulty.", "thanissaro": "When he obtains at will—without trouble or difficulty—\nthe four jhānas that constitute heightened awareness and a pleasant abiding in the here & now,\nthat is a matter of his conduct.", "pts": "And, Mahānāma, whatever ariyan disciple acquires at will, without trouble, without difficulty,\nthe four meditations that are of the purest mentality,\nabidings in ease here and now, this to is so of him in regard to conduct."}]}, {"id": "24", "label": "A noble disciple’s knowledge includes the following:…", "rows": [{"key": "mn53:24.1", "pali": "Yañca kho, mahānāma, ariyasāvako anekavihitaṁ pubbenivāsaṁ anussarati, seyyathidaṁ—ekampi jātiṁ dvepi jātiyo …pe…\niti sākāraṁ sauddesaṁ anekavihitaṁ pubbenivāsaṁ anussarati, idampissa hoti vijjāya;", "sujato": "A noble disciple’s knowledge includes the following:\nrecollecting their past lives,", "thanissaro": "“When he recollects his manifold past lives… in their modes & details, that is a matter of his clear-knowing.", "pts": "But, Mahānāma, whatever ariyan disciple in many a figure recollects his former habitations, that is to say:\none birth, two births, three births, four births, five births, ten births,\ntwenty births, thirty births, forty births, fifty births, a hundred births,\na thousand births, a hundred thousand births,\nand many an eon of integration and many an eon of disintegration and many an eon of integration-disintegration:\n'Such a one was I by name, having such and such a clan, such and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I came to be in another state where I was such a one by name, having such and such a clan,\nsuch and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I arose here.'\nThus in all their mode and detail he recollects a variety of\nformer habitations that is so of him in regard to knowledge."}, {"key": "mn53:24.2", "pali": "yampi, mahānāma, ariyasāvako dibbena cakkhunā visuddhena atikkantamānusakena satte\npassati cavamāne upapajjamāne hīne paṇīte suvaṇṇe dubbaṇṇe sugate duggate …pe…\nyathākammūpage satte pajānāti, idampissa hoti vijjāya.", "sujato": "clairvoyance that is purified and superhuman,", "thanissaro": "When he sees—by means of the divine eye, purified & surpassing the human—beings passing away & re-appearing.…", "pts": "And, Mahānāma, whatever ariyan disciple, by the purified deva-vision surpassing that of men,\nsees beings as they are passing hence and uprising,\nmean, excellent, comely, ugly, well-going, ill-going, according to the consequences of deeds, and thinks:\n'Indeed these worthy beings who were possessed of wrong conduct in body,\nspeech and thought, scoffers at the ariyans, holding a wrong view,\nincurring deeds consequent on a wrong view - these, at the breaking up of the body after dying,\nhave arisen in a sorrowful state, a bad bourn, the abyss, Niraya Hell.\nBut these worthy beings who were possessed of good conduct in body,\nspeech and thought, who did not scoff at the ariyans, holding a right view,\nincurring deeds consequent on a right view - these at the breaking up of the body after dying,\nhave arisen in a good bourn, a heaven world.'\nThus with the purified deva-vision surpassing that of men does he see beings as they pass hence, as they arise;\nhe comprehends that beings are mean, excellent, comely, ugly, well-going,\nill-going according to the consequences of deeds this too is so of him in regard to knowledge."}, {"key": "mn53:24.3", "pali": "Yampi, mahānāma, ariyasāvako āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharati,\nidampissa hoti vijjāya.", "sujato": "and realizing the undefiled freedom of heart and freedom by wisdom in this very life due to the ending of defilements.", "thanissaro": "When he enters & remains in the effluent-free awareness-release & discernment-release,\nhaving directly known & realized them for himself right in the here & now, that is a matter of his clear knowing.", "pts": "And, Mahānāma, whatever ariyan disciple, by the destruction of the cankers,\nhaving realized here and now by his own super-knowledge the freedom\nof mind and the freedom through wisdom that are cankerless,\nenters and abides therein, this too is so of him in regard to knowledge."}]}, {"id": "25", "label": "This noble disciple is said to be…", "rows": [{"key": "mn53:25.1", "pali": "Ayaṁ vuccati, mahānāma, ariyasāvako vijjāsampanno itipi caraṇasampanno itipi vijjācaraṇasampanno itipi.", "sujato": "This noble disciple is said to be ‘accomplished in knowledge’,\nand also ‘accomplished in conduct’, and also ‘accomplished in knowledge and conduct’.", "thanissaro": "“This, Mahānāma, is called a disciple of the noble ones who is consummate in clear-knowing,\nconsummate in conduct, consummate in clear-knowing & conduct.", "pts": "Mahānāma, this ariyan disciple is said to be possessed of knowledge and to be\npossessed of (right) conduct and to be possessed of knowledge and (right) conduct."}, {"key": "mn53:25.2", "pali": "Brahmunāpesā, mahānāma, sanaṅkumārena gāthā bhāsitā:", "sujato": "And the divinity Sanaṅkumāra also spoke this verse:", "thanissaro": "And by the Brahmā Sanaṅkumāra this verse was said:", "pts": "And, Mahānāma, this verse was spoken by Brahmā Ever-Young:"}, {"key": "mn53:25.3", "pali": "‘Khattiyo seṭṭho janetasmiṁ,", "sujato": "‘The aristocrat is best among people", "thanissaro": "‘The noble warrior is the best among people", "pts": "'The noble warrior is best among those people who value clan;"}, {"key": "mn53:25.4", "pali": "ye gottapaṭisārino;", "sujato": "who take clan as the standard.", "thanissaro": "when judging by clan.", "pts": ""}, {"key": "mn53:25.5", "pali": "Vijjācaraṇasampanno,", "sujato": "But one accomplished in knowledge and conduct", "thanissaro": "But a person consummate in clear-knowing & conduct,", "pts": ""}, {"key": "mn53:25.6", "pali": "so seṭṭho devamānuse’ti.", "sujato": "is best among gods and humans.’", "thanissaro": "is the best of beings human & divine.’", "pts": "He who is possessed of knowledge and (right) conduct is the best of devas and men.'"}, {"key": "mn53:25.7", "pali": "Sā kho panesā, mahānāma, brahmunā sanaṅkumārena gāthā sugītā no duggītā,\nsubhāsitā no dubbhāsitā, atthasaṁhitā no anatthasaṁhitā, anumatā bhagavatā”ti.", "sujato": "And that verse was well sung by the Divinity Sanaṅkumāra, not poorly sung;\nwell spoken, not poorly spoken, beneficial, not harmful, and it was approved by the Buddha.”", "thanissaro": "“This verse was well-sung by the Brahmā Sanaṅkumāra, not ill-sung;\nwell-said, not ill-said;\nconnected with the goal, not unconnected with the goal.\nIt was endorsed by the Blessed One.”", "pts": "Mahānāma, this verse was rightly sung, not wrongly sung by Brahmā Ever-Young;\nit was rightly spoken, not wrongly spoken;\nit is connected with the goal, not connected with what is not the goal.\nIt is approved by the Lord.\""}]}, {"id": "26", "label": "Then the Buddha got up and said…", "rows": [{"key": "mn53:26.1", "pali": "Atha kho bhagavā uṭṭhahitvā āyasmantaṁ ānandaṁ āmantesi:", "sujato": "Then the Buddha got up and said to Venerable Ānanda,", "thanissaro": "Then the Blessed One got up and said to Ven. Ānanda,", "pts": "Then the Lord, having risen, addressed the venerable Ānanda, saying:"}, {"key": "mn53:26.2", "pali": "“sādhu sādhu, ānanda,", "sujato": "“Good, good, Ānanda!", "thanissaro": "“Good, good, Ānanda.", "pts": "\"It is good, it is good, Ānanda;"}, {"key": "mn53:26.3", "pali": "sādhu kho tvaṁ, ānanda, kāpilavatthavānaṁ sakyānaṁ sekhaṁ pāṭipadaṁ abhāsī”ti.", "sujato": "It’s good that you spoke to the Sakyans of Kapilavatthu about the practicing trainee.”", "thanissaro": "What you have said to the Kapilavatthu Sakyans about the person who follows the practice for one in training is good.”", "pts": "it is good that you, Ānanda, spoke on a learner's course to the Sakyans of Kapilavatthu.\""}, {"key": "mn53:26.4", "pali": "Idamavocāyasmā ānando.", "sujato": "This is what Venerable Ānanda said,", "thanissaro": "That is what Ven. Ānanda said, and the Teacher approved.", "pts": "Thus spoke the venerable Ānanda, the Teacher approving."}, {"key": "mn53:26.5", "pali": "Samanuñño satthā ahosi.", "sujato": "and the teacher approved.", "thanissaro": "", "pts": ""}, {"key": "mn53:26.6", "pali": "Attamanā kāpilavatthavā sakyā āyasmato ānandassa bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the Sakyans of Kapilavatthu approved what Venerable Ānanda said.", "thanissaro": "Gratified, the Kapilavatthu Sakyans delighted in Ven. Ānanda’s words.", "pts": "Delighted, the Sakyans of Kapilavatthu rejoiced in what the venerable Ānanda had said. — p.p."}, {"key": "mn53:26.7", "pali": "Sekhasuttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato": "", "thanissaro": "", "pts": ""}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn53:2.1": ["The completion of a town hall was ce
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

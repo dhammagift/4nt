@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "kp1", "label": "Kp 1 · Saraṇattaya", "children": [{"id": "kp1/0", "label": "Basic Passages 1", "rows": [{"key": "kp1:0.1", "pali": "Khuddakapāṭha 1", "sujato": "Basic Passages 1"}, {"key": "kp1:0.2", "pali": "Saraṇattaya", "sujato": "The Three Refuges"}]}, {"id": "kp1/1", "label": "Homage to him, the blessed one, the…", "rows": [{"key": "kp1:1.1", "pali": "Namo tassa Bhagavato Arahato Sammāsambuddhassa.", "sujato": "Homage to him, the blessed one, the perfected one, the fully awakened Buddha!"}]}, {"id": "kp1/2", "label": "I take refuge in the Buddha,", "rows": [{"key": "kp1:2.1", "pali": "Buddhaṁ saraṇaṁ gacchāmi,", "sujato": "I take refuge in the Buddha,"}, {"key": "kp1:2.2", "pali": "Dhammaṁ saraṇaṁ gacchāmi,", "sujato": "I take refuge in the Teaching,"}, {"key": "kp1:2.3", "pali": "Saṅghaṁ saraṇaṁ gacchāmi.", "sujato": "I take refuge in the Sangha."}]}, {"id": "kp1/3", "label": "For the second time I take refuge…", "rows": [{"key": "kp1:3.1", "pali": "Dutiyampi buddhaṁ saraṇaṁ gacchāmi,", "sujato": "For the second time I take refuge in the Buddha,"}, {"key": "kp1:3.2", "pali": "Dutiyampi dhammaṁ saraṇaṁ gacchāmi,", "sujato": "for the second time I take refuge in the Teaching,"}, {"key": "kp1:3.3", "pali": "Dutiyampi saṅghaṁ saraṇaṁ gacchāmi.", "sujato": "for the second time I take refuge in the Sangha."}]}, {"id": "kp1/4", "label": "For the third time I take refuge…", "rows": [{"key": "kp1:4.1", "pali": "Tatiyampi buddhaṁ saraṇaṁ gacchāmi,", "sujato": "For the third time I take refuge in the Buddha,"}, {"key": "kp1:4.2", "pali": "Tatiyampi dhammaṁ saraṇaṁ gacchāmi,", "sujato": "for the third time I take refuge in the Teaching,"}, {"key": "kp1:4.3", "pali": "Tatiyampi saṅghaṁ saraṇaṁ gacchāmi.", "sujato": "for the third time I take refuge in the Sangha."}]}, {"id": "kp1/5", "label": "Saraṇattayaṁ.", "rows": [{"key": "kp1:5.1", "pali": "Saraṇattayaṁ.", "sujato": ""}]}]}, {"id": "kp2", "label": "Kp 2 · Dasasikkhāpada", "children": [{"id": "kp2/0", "label": "Basic Passages 2", "rows": [{"key": "kp2:0.1", "pali": "Khuddakapāṭha 2", "sujato": "Basic Passages 2"}, {"key": "kp2:0.2", "pali": "Dasasikkhāpada", "sujato": "The Ten Precepts"}]}, {"id": "kp2/1", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:1.1", "pali": "Pāṇātipātā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from killing living creatures."}]}, {"id": "kp2/2", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:2.1", "pali": "Adinnādānā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from stealing."}]}, {"id": "kp2/3", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:3.1", "pali": "Abrahmacariyā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from sexual activity."}]}, {"id": "kp2/4", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:4.1", "pali": "Musāvādā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from lying."}]}, {"id": "kp2/5", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:5.1", "pali": "Surāmerayamajjapamādaṭṭhānā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from consuming beer, wine, and liquor intoxicants."}]}, {"id": "kp2/6", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:6.1", "pali": "Vikālabhojanā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from food at the wrong time."}]}, {"id": "kp2/7", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:7.1", "pali": "Naccagītavāditavisūkadassanā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from seeing shows of dancing, singing, and music ."}]}, {"id": "kp2/8", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:8.1", "pali": "Mālāgandhavilepanadhāraṇamaṇḍanavibhūsanaṭṭhānā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from attiring and adorning myself with garlands, fragrance, and makeup."}]}, {"id": "kp2/9", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:9.1", "pali": "Uccāsayanamahāsayanā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from high and luxurious beds."}]}, {"id": "kp2/10", "label": "I undertake the precept to refrain from…", "rows": [{"key": "kp2:10.1", "pali": "Jātarūparajatapaṭiggahaṇā veramaṇisikkhāpadaṁ samādiyāmi.", "sujato": "I undertake the precept to refrain from receiving gold and currency."}]}, {"id": "kp2/11", "label": "Dasasikkhāpadaṁ.", "rows": [{"key": "kp2:11.1", "pali": "Dasasikkhāpadaṁ.", "sujato": ""}]}]}, {"id": "kp3", "label": "Kp 3 · Dvattiṁsākāra", "children": [{"id": "kp3/0", "label": "Basic Passages 3", "rows": [{"key": "kp3:0.1", "pali": "Khuddakapāṭha 3", "sujato": "Basic Passages 3"}, {"key": "kp3:0.2", "pali": "Dvattiṁsākāra", "sujato": "The Thirty-Two Parts of the Body"}]}, {"id": "kp3/1", "label": "“In this body there is head hair,…", "rows": [{"key": "kp3:1.1", "pali": "Atthi imasmiṁ kāye—Kesā lomā nakhā dantā taco,\nmaṁsaṁ nhāru aṭṭhi aṭṭhimiñjaṁ vakkaṁ, hadayaṁ yakanaṁ kilomakaṁ pihakaṁ papphāsaṁ,\nantaṁ antaguṇaṁ udariyaṁ karīsaṁ matthaluṅgaṁ,\npittaṁ semhaṁ pubbo lohitaṁ sedo medo, assu vasā kheḷo siṅghāṇikā lasikā muttanti.", "sujato": "“In this body there is head hair, body hair, nails, teeth, skin, flesh,\nsinews, bones, bone marrow, kidneys, heart, liver, diaphragm, spleen, lungs,\nintestines, mesentery, undigested food, feces, brain, bile, phlegm, pus,\nblood, sweat, fat, tears, grease, saliva, snot, synovial fluid, urine.”"}]}, {"id": "kp3/2", "label": "Dvattiṁsākāraṁ.", "rows": [{"key": "kp3:2.1", "pali": "Dvattiṁsākāraṁ.", "sujato": ""}]}]}, {"id": "kp4", "label": "Kp 4 · Kumārapañhā", "children": [{"id": "kp4/0", "label": "Basic Passages 4", "rows": [{"key": "kp4:0.1", "pali": "Khuddakapāṭha 4", "sujato": "Basic Passages 4"}, {"key": "kp4:0.2", "pali": "Kumārapañhā", "sujato": "The Boy’s Questions"}]}, {"id": "kp4/1", "label": "What is the one?", "rows": [{"key": "kp4:1.1", "pali": "Ekaṁ nāma kiṁ?", "sujato": "What is the one?"}, {"key": "kp4:1.2", "pali": "Sabbe sattā āhāraṭṭhitikā.", "sujato": "All sentient beings are sustained by food."}]}, {"id": "kp4/2", "label": "What is the two?", "rows": [{"key": "kp4:2.1", "pali": "Dve nāma kiṁ?", "sujato": "What is the two?"}, {"key": "kp4:2.2", "pali": "Nāmañca rūpañca.", "sujato": "Name and form."}]}, {"id": "kp4/3", "label": "What is the three?", "rows": [{"key": "kp4:3.1", "pali": "Tīṇi nāma kiṁ?", "sujato": "What is the three?"}, {"key": "kp4:3.2", "pali": "Tisso vedanā.", "sujato": "Three feelings."}]}, {"id": "kp4/4", "label": "What is the four?", "rows": [{"key": "kp4:4.1", "pali": "Cattāri nāma kiṁ?", "sujato": "What is the four?"}, {"key": "kp4:4.2", "pali": "Cattāri ariyasaccāni.", "sujato": "Four noble truths."}]}, {"id": "kp4/5", "label": "What is the five?", "rows": [{"key": "kp4:5.1", "pali": "Pañca nāma kiṁ?", "sujato": "What is the five?"}, {"key": "kp4:5.2", "pali": "Pañcupādānakkhandhā.", "sujato": "Five grasping aggregates."}]}, {"id": "kp4/6", "label": "What is the six?", "rows": [{"key": "kp4:6.1", "pali": "Cha nāma kiṁ?", "sujato": "What is the six?"}, {"key": "kp4:6.2", "pali": "Cha ajjhattikāni āyatanāni.", "sujato": "Six interior sense fields."}]}, {"id": "kp4/7", "label": "What is the seven?", "rows": [{"key": "kp4:7.1", "pali": "Satta nāma kiṁ?", "sujato": "What is the seven?"}, {"key": "kp4:7.2", "pali": "Satta bojjhaṅgā.", "sujato": "Seven awakening factors."}]}, {"id": "kp4/8", "label": "What is the eight?", "rows": [{"key": "kp4:8.1", "pali": "Aṭṭha nāma kiṁ?", "sujato": "What is the eight?"}, {"key": "kp4:8.2", "pali": "Ariyo aṭṭhaṅgiko maggo.", "sujato": "The noble eightfold path."}]}, {"id": "kp4/9", "label": "What is the nine?", "rows": [{"key": "kp4:9.1", "pali": "Nava nāma kiṁ?", "sujato": "What is the nine?"}, {"key": "kp4:9.2", "pali": "Nava sattāvāsā.", "sujato": "Nine abodes of sentient beings."}]}, {"id": "kp4/10", "label": "What is the ten?", "rows": [{"key": "kp4:10.1", "pali": "Dasa nāma kiṁ?", "sujato": "What is the ten?"}, {"key": "kp4:10.2", "pali": "Dasahaṅgehi samannāgato “arahā”ti vuccatīti.", "sujato": "One endowed with ten factors is called “perfected”."}]}, {"id": "kp4/11", "label": "Kumārapañhā.", "rows": [{"key": "kp4:11.1", "pali": "Kumārapañhā.", "sujato": ""}]}]}, {"id": "kp5", "label": "Kp 5 · Maṅgalasutta", "children": [{"id": "kp5/0", "label": "Basic Passages 5", "rows": [{"key": "kp5:0.1", "pali": "Khuddakapāṭha 5", "sujato": "Basic Passages 5"}, {"key": "kp5:0.2", "pali": "Maṅgalasutta", "sujato": "Blessings"}]}, {"id": "kp5/1", "label": "So I have heard.", "rows": [{"key": "kp5:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "kp5:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "kp5:1.3", "pali": "Atha kho aññatarā devatā abhikkantāya rattiyā abhikkantavaṇṇā\nkevalakappaṁ jetavanaṁ obhāsetvā yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ aṭṭhāsi.", "sujato": "Then, late at night, a glorious deity, lighting up the entire Jeta’s Grove,\nwent up to the Buddha, bowed, and stood to one side."}, {"key": "kp5:1.4", "pali": "Ekamantaṁ ṭhitā kho sā devatā bhagavantaṁ gāthāya ajjhabhāsi—", "sujato": "That deity addressed the Buddha in verse:"}]}, {"id": "kp5/2", "label": "“Many gods and humans", "rows": [{"key": "kp5:2.1", "pali": "“Bahū devā manussā ca,", "sujato": "“Many gods and humans"}, {"key": "kp5:2.2", "pali": "maṅgalāni acintayuṁ;", "sujato": "have thought about blessings"}, {"key": "kp5:2.3", "pali": "Ākaṅkhamānā sotthānaṁ,", "sujato": "desiring well-being:"}, {"key": "kp5:2.4", "pali": "brūhi maṅgalamuttamaṁ”.", "sujato": "declare the highest blessing.”"}]}, {"id": "kp5/3", "label": "“Not to fraternize with fools,", "rows": [{"key": "kp5:3.1", "pali": "“Asevanā ca bālānaṁ,", "sujato": "“Not to fraternize with fools,"}, {"key": "kp5:3.2", "pali": "paṇḍitānañca sevanā;", "sujato": "but to fraternize with the wise,"}, {"key": "kp5:3.3", "pali": "Pūjā ca pūjaneyyānaṁ,", "sujato": "and honoring those worthy of honor:"}, {"key": "kp5:3.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/4", "label": "Living in a suitable region,", "rows": [{"key": "kp5:4.1", "pali": "Patirūpadesavāso ca,", "sujato": "Living in a suitable region,"}, {"key": "kp5:4.2", "pali": "pubbe ca katapuññatā;", "sujato": "having made merit in the past,"}, {"key": "kp5:4.3", "pali": "Attasammāpaṇidhi ca,", "sujato": "being rightly resolved in oneself,"}, {"key": "kp5:4.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/5", "label": "Education and a craft,", "rows": [{"key": "kp5:5.1", "pali": "Bāhusaccañca sippañca,", "sujato": "Education and a craft,"}, {"key": "kp5:5.2", "pali": "vinayo ca susikkhito;", "sujato": "discipline and training,"}, {"key": "kp5:5.3", "pali": "Subhāsitā ca yā vācā,", "sujato": "and well-spoken speech:"}, {"key": "kp5:5.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/6", "label": "Caring for mother and father,", "rows": [{"key": "kp5:6.1", "pali": "Mātāpituupaṭṭhānaṁ,", "sujato": "Caring for mother and father,"}, {"key": "kp5:6.2", "pali": "puttadārassa saṅgaho;", "sujato": "kindness to children and partners,"}, {"key": "kp5:6.3", "pali": "Anākulā ca kammantā,", "sujato": "and unstressful work:"}, {"key": "kp5:6.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/7", "label": "Giving and righteous conduct,", "rows": [{"key": "kp5:7.1", "pali": "Dānañca dhammacariyā ca,", "sujato": "Giving and righteous conduct,"}, {"key": "kp5:7.2", "pali": "ñātakānañca saṅgaho;", "sujato": "kindness to relatives,"}, {"key": "kp5:7.3", "pali": "Anavajjāni kammāni,", "sujato": "blameless deeds:"}, {"key": "kp5:7.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/8", "label": "Desisting and abstaining from evil,", "rows": [{"key": "kp5:8.1", "pali": "Āratī viratī pāpā,", "sujato": "Desisting and abstaining from evil,"}, {"key": "kp5:8.2", "pali": "majjapānā ca saṁyamo;", "sujato": "avoiding drinking liquor,"}, {"key": "kp5:8.3", "pali": "Appamādo ca dhammesu,", "sujato": "diligence in good qualities:"}, {"key": "kp5:8.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/9", "label": "Respect and placidity,", "rows": [{"key": "kp5:9.1", "pali": "Gāravo ca nivāto ca,", "sujato": "Respect and placidity,"}, {"key": "kp5:9.2", "pali": "santuṭṭhi ca kataññutā;", "sujato": "contentment and gratitude,"}, {"key": "kp5:9.3", "pali": "Kālena dhammassavanaṁ,", "sujato": "and timely listening to the teaching:"}, {"key": "kp5:9.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/10", "label": "Patience, being easy to admonish,", "rows": [{"key": "kp5:10.1", "pali": "Khantī ca sovacassatā,", "sujato": "Patience, being easy to admonish,"}, {"key": "kp5:10.2", "pali": "samaṇānañca dassanaṁ;", "sujato": "the sight of ascetics,"}, {"key": "kp5:10.3", "pali": "Kālena dhammasākacchā,", "sujato": "and timely discussion of the teaching:"}, {"key": "kp5:10.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/11", "label": "Fervor and chastity", "rows": [{"key": "kp5:11.1", "pali": "Tapo ca brahmacariyañca,", "sujato": "Fervor and chastity"}, {"key": "kp5:11.2", "pali": "ariyasaccāna dassanaṁ;", "sujato": "seeing the noble truths,"}, {"key": "kp5:11.3", "pali": "Nibbānasacchikiriyā ca,", "sujato": "and realization of extinguishment:"}, {"key": "kp5:11.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/12", "label": "Though touched by worldly conditions,", "rows": [{"key": "kp5:12.1", "pali": "Phuṭṭhassa lokadhammehi,", "sujato": "Though touched by worldly conditions,"}, {"key": "kp5:12.2", "pali": "cittaṁ yassa na kampati;", "sujato": "their mind does not tremble;"}, {"key": "kp5:12.3", "pali": "Asokaṁ virajaṁ khemaṁ,", "sujato": "sorrowless, stainless, secure:"}, {"key": "kp5:12.4", "pali": "etaṁ maṅgalamuttamaṁ.", "sujato": "this is the highest blessing."}]}, {"id": "kp5/13", "label": "Having completed these things,", "rows": [{"key": "kp5:13.1", "pali": "Etādisāni katvāna,", "sujato": "Having completed these things,"}, {"key": "kp5:13.2", "pali": "Sabbattha maparājitā;", "sujato": "undefeated everywhere;"}, {"key": "kp5:13.3", "pali": "Sabbattha sotthiṁ gacchanti,", "sujato": "everywhere they go in safety:"}, {"key": "kp5:13.4", "pali": "Taṁ tesaṁ maṅgalamuttaman”ti.", "sujato": "this is their highest blessing.”"}]}, {"id": "kp5/14", "label": "Maṅgalasuttaṁ.", "rows": [{"key": "kp5:14.1", "pali": "Maṅgalasuttaṁ.", "sujato": ""}]}]}, {"id": "kp6", "label": "Kp 6 · Ratanasutta", "children": [{"id": "kp6/0", "label": "Basic Passages 6", "rows": [{"key": "kp6:0.1", "pali": "Khuddakapāṭha 6", "sujato": "Basic Passages 6"}, {"key": "kp6:0.2", "pali": "Ratanasutta", "sujato": "Gems"}]}, {"id": "kp6/1", "label": "Whatever beings have gathered here,", "rows": [{"key": "kp6:1.1", "pali": "Yānīdha bhūtāni samāgatāni,", "sujato": "Whatever beings have gathered here,"}, {"key": "kp6:1.2", "pali": "Bhummāni vā yāni va antalikkhe;", "sujato": "on the ground or in the sky,"}, {"key": "kp6:1.3", "pali": "Sabbeva bhūtā sumanā bhavantu,", "sujato": "may beings all be of happy heart,"}, {"key": "kp6:1.4", "pali": "Athopi sakkacca suṇantu bhāsitaṁ.", "sujato": "and listen carefully to what is said."}]}, {"id": "kp6/2", "label": "So pay heed, all you beings,", "rows": [{"key": "kp6:2.1", "pali": "Tasmā hi bhūtā nisāmetha sabbe,", "sujato": "So pay heed, all you beings,"}, {"key": "kp6:2.2", "pali": "Mettaṁ karotha mānusiyā pajāya;", "sujato": "have love for humankind,"}, {"key": "kp6:2.3", "pali": "Divā ca ratto ca haranti ye baliṁ,", "sujato": "who day and night bring offerings;"}, {"key": "kp6:2.4", "pali": "Tasmā hi ne rakkhatha appamattā.", "sujato": "please protect them diligently."}]}, {"id": "kp6/3", "label": "There’s no wealth this life or the…", "rows": [{"key": "kp6:3.1", "pali": "Yaṁ kiñci vittaṁ idha vā huraṁ vā,", "sujato": "There’s no wealth this life or the next,"}, {"key": "kp6:3.2", "pali": "Saggesu vā yaṁ ratanaṁ paṇītaṁ;", "sujato": "no sublime gem in the heavens,"}, {"key": "kp6:3.3", "pali": "Na no samaṁ atthi tathāgatena,", "sujato": "that equals the Realized One."}, {"key": "kp6:3.4", "pali": "Idampi buddhe ratanaṁ paṇītaṁ;", "sujato": "This sublime gem is in the Buddha:"}, {"key": "kp6:3.5", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/4", "label": "Ending, dispassion, the undying, the sublime,", "rows": [{"key": "kp6:4.1", "pali": "Khayaṁ virāgaṁ amataṁ paṇītaṁ,", "sujato": "Ending, dispassion, the undying, the sublime,"}, {"key": "kp6:4.2", "pali": "Yadajjhagā sakyamunī samāhito;", "sujato": "attained by the Sakyan Sage immersed in samādhi;"}, {"key": "kp6:4.3", "pali": "Na tena dhammena samatthi kiñci,", "sujato": "there is nothing equal to that Dhamma."}, {"key": "kp6:4.4", "pali": "Idampi dhamme ratanaṁ paṇītaṁ;", "sujato": "This sublime gem is in the Dhamma:"}, {"key": "kp6:4.5", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/5", "label": "The purity praised by the highest Buddha,", "rows": [{"key": "kp6:5.1", "pali": "Yaṁ buddhaseṭṭho parivaṇṇayī suciṁ,", "sujato": "The purity praised by the highest Buddha,"}, {"key": "kp6:5.2", "pali": "Samādhimānantarikaññamāhu;", "sujato": "is said to be the “immersion with immediate fruit”;"}, {"key": "kp6:5.3", "pali": "Samādhinā tena samo na vijjati,", "sujato": "no equal to that immersion is found."}, {"key": "kp6:5.4", "pali": "Idampi dhamme ratanaṁ paṇītaṁ;", "sujato": "This sublime gem is in the Dhamma:"}, {"key": "kp6:5.5", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/6", "label": "The eight individual persons praised by the…", "rows": [{"key": "kp6:6.1", "pali": "Ye puggalā aṭṭha sataṁ pasatthā,", "sujato": "The eight individual persons praised by the good"}, {"key": "kp6:6.2", "pali": "Cattāri etāni yugāni honti;", "sujato": "are the four pairs of the Holy One’s disciples;"}, {"key": "kp6:6.3", "pali": "Te dakkhiṇeyyā sugatassa sāvakā,", "sujato": "they are worthy of religious donations,"}, {"key": "kp6:6.4", "pali": "Etesu dinnāni mahapphalāni;", "sujato": "what’s given to them is very fruitful."}, {"key": "kp6:6.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:6.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/7", "label": "Dedicated to Gotama’s dispensation,", "rows": [{"key": "kp6:7.1", "pali": "Ye suppayuttā manasā daḷhena,", "sujato": "Dedicated to Gotama’s dispensation,"}, {"key": "kp6:7.2", "pali": "Nikkāmino gotamasāsanamhi;", "sujato": "strong-minded, free of sense desire,"}, {"key": "kp6:7.3", "pali": "Te pattipattā amataṁ vigayha,", "sujato": "they’ve attained the goal, plunged into freedom from death,"}, {"key": "kp6:7.4", "pali": "Laddhā mudhā nibbutiṁ bhuñjamānā;", "sujato": "and enjoy the quenching they’ve freely gained."}, {"key": "kp6:7.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:7.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/8", "label": "As Indra’s pillar rooted in earth", "rows": [{"key": "kp6:8.1", "pali": "Yathindakhīlo pathavissito siyā,", "sujato": "As Indra’s pillar rooted in earth"}, {"key": "kp6:8.2", "pali": "Catubbhi vātehi asampakampiyo;", "sujato": "is not shaken by the four winds,"}, {"key": "kp6:8.3", "pali": "Tathūpamaṁ sappurisaṁ vadāmi,", "sujato": "I say a true person is like this,"}, {"key": "kp6:8.4", "pali": "Yo ariyasaccāni avecca passati;", "sujato": "who sees the noble truths in experience."}, {"key": "kp6:8.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:8.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/9", "label": "Those who fathom the noble truths", "rows": [{"key": "kp6:9.1", "pali": "Ye ariyasaccāni vibhāvayanti,", "sujato": "Those who fathom the noble truths"}, {"key": "kp6:9.2", "pali": "Gambhīrapaññena sudesitāni;", "sujato": "taught by the one of deep wisdom,"}, {"key": "kp6:9.3", "pali": "Kiñcāpi te honti bhusaṁ pamattā,", "sujato": "do not take an eighth life,"}, {"key": "kp6:9.4", "pali": "Na te bhavaṁ aṭṭhamamādiyanti;", "sujato": "even if they are hugely negligent."}, {"key": "kp6:9.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:9.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/10", "label": "When they attain to vision", "rows": [{"key": "kp6:10.1", "pali": "Sahāvassa dassanasampadāya,", "sujato": "When they attain to vision"}, {"key": "kp6:10.2", "pali": "Tayassu dhammā jahitā bhavanti;", "sujato": "they give up three things:"}, {"key": "kp6:10.3", "pali": "Sakkāyadiṭṭhī vicikicchitañca,", "sujato": "substantialist view, doubt, and any"}, {"key": "kp6:10.4", "pali": "Sīlabbataṁ vāpi yadatthi kiñci.", "sujato": "attachment to precepts and observances."}]}, {"id": "kp6/11", "label": "They’re freed from the four places of…", "rows": [{"key": "kp6:11.1", "pali": "Catūhapāyehi ca vippamutto,", "sujato": "They’re freed from the four places of loss,"}, {"key": "kp6:11.2", "pali": "Chaccābhiṭhānāni abhabba kātuṁ;", "sujato": "and cannot do six things."}, {"key": "kp6:11.3", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:11.4", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/12", "label": "Even if they do a bad deed", "rows": [{"key": "kp6:12.1", "pali": "Kiñcāpi so kamma karoti pāpakaṁ,", "sujato": "Even if they do a bad deed"}, {"key": "kp6:12.2", "pali": "Kāyena vācā uda cetasā vā;", "sujato": "by body, speech, or mind,"}, {"key": "kp6:12.3", "pali": "Abhabba so tassa paṭicchadāya,", "sujato": "they are unable to conceal it;"}, {"key": "kp6:12.4", "pali": "Abhabbatā diṭṭhapadassa vuttā;", "sujato": "they say this inability applies to one who has seen the truth."}, {"key": "kp6:12.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:12.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/13", "label": "Like a tall forest tree crowned with…", "rows": [{"key": "kp6:13.1", "pali": "Vanappagumbe yatha phussitagge,", "sujato": "Like a tall forest tree crowned with flowers"}, {"key": "kp6:13.2", "pali": "Gimhānamāse paṭhamasmiṁ gimhe;", "sujato": "in the first month of summer;"}, {"key": "kp6:13.3", "pali": "Tathūpamaṁ dhammavaraṁ adesayi,", "sujato": "that’s how he taught the superb Dhamma,"}, {"key": "kp6:13.4", "pali": "Nibbānagāmiṁ paramaṁ hitāya;", "sujato": "leading to extinguishment, the ultimate benefit."}, {"key": "kp6:13.5", "pali": "Idampi buddhe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Buddha:"}, {"key": "kp6:13.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/14", "label": "The superb, knower of the superb, giver…", "rows": [{"key": "kp6:14.1", "pali": "Varo varaññū varado varāharo,", "sujato": "The superb, knower of the superb, giver of the superb, bringer of the superb;"}, {"key": "kp6:14.2", "pali": "Anuttaro dhammavaraṁ adesayi;", "sujato": "taught the superb Dhamma supreme."}, {"key": "kp6:14.3", "pali": "Idampi buddhe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Buddha:"}, {"key": "kp6:14.4", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/15", "label": "The old is ended, nothing new is…", "rows": [{"key": "kp6:15.1", "pali": "Khīṇaṁ purāṇaṁ nava natthi sambhavaṁ,", "sujato": "The old is ended, nothing new is produced."}, {"key": "kp6:15.2", "pali": "Virattacittāyatike bhavasmiṁ;", "sujato": "their minds have no desire for future rebirth."}, {"key": "kp6:15.3", "pali": "Te khīṇabījā avirūḷhichandā,", "sujato": "Withered are the seeds, there’s no desire for growth,"}, {"key": "kp6:15.4", "pali": "Nibbanti dhīrā yathāyaṁ padīpo;", "sujato": "those attentive ones are extinguished just like this lamp."}, {"key": "kp6:15.5", "pali": "Idampi saṅghe ratanaṁ paṇītaṁ,", "sujato": "This sublime gem is in the Saṅgha:"}, {"key": "kp6:15.6", "pali": "Etena saccena suvatthi hotu.", "sujato": "by this truth, may you be well!"}]}, {"id": "kp6/16", "label": "Whatever beings have gathered here,", "rows": [{"key": "kp6:16.1", "pali": "Yānīdha bhūtāni samāgatāni,", "sujato": "Whatever beings have gathered here,"}, {"key": "kp6:16.2", "pali": "Bhummāni vā yāni va antalikkhe;", "sujato": "on the ground or in the sky:"}, {"key": "kp6:16.3", "pali": "Tathāgataṁ devamanussapūjitaṁ,", "sujato": "the Realized One is honored by gods and humans!"}, {"key": "kp6:16.4", "pali": "Buddhaṁ namassāma suvatthi hotu.", "sujato": "We bow to the Buddha!\nMay you be safe!"}]}, {"id": "kp6/17", "label": "Whatever beings have gathered here,", "rows": [{"key": "kp6:17.1", "pali": "Yānīdha bhūtāni samāgatāni,", "sujato": "Whatever beings have gathered here,"}, {"key": "kp6:17.2", "pali": "Bhummāni vā yāni va antalikkhe;", "sujato": "on the ground or in the sky:"}, {"key": "kp6:17.3", "pali": "Tathāgataṁ devamanussapūjitaṁ,", "sujato": "the Realized One is honored by gods and humans!"}, {"key": "kp6:17.4", "pali": "Dhammaṁ namassāma suvatthi hotu.", "sujato": "We bow to the Dhamma!\nMay you be safe!"}]}, {"id": "kp6/18", "label": "Whatever beings have gathered here,", "rows": [{"key": "kp6:18.1", "pali": "Yānīdha bhūtāni samāgatāni,", "sujato": "Whatever beings have gathered here,"}, {"key": "kp6:18.2", "pali": "Bhummāni vā yāni va antalikkhe;", "sujato": "on the ground or in the sky:"}, {"key": "kp6:18.3", "pali": "Tathāgataṁ devamanussapūjitaṁ,", "sujato": "the Realized One is honored by gods and humans!"}, {"key": "kp6:18.4", "pali": "Saṅghaṁ namassāma suvatthi hotūti.", "sujato": "We bow to the Saṅgha!\nMay you be safe!"}]}, {"id": "kp6/19", "label": "Ratanasuttaṁ.", "rows": [{"key": "kp6:19.1", "pali": "Ratanasuttaṁ.", "sujato": ""}]}]}, {"id": "kp7", "label": "Kp 7 · Tirokuṭṭasutta", "children": [{"id": "kp7/0", "label": "Basic Passages 7", "rows": [{"key": "kp7:0.1", "pali": "Khuddakapāṭha 7", "sujato": "Basic Passages 7"}, {"key": "kp7:0.2", "pali": "Tirokuṭṭasutta", "sujato": "Outside the Walls"}]}, {"id": "kp7/1", "label": "Outside the walls they stand and wait,", "rows": [{"key": "kp7:1.1", "pali": "Tirokuṭṭesu tiṭṭhanti,", "sujato": "Outside the walls they stand and wait,"}, {"key": "kp7:1.2", "pali": "sandhisiṅghāṭakesu ca;", "sujato": "at the junctions and the crossroads."}, {"key": "kp7:1.3", "pali": "Dvārabāhāsu tiṭṭhanti,", "sujato": "Returning to their former homes"}, {"key": "kp7:1.4", "pali": "āgantvāna sakaṁ gharaṁ.", "sujato": "they wait beside the door posts."}]}, {"id": "kp7/2", "label": "But when lavish food and drink", "rows": [{"key": "kp7:2.1", "pali": "Pahūte annapānamhi,", "sujato": "But when lavish food and drink"}, {"key": "kp7:2.2", "pali": "khajjabhojje upaṭṭhite;", "sujato": "of many kinds is set out,"}, {"key": "kp7:2.3", "pali": "Na tesaṁ koci sarati,", "sujato": "no-one remembers them at all,"}, {"key": "kp7:2.4", "pali": "sattānaṁ kammapaccayā.", "sujato": "because of those beings’s deeds."}]}, {"id": "kp7/3", "label": "That’s why those who have compassion", "rows": [{"key": "kp7:3.1", "pali": "Evaṁ dadanti ñātīnaṁ,", "sujato": "That’s why those who have compassion"}, {"key": "kp7:3.2", "pali": "ye honti anukampakā;", "sujato": "give to their relatives"}, {"key": "kp7:3.3", "pali": "Suciṁ paṇītaṁ kālena,", "sujato": "food and drink at the right time,"}, {"key": "kp7:3.4", "pali": "kappiyaṁ pānabhojanaṁ.", "sujato": "that’s clean, delicious, and suitable."}]}, {"id": "kp7/4", "label": "“May this be for our relatives!", "rows": [{"key": "kp7:4.1", "pali": "Idaṁ vo ñātīnaṁ hotu,", "sujato": "“May this be for our relatives!"}, {"key": "kp7:4.2", "pali": "sukhitā hontu ñātayo;", "sujato": "May our relatives be happy!”"}, {"key": "kp7:4.3", "pali": "Te ca tattha samāgantvā,", "sujato": "Those ghosts who have gathered there,"}, {"key": "kp7:4.4", "pali": "ñātipetā samāgatā.", "sujato": "the departed relatives who have come"}]}, {"id": "kp7/5", "label": "for the lavish food and drink", "rows": [{"key": "kp7:5.1", "pali": "Pahūte annapānamhi,", "sujato": "for the lavish food and drink"}, {"key": "kp7:5.2", "pali": "sakkaccaṁ anumodare;", "sujato": "gratefully express appreciation:"}, {"key": "kp7:5.3", "pali": "Ciraṁ jīvantu no ñātī,", "sujato": "“May our relatives live long!"}, {"key": "kp7:5.4", "pali": "yesaṁ hetu labhāmase.", "sujato": "For those to whom we owe this gain,"}]}, {"id": "kp7/6", "label": "who have given honor to us,", "rows": [{"key": "kp7:6.1", "pali": "Amhākañca katā pūjā,", "sujato": "who have given honor to us,"}, {"key": "kp7:6.2", "pali": "dāyakā ca anipphalā;", "sujato": "it will not be fruitless for the donor.”"}, {"key": "kp7:6.3", "pali": "Na hi tattha kasī atthi,", "sujato": "There is no farming there,"}, {"key": "kp7:6.4", "pali": "gorakkhettha na vijjati.", "sujato": "no cow pasture can be found;"}]}, {"id": "kp7/7", "label": "likewise there’s no trading,", "rows": [{"key": "kp7:7.1", "pali": "Vaṇijjā tādisī natthi,", "sujato": "likewise there’s no trading,"}, {"key": "kp7:7.2", "pali": "hiraññena kayākayaṁ;", "sujato": "and no commerce in gold coin."}, {"key": "kp7:7.3", "pali": "Ito dinnena yāpenti,", "sujato": "The departed, the dead in that place"}, {"key": "kp7:7.4", "pali": "petā kālagatā tahiṁ.", "sujato": "live on what is given here."}]}, {"id": "kp7/8", "label": "Just as water that rains on high", "rows": [{"key": "kp7:8.1", "pali": "Unname udakaṁ vuṭṭhaṁ,", "sujato": "Just as water that rains on high"}, {"key": "kp7:8.2", "pali": "yathā ninnaṁ pavattati;", "sujato": "flows down to the plains,"}, {"key": "kp7:8.3", "pali": "Evamevaṁ ito dinnaṁ,", "sujato": "so too what is given here"}, {"key": "kp7:8.4", "pali": "petānaṁ upakappati.", "sujato": "aids the departed ghosts."}]}, {"id": "kp7/9", "label": "Just as the rivers full", "rows": [{"key": "kp7:9.1", "pali": "Yathā vārivahā pūrā,", "sujato": "Just as the rivers full"}, {"key": "kp7:9.2", "pali": "paripūrenti sāgaraṁ;", "sujato": "swell the ocean seas"}, {"key": "kp7:9.3", "pali": "Evamevaṁ ito dinnaṁ,", "sujato": "so too what is given here"}, {"key": "kp7:9.4", "pali": "petānaṁ upakappati.", "sujato": "aids the departed ghosts."}]}, {"id": "kp7/10", "label": "Thinking: “They gave to me, they did…", "rows": [{"key": "kp7:10.1", "pali": "Adāsi me akāsi me,", "sujato": "Thinking:\n“They gave to me, they did for me,"}, {"key": "kp7:10.2", "pali": "ñāti mittā sakhā ca me;", "sujato": "they were my family, friend, comrade”,"}, {"key": "kp7:10.3", "pali": "Petānaṁ dakkhiṇaṁ dajjā,", "sujato": "give offerings to departed kin,"}, {"key": "kp7:10.4", "pali": "pubbe katamanussaraṁ.", "sujato": "remembering past deeds."}]}, {"id": "kp7/11", "label": "For neither tears nor grief", "rows": [{"key": "kp7:11.1", "pali": "Na hi ruṇṇaṁ vā soko vā,", "sujato": "For neither tears nor grief"}, {"key": "kp7:11.2", "pali": "yā caññā paridevanā;", "sujato": "or other lamentations"}, {"key": "kp7:11.3", "pali": "Na taṁ petānamatthāya,", "sujato": "are of any use to the departed,"}, {"key": "kp7:11.4", "pali": "evaṁ tiṭṭhanti ñātayo.", "sujato": "so long as their relatives stay like this."}]}, {"id": "kp7/12", "label": "This offering that has been given,", "rows": [{"key": "kp7:12.1", "pali": "Ayañca kho dakkhiṇā dinnā,", "sujato": "This offering that has been given,"}, {"key": "kp7:12.2", "pali": "saṅghamhi suppatiṭṭhitā;", "sujato": "well placed in the Saṅgha,"}, {"key": "kp7:12.3", "pali": "Dīgharattaṁ hitāyassa,", "sujato": "is for their lasting welfare,"}, {"key": "kp7:12.4", "pali": "ṭhānaso upakappati.", "sujato": "and aids them right away."}]}, {"id": "kp7/13", "label": "The relative’s duty has now been shown:", "rows": [{"key": "kp7:13.1", "pali": "So ñātidhammo ca ayaṁ nidassito,", "sujato": "The relative’s duty has now been shown:"}, {"key": "kp7:13.2", "pali": "Petāna pūjā ca katā uḷārā;", "sujato": "how high honor to departed is performed,"}, {"key": "kp7:13.3", "pali": "Balañca bhikkhūnamanuppadinnaṁ,", "sujato": "how the mendicants can be kept strong,"}, {"key": "kp7:13.4", "pali": "Tumhehi puññaṁ pasutaṁ anappakanti.", "sujato": "and how no little merit is produced by you."}]}, {"id": "kp7/14", "label": "Tirokuṭṭasuttaṁ.", "rows": [{"key": "kp7:14.1", "pali": "Tirokuṭṭasuttaṁ.", "sujato": ""}]}]}, {"id": "kp8", "label": "Kp 8 · Nidhikaṇḍasutta", "children": [{"id": "kp8/0", "label": "Basic Passages 8", "rows": [{"key": "kp8:0.1", "pali": "Khuddakapāṭha 8", "sujato": "Basic Passages 8"}, {"key": "kp8:0.2", "pali": "Nidhikaṇḍasutta", "sujato": "A Treasure Trove"}]}, {"id": "kp8/1", "label": "A person stores away their savings", "rows": [{"key": "kp8:1.1", "pali": "Nidhiṁ nidheti puriso,", "sujato": "A person stores away their savings"}, {"key": "kp8:1.2", "pali": "gambhīre odakantike;", "sujato": "in a deep trove by the water’s edge:"}, {"key": "kp8:1.3", "pali": "Atthe kicce samuppanne,", "sujato": "“When need arises"}, {"key": "kp8:1.4", "pali": "atthāya me bhavissati.", "sujato": "it will be there to help"}]}, {"id": "kp8/2", "label": "free me from rulers if I am…", "rows": [{"key": "kp8:2.1", "pali": "Rājato vā duruttassa,", "sujato": "free me from rulers if I am slandered,"}, {"key": "kp8:2.2", "pali": "corato pīḷitassa vā;", "sujato": "or from bandits if harassed,"}, {"key": "kp8:2.3", "pali": "Iṇassa vā pamokkhāya,", "sujato": "or to release me from debt,"}, {"key": "kp8:2.4", "pali": "dubbhikkhe āpadāsu vā;", "sujato": "or in case of famine or losses.”"}, {"key": "kp8:2.5", "pali": "Etadatthāya lokasmiṁ,", "sujato": "What the world calls savings"}, {"key": "kp8:2.6", "pali": "nidhi nāma nidhīyati.", "sujato": "get stored away for such reasons."}]}, {"id": "kp8/3", "label": "But no matter how well stored away…", "rows": [{"key": "kp8:3.1", "pali": "Tāvassunihito santo,", "sujato": "But no matter how well stored away they are"}, {"key": "kp8:3.2", "pali": "gambhīre odakantike;", "sujato": "in a deep pit by the water’s edge,"}, {"key": "kp8:3.3", "pali": "Na sabbo sabbadā eva,", "sujato": "all their savings will fail"}, {"key": "kp8:3.4", "pali": "tassa taṁ upakappati.", "sujato": "to aid them all the time."}]}, {"id": "kp8/4", "label": "For perhaps those savings shift from there,", "rows": [{"key": "kp8:4.1", "pali": "Nidhi vā ṭhānā cavati,", "sujato": "For perhaps those savings shift from there,"}, {"key": "kp8:4.2", "pali": "saññā vāssa vimuyhati;", "sujato": "or they forget what marks the site,"}, {"key": "kp8:4.3", "pali": "Nāgā vā apanāmenti,", "sujato": "or dragons make off with them,"}, {"key": "kp8:4.4", "pali": "yakkhā vāpi haranti naṁ.", "sujato": "or spirits carry them away,"}]}, {"id": "kp8/5", "label": "or unloved heirs", "rows": [{"key": "kp8:5.1", "pali": "Appiyā vāpi dāyādā,", "sujato": "or unloved heirs"}, {"key": "kp8:5.2", "pali": "uddharanti apassato;", "sujato": "secretly unearth them."}, {"key": "kp8:5.3", "pali": "Yadā puññakkhayo hoti,", "sujato": "When their merit is used up,"}, {"key": "kp8:5.4", "pali": "sabbametaṁ vinassati.", "sujato": "all of that will vanish."}]}, {"id": "kp8/6", "label": "But by giving and morality,", "rows": [{"key": "kp8:6.1", "pali": "Yassa dānena sīlena,", "sujato": "But by giving and morality,"}, {"key": "kp8:6.2", "pali": "saṁyamena damena ca;", "sujato": "restraint and self-control,"}, {"key": "kp8:6.3", "pali": "Nidhī sunihito hoti,", "sujato": "a woman or man"}, {"key": "kp8:6.4", "pali": "itthiyā purisassa vā.", "sujato": "keeps their savings safe."}]}, {"id": "kp8/7", "label": "At a shrine or with the Saṅgha,", "rows": [{"key": "kp8:7.1", "pali": "Cetiyamhi ca saṅghe vā,", "sujato": "At a shrine or with the Saṅgha,"}, {"key": "kp8:7.2", "pali": "puggale atithīsu vā;", "sujato": ""}, {"key": "kp8:7.3", "pali": "Mātari pitari cāpi,", "sujato": "with mother or father,"}, {"key": "kp8:7.4", "pali": "atho jeṭṭhamhi bhātari.", "sujato": "or else an elder sibling,"}]}, {"id": "kp8/8", "label": "those savings are kept safe,", "rows": [{"key": "kp8:8.1", "pali": "Eso nidhi sunihito,", "sujato": "those savings are kept safe,"}, {"key": "kp8:8.2", "pali": "ajeyyo anugāmiko;", "sujato": "they stay with you, undecaying."}, {"key": "kp8:8.3", "pali": "Pahāya gamanīyesu,", "sujato": "We must go on leaving all behind,"}, {"key": "kp8:8.4", "pali": "etaṁ ādāya gacchati.", "sujato": "only this you take when you go."}]}, {"id": "kp8/9", "label": "You don’t have to share it with…", "rows": [{"key": "kp8:9.1", "pali": "Asādhāraṇamaññesaṁ,", "sujato": "You don’t have to share it with others,"}, {"key": "kp8:9.2", "pali": "acorāharaṇo nidhi;", "sujato": "no thief makes off with your savings."}, {"key": "kp8:9.3", "pali": "Kayirātha dhīro puññāni,", "sujato": "An attentive one would make merit,"}, {"key": "kp8:9.4", "pali": "yo nidhi anugāmiko.", "sujato": "the savings that stay with you."}]}, {"id": "kp8/10", "label": "Such savings grant every desire", "rows": [{"key": "kp8:10.1", "pali": "Esa devamanussānaṁ,", "sujato": "Such savings grant every desire"}, {"key": "kp8:10.2", "pali": "sabbakāmadado nidhi;", "sujato": "of gods and humans too."}, {"key": "kp8:10.3", "pali": "Yaṁ yadevābhipatthenti,", "sujato": "Whatever it is that they wish for"}, {"key": "kp8:10.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/11", "label": "Good looks, a sweet voice,", "rows": [{"key": "kp8:11.1", "pali": "Suvaṇṇatā susaratā,", "sujato": "Good looks, a sweet voice,"}, {"key": "kp8:11.2", "pali": "susaṇṭhānā surūpatā;", "sujato": "a good shape, and good appearance,"}, {"key": "kp8:11.3", "pali": "Ādhipaccaparivāro,", "sujato": "leadership and followers:"}, {"key": "kp8:11.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/12", "label": "Sovereignty of a local kingdom,", "rows": [{"key": "kp8:12.1", "pali": "Padesarajjaṁ issariyaṁ,", "sujato": "Sovereignty of a local kingdom,"}, {"key": "kp8:12.2", "pali": "cakkavattisukhaṁ piyaṁ;", "sujato": "the happiness of a Wheel-Turning Monarch,"}, {"key": "kp8:12.3", "pali": "Devarajjampi dibbesu,", "sujato": "even kingship in the heavens:"}, {"key": "kp8:12.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/13", "label": "Human success,", "rows": [{"key": "kp8:13.1", "pali": "Mānussikā ca sampatti,", "sujato": "Human success,"}, {"key": "kp8:13.2", "pali": "devaloke ca yā rati;", "sujato": "heavenly delight,"}, {"key": "kp8:13.3", "pali": "Yā ca nibbānasampatti,", "sujato": "attaining extinguishment:"}, {"key": "kp8:13.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/14", "label": "Relying on having good friends,", "rows": [{"key": "kp8:14.1", "pali": "Mittasampadamāgamma,", "sujato": "Relying on having good friends,"}, {"key": "kp8:14.2", "pali": "yonisova payuñjato;", "sujato": "rational application of effort,"}, {"key": "kp8:14.3", "pali": "Vijjāvimuttivasībhāvo,", "sujato": "mastery of knowledge and freedom:"}, {"key": "kp8:14.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/15", "label": "Analytical knowledge, the liberations,", "rows": [{"key": "kp8:15.1", "pali": "Paṭisambhidā vimokkhā ca,", "sujato": "Analytical knowledge, the liberations,"}, {"key": "kp8:15.2", "pali": "yā ca sāvakapāramī;", "sujato": "the perfections of the disciple,"}, {"key": "kp8:15.3", "pali": "Paccekabodhi buddhabhūmi,", "sujato": "the plane of an independent Buddha:"}, {"key": "kp8:15.4", "pali": "sabbametena labbhati.", "sujato": "through this they have it all."}]}, {"id": "kp8/16", "label": "This accomplishment in merit", "rows": [{"key": "kp8:16.1", "pali": "Evaṁ mahatthikā esā,", "sujato": "This accomplishment in merit"}, {"key": "kp8:16.2", "pali": "yadidaṁ puññasampadā;", "sujato": "is so very beneficial."}, {"key": "kp8:16.3", "pali": "Tasmā dhīrā pasaṁsanti,", "sujato": "That’s why the attentive and the astute"}, {"key": "kp8:16.4", "pali": "paṇḍitā katapuññatanti.", "sujato": "praise the making of merit."}]}, {"id": "kp8/17", "label": "Nidhikaṇḍasuttaṁ.", "rows": [{"key": "kp8:17.1", "pali": "Nidhikaṇḍasuttaṁ.", "sujato": ""}]}]}, {"id": "kp9", "label": "Kp 9 · Mettasutta", "children": [{"id": "kp9/0", "label": "Basic Passages 9", "rows": [{"key": "kp9:0.1", "pali": "Khuddakapāṭha 9", "sujato": "Basic Passages 9"}, {"key": "kp9:0.2", "pali": "Mettasutta", "sujato": "The Discourse on Love"}]}, {"id": "kp9/1", "label": "Those who are skilled in the meaning…", "rows": [{"key": "kp9:1.1", "pali": "Karaṇīyamatthakusalena,", "sujato": "Those who are skilled in the meaning of scripture"}, {"key": "kp9:1.2", "pali": "Yanta santaṁ padaṁ abhisamecca;", "sujato": "should practice like this so as to realize the state of peace."}, {"key": "kp9:1.3", "pali": "Sakko ujū ca suhujū ca,", "sujato": "Let them be capable and upright, very upright,"}, {"key": "kp9:1.4", "pali": "Sūvaco cassa mudu anatimānī.", "sujato": "easy to speak to, gentle and humble;"}]}, {"id": "kp9/2", "label": "content and unburdensome,", "rows": [{"key": "kp9:2.1", "pali": "Santussako ca subharo ca,", "sujato": "content and unburdensome,"}, {"key": "kp9:2.2", "pali": "Appakicco ca sallahukavutti;", "sujato": "unbusied, living lightly,"}, {"key": "kp9:2.3", "pali": "Santindriyo ca nipako ca,", "sujato": "alert, with senses calmed,"}, {"key": "kp9:2.4", "pali": "Appagabbho kulesvananugiddho.", "sujato": "courteous, not fawning on families."}]}, {"id": "kp9/3", "label": "Let them not do the slightest thing", "rows": [{"key": "kp9:3.1", "pali": "Na ca khuddamācare kiñci,", "sujato": "Let them not do the slightest thing"}, {"key": "kp9:3.2", "pali": "Yena viññū pare upavadeyyuṁ;", "sujato": "that others who are wise would blame."}, {"key": "kp9:3.3", "pali": "Sukhino va khemino hontu,", "sujato": "May they be happy and safe!"}, {"key": "kp9:3.4", "pali": "Sabbasattā bhavantu sukhitattā.", "sujato": "May all beings be happy!"}]}, {"id": "kp9/4", "label": "Whatever living creatures there are", "rows": [{"key": "kp9:4.1", "pali": "Ye keci pāṇabhūtatthi,", "sujato": "Whatever living creatures there are"}, {"key": "kp9:4.2", "pali": "Tasā vā thāvarā vanavasesā;", "sujato": "with not a one left out—"}, {"key": "kp9:4.3", "pali": "Dīghā vā ye va mahantā,", "sujato": "frail or firm, long or large,"}, {"key": "kp9:4.4", "pali": "Majjhimā rassakā aṇukathūlā.", "sujato": "medium, small, tiny or round,"}]}, {"id": "kp9/5", "label": "seen or unseen,", "rows": [{"key": "kp9:5.1", "pali": "Diṭṭhā vā ye va adiṭṭhā,", "sujato": "seen or unseen,"}, {"key": "kp9:5.2", "pali": "Ye va dūre vasanti avidūre;", "sujato": "living far or near,"}, {"key": "kp9:5.3", "pali": "Bhūtā va sambhavesī va,", "sujato": "those who have been born <j>and those about to be born—"}, {"key": "kp9:5.4", "pali": "Sabbasattā bhavantu sukhitattā.", "sujato": "may all beings be happy!"}]}, {"id": "kp9/6", "label": "Let none deceive another,", "rows": [{"key": "kp9:6.1", "pali": "Na paro paraṁ nikubbetha,", "sujato": "Let none deceive another,"}, {"key": "kp9:6.2", "pali": "Nātimaññetha katthaci na kañci;", "sujato": "nor look down on anyone anywhere."}, {"key": "kp9:6.3", "pali": "Byārosanā paṭighasañña,", "sujato": "Though provoked or aggrieved,"}, {"key": "kp9:6.4", "pali": "Nāññamaññassa dukkhamiccheyya.", "sujato": "let them not wish pain on each other."}]}, {"id": "kp9/7", "label": "Even as a mother would protect with…", "rows": [{"key": "kp9:7.1", "pali": "Mātā yathā niyaṁ puttam", "sujato": "Even as a mother would protect with her life"}, {"key": "kp9:7.2", "pali": "Āyusā ekaputtamanurakkhe;", "sujato": "her child, her only child,"}, {"key": "kp9:7.3", "pali": "Evampi sabbabhūtesu,", "sujato": "so too for all creatures"}, {"key": "kp9:7.4", "pali": "Mānasaṁ bhāvaye aparimāṇaṁ.", "sujato": "unfold a boundless heart."}]}, {"id": "kp9/8", "label": "With love for the whole world,", "rows": [{"key": "kp9:8.1", "pali": "Mettañca sabbalokasmi,", "sujato": "With love for the whole world,"}, {"key": "kp9:8.2", "pali": "Mānasaṁ bhāvaye aparimāṇaṁ;", "sujato": "unfold a boundless heart:"}, {"key": "kp9:8.3", "pali": "Uddhaṁ adho ca tiriyañca,", "sujato": "above, below, all round,"}, {"key": "kp9:8.4", "pali": "Asambādhaṁ averamasapattaṁ.", "sujato": "unconstricted, without enmity or foe."}]}, {"id": "kp9/9", "label": "When standing, walking, sitting,", "rows": [{"key": "kp9:9.1", "pali": "Tiṭṭhaṁ caraṁ nisinno va,", "sujato": "When standing, walking, sitting,"}, {"key": "kp9:9.2", "pali": "Sayāno yāvatāssa vitamiddho;", "sujato": "or lying down while yet unweary,"}, {"key": "kp9:9.3", "pali": "Etaṁ satiṁ adhiṭṭheyya,", "sujato": "keep this ever in mind;"}, {"key": "kp9:9.4", "pali": "Brahmametaṁ vihāramidhamāhu.", "sujato": "for this, they say, is a divine meditation in this life."}]}, {"id": "kp9/10", "label": "Avoiding harmful views,", "rows": [{"key": "kp9:10.1", "pali": "Diṭṭhiñca anupaggamma,", "sujato": "Avoiding harmful views,"}, {"key": "kp9:10.2", "pali": "Sīlavā dassanena sampanno;", "sujato": "virtuous, accomplished in insight,"}, {"key": "kp9:10.3", "pali": "Kāmesu vinaya gedhaṁ,", "sujato": "with desire for sensual pleasures dispelled,"}, {"key": "kp9:10.4", "pali": "Na hi jātuggabbhaseyya punaretīti.", "sujato": "they never return to a womb again."}]}, {"id": "kp9/11", "label": "Mettasuttaṁ.", "rows": [{"key": "kp9:11.1", "pali": "Mettasuttaṁ.", "sujato": ""}]}, {"id": "kp9/12", "label": "Khuddakapāṭhapāḷi niṭṭhitā.", "rows": [{"key": "kp9:12.1", "pali": "Khuddakapāṭhapāḷi niṭṭhitā.", "sujato": ""}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"kp1:2.1": ["The Khuddakapāṭha is a handbook on
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 115", "rows": [{"key": "mn115:0.1", "pali": "Majjhima Nikāya 115", "sujato": "Middle Discourses 115", "pts": ""}, {"key": "mn115:0.2", "pali": "Bahudhātukasutta", "sujato": "Many Elements", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn115:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "pts": "Thus I have heard:"}, {"key": "mn115:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery."}, {"key": "mn115:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:"}, {"key": "mn115:1.4", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”", "pts": "\"Monks.\""}, {"key": "mn115:1.5", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied.", "pts": "\"Revered One,\" these monks answered the Lord in assent."}, {"key": "mn115:1.6", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "2", "label": "“Whatever dangers there are, all come from…", "rows": [{"key": "mn115:2.1", "pali": "“Yāni kānici, bhikkhave, bhayāni uppajjanti sabbāni tāni bālato uppajjanti, no paṇḍitato;", "sujato": "“Whatever dangers there are, all come from the foolish, not from the astute.", "pts": "\"Whatever fears arise, monks, all arise for the fool, not the wise man."}, {"key": "mn115:2.2", "pali": "ye keci upaddavā uppajjanti sabbe te bālato uppajjanti, no paṇḍitato;", "sujato": "Whatever perils there are, all come from the foolish, not from the astute.", "pts": "Whatever troubles arise, all arise for the fool, not the wise man."}, {"key": "mn115:2.3", "pali": "ye keci upasaggā uppajjanti sabbe te bālato uppajjanti, no paṇḍitato.", "sujato": "Whatever hazards there are, all come from the foolish, not from the astute.", "pts": "Whatever misfortunes arise, all arise for the fool, not the wise man."}, {"key": "mn115:2.4", "pali": "Seyyathāpi, bhikkhave,\nnaḷāgārā vā tiṇāgārā vā aggi mutto kūṭāgārānipi dahati ullittāvalittāni nivātāni phusitaggaḷāni pihitavātapānāni;", "sujato": "It’s like a fire that spreads from a hut made of reeds or grass, and burns down even a bungalow,\nplastered inside and out, draft-free, with doors fastened and windows shuttered.", "pts": "Monks, as a spark of fire from a house thatched with rushes or a house thatched\nwith grass sets fire to gabled houses that are smeared inside and out,\nprotected from the wind, with bolts that are fastened, windows that are closed, even so,"}, {"key": "mn115:2.5", "pali": "evameva kho, bhikkhave, yāni kānici bhayāni uppajjanti sabbāni tāni bālato uppajjanti, no paṇḍitato;", "sujato": "In the same way, whatever dangers there are, all come from the foolish, not from the astute.", "pts": "monks, whatever fears arise, monks, all arise for the fool, not the wise man;"}, {"key": "mn115:2.6", "pali": "ye keci upaddavā uppajjanti sabbe te bālato uppajjanti, no paṇḍitato;", "sujato": "Whatever perils there are, all come from the foolish, not from the astute.", "pts": "whatever troubles arise, all arise for the fool, not the wise man;"}, {"key": "mn115:2.7", "pali": "ye keci upasaggā uppajjanti sabbe te bālato uppajjanti, no paṇḍitato.", "sujato": "Whatever hazards there are, all come from the foolish, not from the astute.", "pts": "whatever misfortunes arise, all arise for the fool, not the wise man."}, {"key": "mn115:2.8", "pali": "Iti kho, bhikkhave, sappaṭibhayo bālo, appaṭibhayo paṇḍito;", "sujato": "So, the fool is dangerous, but the astute person is safe.", "pts": "Thus, monks, it is the fool who is beset by fear, the wise man is not beset by fear;"}, {"key": "mn115:2.9", "pali": "saupaddavo bālo, anupaddavo paṇḍito;", "sujato": "The fool is perilous, but the astute person is not.", "pts": "the fool has trouble, the wise man does not have trouble;"}, {"key": "mn115:2.10", "pali": "saupasaggo bālo, anupasaggo paṇḍito.", "sujato": "The fool is hazardous, but the astute person is not.", "pts": "the fool has misfortune, the wise man does not have misfortune."}, {"key": "mn115:2.11", "pali": "Natthi, bhikkhave, paṇḍitato bhayaṁ, natthi paṇḍitato upaddavo, natthi paṇḍitato upasaggo.", "sujato": "There’s no danger, peril, or hazard that comes from the astute.", "pts": "Monks, there is not fear, trouble, misfortune for the wise man."}, {"key": "mn115:2.12", "pali": "Tasmātiha, bhikkhave,\n‘paṇḍitā bhavissāma vīmaṁsakā’ti—", "sujato": "So you should train like this:\n‘We shall be astute, we shall be inquirers.’”", "pts": "Wherefore, monks, thinking,\n'Investigating, we will become wise,'"}, {"key": "mn115:2.13", "pali": "evañhi vo, bhikkhave, sikkhitabban”ti.", "sujato": "", "pts": "this is how you must train yourselves, monks.\""}]}, {"id": "3", "label": "When he said this, Venerable Ānanda said…", "rows": [{"key": "mn115:3.1", "pali": "Evaṁ vutte, āyasmā ānando bhagavantaṁ etadavoca:", "sujato": "When he said this, Venerable Ānanda said to the Buddha,", "pts": "When this had been said, the venerable Ānanda, spoke thus to the Lord:"}, {"key": "mn115:3.2", "pali": "“kittāvatā nu kho, bhante, paṇḍito bhikkhu ‘vīmaṁsako’ti alaṁvacanāyā”ti?", "sujato": "“Sir, how is a mendicant qualified to be called ‘astute, an inquirer’?”", "pts": "\"What is the stage at which it suffices to say, revered sir:\n'Investigating, the monk is wise'?\""}, {"key": "mn115:3.3", "pali": "“Yato kho, ānanda, bhikkhu dhātukusalo ca hoti, āyatanakusalo ca hoti,\npaṭiccasamuppādakusalo ca hoti, ṭhānāṭhānakusalo ca hoti—", "sujato": "“Ānanda, it’s when a mendicant is skilled in the elements, in the sense fields,\nin dependent origination, and in the possible and the impossible.", "pts": "\"Ānanda, as soon as a monk is skilled in the elements and skilled in the (sense-)fields\nand skilled in conditioned genesis and skilled in the possible and the impossible,\nit is at this stage, Ānanda, that it suffices to say,"}, {"key": "mn115:3.4", "pali": "ettāvatā kho, ānanda, paṇḍito bhikkhu ‘vīmaṁsako’ti alaṁvacanāyā”ti.", "sujato": "That’s how a mendicant is qualified to be called ‘astute, an inquirer’.”", "pts": "'Investigating, the monk is wise.'\""}]}, {"id": "4", "label": "“But sir, how is a mendicant qualified…", "rows": [{"key": "mn115:4.1", "pali": "“Kittāvatā pana, bhante,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, how is a mendicant qualified to be called ‘skilled in the elements’?”", "pts": "\"But, revered sir, at what stage does it suffice to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:4.2", "pali": "“Aṭṭhārasa kho imā, ānanda, dhātuyo—", "sujato": "“There are, Ānanda, these eighteen elements.", "pts": "\"There are these eighteen elements, Ānanda:"}, {"key": "mn115:4.3", "pali": "cakkhudhātu, rūpadhātu, cakkhuviññāṇadhātu;", "sujato": "The eye element, sight element, and eye consciousness element.", "pts": "the element of eye, the element of material shape, the element of visual consciousness;"}, {"key": "mn115:4.4", "pali": "sotadhātu, saddadhātu, sotaviññāṇadhātu;", "sujato": "The ear element, sound element, and ear consciousness element.", "pts": "the element of ear, the element of sound, the element of auditory consciousness;"}, {"key": "mn115:4.5", "pali": "ghānadhātu, gandhadhātu, ghānaviññāṇadhātu;", "sujato": "The nose element, smell element, and nose consciousness element.", "pts": "the element of nose, the element of smell, the element of olfactory consciousness;"}, {"key": "mn115:4.6", "pali": "jivhādhātu, rasadhātu, jivhāviññāṇadhātu;", "sujato": "The tongue element, taste element, and tongue consciousness element.", "pts": "the element of tongue, the element of taste, the element of gustatory consciousness;"}, {"key": "mn115:4.7", "pali": "kāyadhātu, phoṭṭhabbadhātu, kāyaviññāṇadhātu;", "sujato": "The body element, touch element, and body consciousness element.", "pts": "the element of body, the element of touch, the element of bodily consciousness;"}, {"key": "mn115:4.8", "pali": "manodhātu, dhammadhātu, manoviññāṇadhātu.", "sujato": "The mind element, ideas element, and mind consciousness element.", "pts": "the element of mind, the element of mental states, the element of mental consciousness."}, {"key": "mn115:4.9", "pali": "Imā kho, ānanda, aṭṭhārasa dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these eighteen elements,", "pts": "When, Ānanda, he knows and sees these eighteen elements, it is at this stage that it suffices to say,"}, {"key": "mn115:4.10", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\" ■"}]}, {"id": "5", "label": "“But sir, could there be another way…", "rows": [{"key": "mn115:5.1", "pali": "“Siyā pana, bhante, aññopi pariyāyo, yathā ‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, could there be another way in which a mendicant is qualified to be called ‘skilled in the elements’?”", "pts": "\"Might there be another way also, revered sir, according to which it suffices to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:5.2", "pali": "“Siyā, ānanda.", "sujato": "“There could, Ānanda.", "pts": "\"There might be, Ānanda."}, {"key": "mn115:5.3", "pali": "Chayimā, ānanda, dhātuyo—", "sujato": "There are these six elements:", "pts": "There are these six elements, Ānanda:"}, {"key": "mn115:5.4", "pali": "pathavīdhātu, āpodhātu, tejodhātu, vāyodhātu, ākāsadhātu, viññāṇadhātu.", "sujato": "the elements of earth, water, fire, air, space, and consciousness.", "pts": "the element of extension, the element of cohesion, the element of radiation,\nthe element of mobility, the element of space, the element of consciousness."}, {"key": "mn115:5.5", "pali": "Imā kho, ānanda, cha dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these six elements,", "pts": "When, Ānanda, he knows and sees these six elements, it is at this stage that it suffices to say,"}, {"key": "mn115:5.6", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\" ■"}]}, {"id": "6", "label": "“But sir, could there be another way…", "rows": [{"key": "mn115:6.1", "pali": "“Siyā pana, bhante, aññopi pariyāyo, yathā ‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, could there be another way in which a mendicant is qualified to be called ‘skilled in the elements’?”", "pts": "\"Might there be another way also, revered sir, according to which it suffices to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:6.2", "pali": "“Siyā, ānanda.", "sujato": "“There could, Ānanda.", "pts": "\"There might be, Ānanda."}, {"key": "mn115:6.3", "pali": "Chayimā, ānanda, dhātuyo—", "sujato": "There are these six elements:", "pts": "There are these six elements, Ānanda:"}, {"key": "mn115:6.4", "pali": "sukhadhātu, dukkhadhātu, somanassadhātu, domanassadhātu, upekkhādhātu, avijjādhātu.", "sujato": "the elements of pleasure, pain, happiness, sadness, equanimity, and ignorance.", "pts": "the element of happiness, the element of anguish, the element of gladness,\nthe element of sorrowing, the element of equanimity, the element of Ignorance."}, {"key": "mn115:6.5", "pali": "Imā kho, ānanda, cha dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these six elements,", "pts": "When, Ānanda, he knows and sees these six elements, it is at this stage that it suffices to say,"}, {"key": "mn115:6.6", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\" ■"}]}, {"id": "7", "label": "“But sir, could there be another way…", "rows": [{"key": "mn115:7.1", "pali": "“Siyā pana, bhante, aññopi pariyāyo, yathā ‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, could there be another way in which a mendicant is qualified to be called ‘skilled in the elements’?”", "pts": "\"Might there be another way also, revered sir, according to which it suffices to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:7.2", "pali": "“Siyā, ānanda.", "sujato": "“There could, Ānanda.", "pts": "\"There might be, Ānanda."}, {"key": "mn115:7.3", "pali": "Chayimā, ānanda, dhātuyo—", "sujato": "There are these six elements:", "pts": "There are these six elements, Ānanda:"}, {"key": "mn115:7.4", "pali": "kāmadhātu, nekkhammadhātu, byāpādadhātu, abyāpādadhātu, vihiṁsādhātu, avihiṁsādhātu.", "sujato": "the elements of sensuality and renunciation, malice and good will, and cruelty and harmlessness.", "pts": "the element of sensuous pleasures, the element of renunciation, the element of malice,\nthe element of non-malice, the element of harming, the element of non-harming."}, {"key": "mn115:7.5", "pali": "Imā kho, ānanda, cha dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these six elements,", "pts": "When, Ānanda, he knows and sees these six elements, it is at this stage that it suffices to say,"}, {"key": "mn115:7.6", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\" ■"}]}, {"id": "8", "label": "“But sir, could there be another way…", "rows": [{"key": "mn115:8.1", "pali": "“Siyā pana, bhante, aññopi pariyāyo, yathā ‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, could there be another way in which a mendicant is qualified to be called ‘skilled in the elements’?”", "pts": "\"Might there be another way also, revered sir, according to which it suffices to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:8.2", "pali": "“Siyā, ānanda.", "sujato": "“There could, Ānanda.", "pts": "\"There might be, Ānanda."}, {"key": "mn115:8.3", "pali": "Tisso imā, ānanda, dhātuyo—", "sujato": "There are these three elements:", "pts": "There are these three elements, Ānanda:"}, {"key": "mn115:8.4", "pali": "kāmadhātu, rūpadhātu, arūpadhātu.", "sujato": "the elements of the sensual realm, the realm of luminous form, and the formless realm.", "pts": "the element of sensuous pleasures, the element of fine-materiality, the element of non-materiality."}, {"key": "mn115:8.5", "pali": "Imā kho, ānanda, tisso dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these three elements,", "pts": "When, Ānanda, he knows and sees these three elements, it is at this stage that it suffices to say,"}, {"key": "mn115:8.6", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\" ■"}]}, {"id": "9", "label": "“But sir, could there be another way…", "rows": [{"key": "mn115:9.1", "pali": "“Siyā pana, bhante, aññopi pariyāyo, yathā ‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, could there be another way in which a mendicant is qualified to be called ‘skilled in the elements’?”", "pts": "\"Might there be another way, revered sir, according to which it suffices to say,\n'The monk is skilled in the elements'?\""}, {"key": "mn115:9.2", "pali": "“Siyā, ānanda.", "sujato": "“There could, Ānanda.", "pts": "\"There might be, Ānanda."}, {"key": "mn115:9.3", "pali": "Dve imā, ānanda, dhātuyo—", "sujato": "There are these two elements:", "pts": "There are these two elements, Ānanda:"}, {"key": "mn115:9.4", "pali": "saṅkhatādhātu, asaṅkhatādhātu.", "sujato": "the conditioned element and the unconditioned element.", "pts": "the element that is constructed and the element that is unconstructed."}, {"key": "mn115:9.5", "pali": "Imā kho, ānanda, dve dhātuyo yato jānāti passati—", "sujato": "When a mendicant knows and sees these two elements,", "pts": "When, Ānanda, he knows and sees these two elements, it is at this stage that it suffices to say,"}, {"key": "mn115:9.6", "pali": "ettāvatāpi kho, ānanda,\n‘dhātukusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the elements’.”", "pts": "'The monk is skilled in the elements.'\""}]}, {"id": "10", "label": "“But sir, how is a mendicant qualified…", "rows": [{"key": "mn115:10.1", "pali": "“Kittāvatā pana, bhante,\n‘āyatanakusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, how is a mendicant qualified to be called ‘skilled in the sense fields’?”", "pts": "\"At what stage, revered sir, does it suffice to say,\n'The monk is skilled in the (sense-)fields'?\""}, {"key": "mn115:10.2", "pali": "“Cha kho panimāni, ānanda, ajjhattikabāhirāni āyatanāni—", "sujato": "“There are these six interior and exterior sense fields:", "pts": "\"These six (sense-)fields, Ānanda, are internal-external:"}, {"key": "mn115:10.3", "pali": "cakkhu ceva rūpā ca sotañca saddā ca ghānañca gandhā ca jivhā ca rasā ca kāyo ca phoṭṭhabbā ca mano ca dhammā ca.", "sujato": "the eye and sights, the ear and sounds, the nose and smells,\nthe tongue and tastes, the body and touches, and the mind and ideas.", "pts": "the eye as well as material shape;\nthe ear as well as sound;\nthe nose as well as smell;\nthe tongue as well as taste;\nthe body as well as touch;\nthe mind as well as mental states."}, {"key": "mn115:10.4", "pali": "Imāni kho, ānanda, cha ajjhattikabāhirāni āyatanāni yato jānāti passati—", "sujato": "When a mendicant knows and sees these six interior and exterior sense fields,", "pts": "When, Ānanda, he knows and sees these six internal-external (sense-)fields, it is at this stage that it suffices to say,"}, {"key": "mn115:10.5", "pali": "ettāvatā kho, ānanda,\n‘āyatanakusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "they’re qualified to be called ‘skilled in the sense fields’.”", "pts": "'The monk is skilled in the (sense-)fields.'\""}]}, {"id": "11", "label": "“But sir, how is a mendicant qualified…", "rows": [{"key": "mn115:11.1", "pali": "“Kittāvatā pana, bhante,\n‘paṭiccasamuppādakusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, how is a mendicant qualified to be called ‘skilled in dependent origination’?”", "pts": "\"And at what stage, revered sir, does it suffice to say,\n'The monk is skilled in conditioned genesis'?\""}, {"key": "mn115:11.2", "pali": "“Idhānanda, bhikkhu evaṁ pajānāti:", "sujato": "“It’s when a mendicant understands:", "pts": "\"As to this, Ānanda, a monk knows thus:"}, {"key": "mn115:11.3", "pali": "‘imasmiṁ sati idaṁ hoti, imassuppādā idaṁ uppajjati,", "sujato": "‘When this exists, this comes to be;\ndue to the arising of this, this arises.", "pts": "'If this is, that comes to be;"}, {"key": "mn115:11.4", "pali": "imasmiṁ asati idaṁ na hoti, imassa nirodhā idaṁ nirujjhati, yadidaṁ—", "sujato": "When this doesn’t exist, this doesn’t come to be;\ndue to the cessation of this, this ceases.\nThat is:", "pts": "from the arising of this, that arises;\nif this is not, that does not come to be;\nfrom the stopping of this, that is stopped."}, {"key": "mn115:11.5", "pali": "avijjāpaccayā saṅkhārā,", "sujato": "ignorance is a requirement for choices.", "pts": "That is to say:"}, {"key": "mn115:11.6", "pali": "saṅkhārapaccayā viññāṇaṁ,", "sujato": "Choices are a requirement for consciousness.", "pts": "Conditioned by ignorance are the (karma-)formations;"}, {"key": "mn115:11.7", "pali": "viññāṇapaccayā nāmarūpaṁ,", "sujato": "Consciousness is a requirement for name and form.", "pts": "conditioned by the (karma-)formations is consciousness;"}, {"key": "mn115:11.8", "pali": "nāmarūpapaccayā saḷāyatanaṁ,", "sujato": "Name and form are requirements for the six sense fields.", "pts": "conditioned by consciousness is name-and-shape;"}, {"key": "mn115:11.9", "pali": "saḷāyatanapaccayā phasso,", "sujato": "The six sense fields are requirements for contact.", "pts": "conditioned by name-and-shape is the field of the six (senses);"}, {"key": "mn115:11.10", "pali": "phassapaccayā vedanā,", "sujato": "Contact is a requirement for feeling.", "pts": "conditioned by the field of the six (senses) is (sensory) impingement;"}, {"key": "mn115:11.11", "pali": "vedanāpaccayā taṇhā,", "sujato": "Feeling is a requirement for craving.", "pts": "conditioned by (sensory) impingement is feeling;"}, {"key": "mn115:11.12", "pali": "taṇhāpaccayā upādānaṁ,", "sujato": "Craving is a requirement for grasping.", "pts": "conditioned by feeling is craving;"}, {"key": "mn115:11.13", "pali": "upādānapaccayā bhavo,", "sujato": "Grasping is a requirement for continued existence.", "pts": "conditioned by craving is grasping;"}, {"key": "mn115:11.14", "pali": "bhavapaccayā jāti,", "sujato": "Continued existence is a requirement for rebirth.", "pts": "conditioned by grasping is becoming;"}, {"key": "mn115:11.15", "pali": "jātipaccayā jarāmaraṇaṁ sokaparidevadukkhadomanassūpāyāsā sambhavanti.", "sujato": "Rebirth is a requirement for old age and death, sorrow, lamentation, pain, sadness, and distress to come to be.", "pts": "conditioned by becoming is birth;"}, {"key": "mn115:11.16", "pali": "Evametassa kevalassa dukkhakkhandhassa samudayo hoti.", "sujato": "That is how this entire mass of suffering originates.", "pts": "conditioned by birth there come into being old age and dying, grief, sorrow, suffering, lamentation and despair."}, {"key": "mn115:11.17", "pali": "Avijjāya tveva asesavirāganirodhā saṅkhāranirodho,", "sujato": "When ignorance fades away and ceases with nothing left over, choices cease.", "pts": "Thus is the origin of this whole mass of anguish."}, {"key": "mn115:11.18", "pali": "saṅkhāranirodhā viññāṇanirodho,", "sujato": "When choices cease, consciousness ceases.", "pts": "But from the utter fading away and stopping of this very ignorance is the stopping of the (karma-)formations;"}, {"key": "mn115:11.19", "pali": "viññāṇanirodhā nāmarūpanirodho,", "sujato": "When consciousness ceases, name and form cease.", "pts": "from the stopping of the (karma-)formations is the stopping of consciousness;"}, {"key": "mn115:11.20", "pali": "nāmarūpanirodhā saḷāyatananirodho,", "sujato": "When name and form cease, the six sense fields cease.", "pts": "from the stopping of consciousness is the stopping of name-and-shape;"}, {"key": "mn115:11.21", "pali": "saḷāyatananirodhā phassanirodho,", "sujato": "When the six sense fields cease, contact ceases.", "pts": "from the stopping of name-and-shape is the stopping of the field of the six (senses);"}, {"key": "mn115:11.22", "pali": "phassanirodhā vedanānirodho,", "sujato": "When contact ceases, feeling ceases.", "pts": "from the stopping of the field of the six (senses) is the stopping of (sensory) impingement;"}, {"key": "mn115:11.23", "pali": "vedanānirodhā taṇhānirodho,", "sujato": "When feeling ceases, craving ceases.", "pts": "from the stopping of (sensory) impingement is the stopping of feeling;"}, {"key": "mn115:11.24", "pali": "taṇhānirodhā upādānanirodho,", "sujato": "When craving ceases, grasping ceases.", "pts": "from the stopping of feeling is the stopping of craving;"}, {"key": "mn115:11.25", "pali": "upādānanirodhā bhavanirodho,", "sujato": "When grasping ceases, continued existence ceases.", "pts": "from the stopping of craving is the stopping of grasping;"}, {"key": "mn115:11.26", "pali": "bhavanirodhā jātinirodho,", "sujato": "When continued existence ceases, rebirth ceases.", "pts": "from the stopping of grasping is the stopping of becoming;"}, {"key": "mn115:11.27", "pali": "jātinirodhā jarāmaraṇaṁ sokaparidevadukkhadomanassūpāyāsā nirujjhanti.", "sujato": "When rebirth ceases, old age and death, sorrow, lamentation, pain, sadness, and distress cease.", "pts": "from the stopping of becoming is the stopping of birth;"}, {"key": "mn115:11.28", "pali": "Evametassa kevalassa dukkhakkhandhassa nirodho hoti’.", "sujato": "That is how this entire mass of suffering ceases.’", "pts": "from the stopping of birth, old age and dying, grief, sorrow, suffering, lamentation and despair are stopped.\nThus is the stopping of this whole mass of anguish.'"}, {"key": "mn115:11.29", "pali": "Ettāvatā kho, ānanda,\n‘paṭiccasamuppādakusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "That’s how a mendicant is qualified to be called ‘skilled in dependent origination’.”", "pts": "It is at that stage, Ānanda, that it suffices to say,\n'The monk is skilled in conditioned genesis.'\" ■"}]}, {"id": "12", "label": "“But sir, how is a mendicant qualified…", "rows": [{"key": "mn115:12.1", "pali": "“Kittāvatā pana, bhante,\n‘ṭhānāṭhānakusalo bhikkhū’ti alaṁvacanāyā”ti?", "sujato": "“But sir, how is a mendicant qualified to be called ‘skilled in the possible and impossible’?”", "pts": "\"And at what stage, revered sir, does it suffice to say,\n'The monk is skilled in the possible and the impossible'?\""}, {"key": "mn115:12.2", "pali": "“Idhānanda, bhikkhu ‘aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo kañci saṅkhāraṁ niccato upagaccheyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "“It’s when a mendicant understands:\n‘It’s impossible for an individual accomplished in view to take any condition as permanent.\nThat is not possible.", "pts": "\"As to this, Ānanda, a monk comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right) view\nshould go to any construction as permanent - this situation does not occur.'"}, {"key": "mn115:12.3", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano kañci saṅkhāraṁ niccato upagaccheyya, ṭhānametaṁ vijjatī’ti pajānāti;", "sujato": "But it’s possible for an ordinary person to take some condition as permanent.\nThat is possible.’", "pts": "He comprehends:\n'But this situation occurs when an average man might go to some construction as permanent - this situation occurs.' ■"}, {"key": "mn115:12.4", "pali": "‘aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo kañci saṅkhāraṁ sukhato upagaccheyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to take any condition as pleasant.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should go to any construction as happy - this situation does not occur.'"}, {"key": "mn115:12.5", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano kañci saṅkhāraṁ sukhato upagaccheyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to take some condition as pleasant.’", "pts": "He comprehends:\n'But this situation occurs when an average man might go to some construction as happy - this situation occurs.' ■"}, {"key": "mn115:12.6", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo kañci dhammaṁ attato upagaccheyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti,", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to take anything as self.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should go to any Dhamma as self - this situation does not occur.'"}, {"key": "mn115:12.7", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano kañci dhammaṁ attato upagaccheyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to take something as self.’", "pts": "He comprehends:\n'But this situation occurs when an average man might go to some Dhamma as self - this situation occurs.' ■"}]}, {"id": "13", "label": "They understand: ‘It’s impossible for an individual…", "rows": [{"key": "mn115:13.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo mātaraṁ jīvitā voropeyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to murder their mother.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should deprive his mother of life - this situation does not occur.'"}, {"key": "mn115:13.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano mātaraṁ jīvitā voropeyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to murder their mother.’", "pts": "He comprehends:\n'But this situation occurs when an average man might deprive his mother of life - this situation occurs.' ■"}, {"key": "mn115:13.3", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo pitaraṁ jīvitā voropeyya …pe…", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to murder their father … or murder a perfected one.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should deprive his father of life - this situation does not occur.'\nHe comprehends:\n'But this situation occurs when an average man might deprive his father of life - this situation occurs.'"}, {"key": "mn115:13.4", "pali": "arahantaṁ jīvitā voropeyya, ṭhānametaṁ vijjatī’ti pajānāti;", "sujato": "But it’s possible for an ordinary person to murder their father … or a perfected one.’", "pts": "■ He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should deprive one perfected of life - this situation does not occur.'\nHe comprehends:\n'But this situation occurs when an average man might deprive one perfected of life - this situation occurs.' ■"}, {"key": "mn115:13.5", "pali": "‘aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo duṭṭhacitto tathāgatassa lohitaṁ uppādeyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to injure a Realized One with malicious intent.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right) view should,\nwith murderous intent, draw a Tathāāgata's blood - this situation does not occur.'"}, {"key": "mn115:13.6", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano duṭṭhacitto tathāgatassa lohitaṁ uppādeyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to injure a Realized One with malicious intent.’", "pts": "He comprehends:\n'But this situation occurs when an average man might with murderous intent,\ndraw a Tathāāgata's blood - this situation occurs.' ■"}, {"key": "mn115:13.7", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo saṅghaṁ bhindeyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to cause a schism in the Saṅgha.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview should cause a schism in the Order - this situation does not occur.'"}, {"key": "mn115:13.8", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano saṅghaṁ bhindeyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to cause a schism in the Saṅgha.’", "pts": "He comprehends:\n'But this situation occurs when an average man might cause a schism in the Order - this situation occurs.' ■"}, {"key": "mn115:13.9", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ diṭṭhisampanno puggalo aññaṁ satthāraṁ uddiseyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an individual accomplished in view to dedicate themselves to another teacher.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a man possessed of (right)\nview might proclaim another Teacher - this situation does not occur.'"}, {"key": "mn115:13.10", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puthujjano aññaṁ satthāraṁ uddiseyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it’s possible for an ordinary person to dedicate themselves to another teacher.’", "pts": "He comprehends:\n'But this situation occurs when an average man might proclaim another Teacher - this situation occurs.' ■"}]}, {"id": "14", "label": "They understand: ‘It’s impossible for two perfected…", "rows": [{"key": "mn115:14.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ ekissā lokadhātuyā dve arahanto sammāsambuddhā apubbaṁ acarimaṁ uppajjeyyuṁ,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for two perfected ones, fully awakened Buddhas to arise in the same solar system at the same time.", "pts": "He com- prehends:\n'It is impossible, it cannot come to pass that in one world-system two perfected ones who\nare Fully Self-Awakened Ones should arise simultaneously - this situation does not occur.'"}, {"key": "mn115:14.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ ekissā lokadhātuyā eko arahaṁ sammāsambuddho uppajjeyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for just one perfected one, a fully awakened Buddha, to arise in one solar system.’", "pts": "He comprehends:\n'But this situation occurs that in one world-system one perfected one who\nis a Fully Self-Awakened Ones might arise - this situation occurs.' ■"}, {"key": "mn115:14.3", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ ekissā lokadhātuyā dve rājāno cakkavattino apubbaṁ acarimaṁ uppajjeyyuṁ,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for two wheel-turning monarchs to arise in the same solar system at the same time.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that in one world-system two\nwheel-turning kings should arise simultaneously - this situation does not occur.'"}, {"key": "mn115:14.4", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ ekissā lokadhātuyā eko rājā cakkavattī uppajjeyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for just one wheel-turning monarch to arise in one solar system.’", "pts": "He comprehends:\n'But this situation occurs that in one world-system one wheel-turning king might arise - this situation occurs.' ■"}]}, {"id": "15", "label": "They understand: ‘It’s impossible for a woman…", "rows": [{"key": "mn115:15.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ itthī arahaṁ assa sammāsambuddho, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for a woman to be a perfected one, a fully awakened Buddha.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a woman who is a perfected\none could be a Fully Self-Awakened One - this situation does not occur.'"}, {"key": "mn115:15.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puriso arahaṁ assa sammāsambuddho, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for a man to be a perfected one, a fully awakened Buddha.’", "pts": "He comprehends:\n'But this situation occurs when a man who is a perfected one\ncould be a Fully Self-Awakened One - this situation occurs.' ■"}, {"key": "mn115:15.3", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ itthī rājā assa cakkavattī, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for a woman to be a wheel-turning monarch.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a woman should be a wheel-turning king - this situation does not occur.'"}, {"key": "mn115:15.4", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puriso rājā assa cakkavattī, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for a man to be a wheel-turning monarch.’", "pts": "He comprehends:\n'But this situation occurs when a man could be a wheel-turning king - this situation occurs.' ■"}, {"key": "mn115:15.5", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ itthī sakkattaṁ kareyya … mārattaṁ kareyya …\nbrahmattaṁ kareyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for a woman to perform the role of Sakka, Māra, or the Divinity.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that a woman could be a Sakka - this situation does not occur.'\nHe comprehends:\n'But this situation occurs when a man could be a Sakka - this situation occurs.' ■ He comprehends:\n'It is impossible, it cannot come to pass that a woman could be a Māra - this situation does not occur.'\nHe comprehends:\n'But this situation occurs when a man could be a Māra - this situation occurs.' ■ He comprehends:\n'It is impossible, it cannot come to pass that a woman could be a Brahmā - this situation does not occur.'\nHe comprehends:\n'But this situation occurs when a man could be a Brahmā - this situation occurs.' ■"}, {"key": "mn115:15.6", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ puriso sakkattaṁ kareyya …\nmārattaṁ kareyya … brahmattaṁ kareyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for a man to perform the role of Sakka, Māra, or the Divinity.’", "pts": ""}]}, {"id": "16", "label": "They understand: ‘It’s impossible for a likable,…", "rows": [{"key": "mn115:16.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ kāyaduccaritassa iṭṭho kanto manāpo vipāko nibbatteyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for a likable, desirable, agreeable result to come from bad conduct of body, speech, and mind.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from wrong\nconduct in body - there could result a fruit that was agreeable,\npleasant, liked - this situation does not occur.'"}, {"key": "mn115:16.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ kāyaduccaritassa aniṭṭho akanto amanāpo vipāko nibbatteyya,\nṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for an unlikable, undesirable,\ndisagreeable result to come from bad conduct of body, speech, and mind.’", "pts": "He comprehends:\n'But this situation occurs when from wrong conduct in body there might result a fruit that was disagreeable,\nunpleasant, not liked - this situation occurs.' ■"}, {"key": "mn115:16.3", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ vacīduccaritassa …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from wrong conduct\nin speech - there could result a fruit that was agreeable,\npleasant, liked - this situation does not occur.'"}, {"key": "mn115:16.4", "pali": "yaṁ manoduccaritassa iṭṭho kanto manāpo vipāko nibbatteyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "", "pts": "He comprehends:\n'But this situation occurs when from wrong conduct in speech there might result a fruit that was disagreeable,\nunpleasant, not liked - this situation occurs.' ■"}, {"key": "mn115:16.5", "pali": "ṭhānañca kho etaṁ vijjati yaṁ vacīduccaritassa …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from wrong conduct\nin thought - there could result a fruit that was agreeable,\npleasant, liked - this situation does not occur.'"}, {"key": "mn115:16.6", "pali": "yaṁ manoduccaritassa aniṭṭho akanto amanāpo vipāko nibbatteyya, ṭhānametaṁ vijjatīti pajānāti.", "sujato": "", "pts": "He comprehends:\n'But this situation occurs when from wrong conduct in thought there might result a fruit that was disagreeable,\nunpleasant, not liked - this situation occurs.' ■"}]}, {"id": "17", "label": "They understand: ‘It’s impossible for an unlikable,…", "rows": [{"key": "mn115:17.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ kāyasucaritassa aniṭṭho akanto amanāpo vipāko nibbatteyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible for an unlikable, undesirable, disagreeable result to come from good conduct of body, speech, and mind.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from right conduct\nin body - there could result a fruit that was disagreeable,\nunpleasant, not liked - this situation does not occur.'"}, {"key": "mn115:17.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ kāyasucaritassa iṭṭho kanto manāpo vipāko nibbatteyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible for a likable, desirable, agreeable result to come from good conduct of body, speech, and mind.’", "pts": "He comprehends:\n'But this situation occurs when from right conduct in body there might result a fruit that was agreeable,\npleasant, liked - this situation occurs.' ■"}, {"key": "mn115:17.3", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ vacīsucaritassa …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from right conduct\nin speech - there could result a fruit that was disagreeable,\nunpleasant, not liked - this situation does not occur.'"}, {"key": "mn115:17.4", "pali": "yaṁ manosucaritassa aniṭṭho akanto amanāpo vipāko nibbatteyya, netaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "", "pts": "He comprehends:\n'But this situation occurs when from right conduct in speech there might result a fruit that was agreeable,\npleasant, liked - this situation occurs.' ■"}, {"key": "mn115:17.5", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ vacīsucaritassa …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that from right conduct\nin thought - there could result a fruit that was disagreeable,\nunpleasant, not liked - this situation does not occur.'"}, {"key": "mn115:17.6", "pali": "yaṁ manosucaritassa iṭṭho kanto manāpo vipāko nibbatteyya, ṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "", "pts": "He comprehends:\n'But this situation occurs when from right conduct in thought there might result a fruit that was agreeable,\npleasant, liked - this situation occurs.' ■"}]}, {"id": "18", "label": "They understand: ‘It’s impossible that someone who…", "rows": [{"key": "mn115:18.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ kāyaduccaritasamaṅgī taṁnidānā tappaccayā\nkāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjeyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible that someone who has engaged in bad conduct of body, speech, and mind,\ncould for that reason alone, when their body breaks up, after death, be reborn in a good place, a heavenly realm.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to wrong conduct in body should, from that source,\nfrom that condition arise, on the breaking up of the body after dying,\nin a good bourn, a heaven world - this situation does not occur.'"}, {"key": "mn115:18.2", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ kāyaduccaritasamaṅgī taṁnidānā tappaccayā\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjeyya,\nṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible that someone who has engaged in bad conduct of body, speech, and mind could, for that reason alone,\nwhen their body breaks up, after death, be reborn in a place of loss, a bad place, the underworld, hell.’", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to wrong conduct in body should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation occurs.' ■"}]}, {"id": "19", "label": "‘Aṭṭhānametaṁ anavakāso yaṁ vacīduccaritasamaṅgī …pe…", "rows": [{"key": "mn115:19.1", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ vacīduccaritasamaṅgī …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to wrong conduct in speech should, from that source,\nfrom that condition arise, on the breaking up of the body after dying,\nin a good bourn, a heaven world - this situation does not occur.'"}, {"key": "mn115:19.2", "pali": "yaṁ manoduccaritasamaṅgī taṁnidānā tappaccayā kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjeyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to wrong conduct in speech should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation occurs.' ■"}, {"key": "mn115:19.3", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ vacīduccaritasamaṅgī …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to wrong conduct in thought should, from that source,\nfrom that condition arise, on the breaking up of the body after dying,\nin a good bourn, a heaven world - this situation does not occur.'"}, {"key": "mn115:19.4", "pali": "yaṁ manoduccaritasamaṅgī taṁnidānā tappaccayā kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjeyya,\nṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to wrong conduct in thought should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation occurs.' ■"}, {"key": "mn115:19.5", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ kāyasucaritasamaṅgī taṁnidānā tappaccayā\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjeyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "They understand:\n‘It’s impossible that someone who has engaged in good conduct of body, speech, and mind could, for that reason alone,\nwhen their body breaks up, after death, be reborn in a place of loss, a bad place, the underworld, hell.", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to right conduct in body should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation does not occur.'"}, {"key": "mn115:19.6", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ kāyasucaritasamaṅgī taṁnidānā tappaccayā\nkāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjeyya,\nṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "But it is possible that someone who has engaged in good conduct of body, speech, and mind could,\nfor that reason alone, when their body breaks up, after death, be reborn in a good place, a heavenly realm.’", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to right conduct in body should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in a good bourn, a heaven world - this situation occurs.' ■"}, {"key": "mn115:19.7", "pali": "‘Aṭṭhānametaṁ anavakāso yaṁ vacīsucaritasamaṅgī …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to right conduct in speech should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation does not occur.'"}, {"key": "mn115:19.8", "pali": "yaṁ manosucaritasamaṅgī taṁnidānā tappaccayā kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjeyya,\nnetaṁ ṭhānaṁ vijjatī’ti pajānāti;", "sujato": "", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to right conduct in speech should, from that source,\nfrom that condition arise, on the breaking up of the body after dying,\nin a good bourn, a heaven world - this situation occurs.' ■"}, {"key": "mn115:19.9", "pali": "‘ṭhānañca kho etaṁ vijjati yaṁ vacīsucaritasamaṅgī …pe…", "sujato": "", "pts": "He comprehends:\n'It is impossible, it cannot come to pass that one who is addicted to right conduct in thought should,\nfrom that source, from that condition arise,\non the breaking up of the body after dying, in the sorrowful ways,\na bad bourn, the downfall, Niraya Hell - this situation does not occur.'"}, {"key": "mn115:19.10", "pali": "yaṁ manosucaritasamaṅgī taṁnidānā tappaccayā kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjeyya,\nṭhānametaṁ vijjatī’ti pajānāti.", "sujato": "", "pts": "He comprehends:\n'But this situation occurs that one who is addicted to right conduct in thought should, from that source,\nfrom that condition arise, on the breaking up of the body after dying,\nin a good bourn, a heaven world - this situation occurs.'"}, {"key": "mn115:19.11", "pali": "Ettāvatā kho, ānanda,\n‘ṭhānāṭhānakusalo bhikkhū’ti alaṁvacanāyā”ti.", "sujato": "That’s how a mendicant is qualified to be called ‘skilled in the possible and impossible’.”", "pts": "It is at this stage, Ānanda, that it suffices to say:\n'The monk is skilled in the possible and the impossible.'\""}]}, {"id": "20", "label": "When he said this, Venerable Ānanda said…", "rows": [{"key": "mn115:20.1", "pali": "Evaṁ vutte, āyasmā ānando bhagavantaṁ etadavoca:", "sujato": "When he said this, Venerable Ānanda said to the Buddha,", "pts": "When this had been said the venerable Ānanda spoke thus to the Lord:"}, {"key": "mn115:20.2", "pali": "“acchariyaṁ, bhante, abbhutaṁ, bhante.", "sujato": "“It’s incredible, sir, it’s amazing!", "pts": "\"It is wonderful, revered sir, it is marvellous, revered sir."}, {"key": "mn115:20.3", "pali": "Konāmo ayaṁ, bhante, dhammapariyāyo”ti?", "sujato": "What is the name of this exposition of the teaching?”", "pts": "What, revered sir, is the name of this disquisition on Dhamma?\""}, {"key": "mn115:20.4", "pali": "“Tasmātiha tvaṁ, ānanda, imaṁ dhammapariyāyaṁ ‘bahudhātuko’tipi naṁ dhārehi,\n‘catuparivaṭṭo’tipi naṁ dhārehi,\n‘dhammādāso’tipi naṁ dhārehi,\n‘amatadundubhī’tipi naṁ dhārehi,\n‘anuttaro saṅgāmavijayo’tipi naṁ dhārehī”ti.", "sujato": "“Well then, Ānanda, you may remember this exposition of the teaching as ‘The Many Elements’, or else ‘The Four Rounds’,\nor else ‘The Mirror of the Teaching’, or else ‘The Drum of Freedom From Death’,\nor else ‘The Supreme Victory in Battle’.”", "pts": "\"Wherefore do you, Ānanda, remember this disquisition on Dhamma as 'the Manifold Elements',\nand remember it as 'the Fourfold Circle,\nand remember it as 'the Mirror of Dhamma', and remember it as 'the Drum of Deathlessness',\nand remember it as 'the Incomparable Victory in the Battle.'\""}, {"key": "mn115:20.5", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn115:20.6", "pali": "Attamano āyasmā ānando bhagavato bhāsitaṁ abhinandīti.", "sujato": "Satisfied, Venerable Ānanda approved what the Buddha said.", "pts": "Delighted, the venerable Ānanda rejoiced in what the Lord had said."}, {"key": "mn115:20.7", "pali": "Bahudhātukasuttaṁ niṭṭhitaṁ pañcamaṁ.", "sujato": "", "pts": "Discourse on the Manifold Elements:\nThe Fifth"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn115:2.1": ["<i>Paṇḍita</i> is normally used
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

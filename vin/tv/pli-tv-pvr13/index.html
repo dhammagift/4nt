@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "pli-tv-pvr13/0", "label": "Parivāra", "rows": [{"key": "pli-tv-pvr13:0.1", "pali": "Parivāra", "brahmali": "The Compendium"}, {"key": "pli-tv-pvr13:0.2", "pali": "13.\nCodanākaṇḍa", "brahmali": "Accusations and the process of investigation"}, {"key": "pli-tv-pvr13:0.3", "pali": "1.\nAnuvijjakaanuyoga", "brahmali": "1.\nInvestigation"}]}, {"id": "pli-tv-pvr13/1", "label": "Anuvijjakena codako pucchitabbo—", "rows": [{"key": "pli-tv-pvr13:1.1", "pali": "Anuvijjakena codako pucchitabbo—", "brahmali": "The investigator should ask the accuser:"}, {"key": "pli-tv-pvr13:1.2", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ codesi, kimhi naṁ codesi,\nsīlavipattiyā vā codesi, ācāravipattiyā vā codesi, diṭṭhivipattiyā vā codesī”ti?", "brahmali": "“Do you accuse this monk of failure in morality, conduct, or view?”"}, {"key": "pli-tv-pvr13:1.3", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.4", "pali": "“sīlavipattiyā vā codemi, ācāravipattiyā vā codemi, diṭṭhivipattiyā vā codemī”ti, so evamassa vacanīyo—", "brahmali": "“I am accusing him of failure in morality,” “I am accusing him of failure in\nconduct,” or “I am accusing him of failure in view,” he should be asked,"}, {"key": "pli-tv-pvr13:1.5", "pali": "“jānāsi panāyasmā sīlavipattiṁ, jānāsi ācāravipattiṁ, jānāsi diṭṭhivipattin”ti?", "brahmali": "“Do you know what failure in morality is?”\n“Do you know what failure in conduct is?” or “Do you know what failure in view is?”"}, {"key": "pli-tv-pvr13:1.6", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.7", "pali": "“jānāmi kho ahaṁ, āvuso, sīlavipattiṁ, jānāmi ācāravipattiṁ, jānāmi diṭṭhivipattin”ti, so evamassa vacanīyo—", "brahmali": "“I do,” he should be asked what they are."}, {"key": "pli-tv-pvr13:1.8", "pali": "“katamā panāvuso, sīlavipatti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.9", "pali": "Katamā ācāravipatti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.10", "pali": "Katamā diṭṭhivipattī”ti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.11", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.12", "pali": "“cattāri ca pārājikāni, terasa ca saṅghādisesā, ayaṁ sīlavipatti.", "brahmali": "“The four offenses entailing expulsion and the thirteen entailing suspension are failure in morality,”"}, {"key": "pli-tv-pvr13:1.13", "pali": "Thullaccayaṁ, pācittiyaṁ, pāṭidesanīyaṁ, dukkaṭaṁ, dubbhāsitaṁ, ayaṁ ācāravipatti.", "brahmali": "“The serious offenses, the offenses entailing confession, the offenses entailing acknowledgment,\nthe offenses of wrong conduct, and the offenses of wrong speech are failure in conduct,”"}, {"key": "pli-tv-pvr13:1.14", "pali": "Micchādiṭṭhi, antaggāhikā diṭṭhi, ayaṁ diṭṭhivipattī”ti, so evamassa vacanīyo—", "brahmali": "“Wrong views and extreme views are failure in view,” he should be asked,"}, {"key": "pli-tv-pvr13:1.15", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ codesi, diṭṭhena vā codesi sutena vā codesi parisaṅkāya vā codesī”ti?", "brahmali": "“Are you accusing this monk because of what you’ve seen, what you’ve heard, or what you suspect?”"}, {"key": "pli-tv-pvr13:1.16", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.17", "pali": "“diṭṭhena vā codemi sutena vā codemi parisaṅkāya vā codemī”ti, so evamassa vacanīyo—", "brahmali": "“I’m accusing him because of what I’ve seen,” “I’m accusing him because of what\nI’ve heard,” or “I’m accusing him because of what I suspect,” he should be asked,"}, {"key": "pli-tv-pvr13:1.18", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ diṭṭhena codesi, kiṁ te diṭṭhaṁ kinti te diṭṭhaṁ, kadā te diṭṭhaṁ,\nkattha te diṭṭhaṁ pārājikaṁ ajjhāpajjanto diṭṭho, saṅghādisesaṁ ajjhāpajjanto diṭṭho, thullaccayaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve seen, what have you seen?\nHow did you see it?\nWhen did you see it?\nWhere did you see it?\nDid you see him commit an offense entailing expulsion?\nDid you see him commit an offense entailing suspension?\nDid you see him commit a serious offense?"}, {"key": "pli-tv-pvr13:1.19", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.20", "pali": "pāṭidesanīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.21", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.22", "pali": "dubbhāsitaṁ ajjhāpajjanto diṭṭho, kattha ca tvaṁ ahosi,\nkattha cāyaṁ bhikkhu ahosi, kiñca tvaṁ karosi, kiṁ cāyaṁ bhikkhu karotī”ti?", "brahmali": "… an offense of wrong speech?\nWhere were you?\nWhere was this monk?\nWhat were you doing?\nWhat was this monk doing?”"}, {"key": "pli-tv-pvr13:1.23", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.24", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ diṭṭhena codemi, api ca sutena codemī”ti, so evamassa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve seen, but because of what I’ve heard,” he should be asked,"}, {"key": "pli-tv-pvr13:1.25", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ sutena codesi, kiṁ te sutaṁ, kinti te sutaṁ,\nkadā te sutaṁ, kattha te sutaṁ, pārājikaṁ ajjhāpannoti sutaṁ, saṅghādisesaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve heard, what have you heard?\nHow did you hear it?\nWhen did you hear it?\nWhere did you hear it?\nDid you hear that he has committed an offense entailing expulsion?\nDid you hear that he has committed an offense entailing suspension?"}, {"key": "pli-tv-pvr13:1.26", "pali": "thullaccayaṁ …", "brahmali": "… a serious offense?"}, {"key": "pli-tv-pvr13:1.27", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.28", "pali": "pāṭidesanīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.29", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.30", "pali": "dubbhāsitaṁ ajjhāpannoti sutaṁ, bhikkhussa sutaṁ, bhikkhuniyā sutaṁ,\nsikkhamānāya sutaṁ, sāmaṇerassa sutaṁ, sāmaṇeriyā sutaṁ,\nupāsakassa sutaṁ, upāsikāya sutaṁ, rājūnaṁ sutaṁ, rājamahāmattānaṁ sutaṁ, titthiyānaṁ sutaṁ, titthiyasāvakānaṁ sutan”ti?", "brahmali": "Did you hear that he has committed an offense of wrong speech?\nDid you hear it from a monk, a nun, a trainee nun, a novice monk,\na novice nun, a male lay follower, or a female lay follower?\nOr did you hear it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”"}, {"key": "pli-tv-pvr13:1.31", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.32", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ sutena codemi, api ca parisaṅkāya codemī”ti, so evamassa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve heard, but because of what I suspect,” he should be asked,"}, {"key": "pli-tv-pvr13:1.33", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ parisaṅkāya codesi, kiṁ parisaṅkasi, kinti parisaṅkasi, kadā parisaṅkasi,\nkattha parisaṅkasi, pārājikaṁ ajjhāpannoti parisaṅkasi, saṅghādisesaṁ ajjhāpannoti parisaṅkasi, thullaccayaṁ …", "brahmali": "“Since you’re accusing this monk because of suspicion, what do you suspect?\nHow do you suspect it?\nWhen did you suspect it?\nWhere did you suspect it?\nDo you suspect that he has committed an offense entailing expulsion?\nDo you suspect that he has committed an offense entailing suspension?\nDo you suspect that he has committed a serious offense?"}, {"key": "pli-tv-pvr13:1.34", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.35", "pali": "pāṭidesanīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.36", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.37", "pali": "dubbhāsitaṁ ajjhāpannoti parisaṅkasi, bhikkhussa sutvā parisaṅkasi, bhikkhuniyā sutvā parisaṅkasi,\nsikkhamānāya sutvā parisaṅkasi, sāmaṇerassa sutvā parisaṅkasi, sāmaṇeriyā sutvā parisaṅkasi,\nupāsakassa sutvā parisaṅkasi, upāsikāya sutvā parisaṅkasi, rājūnaṁ sutvā parisaṅkasi,\nrājamahāmattānaṁ sutvā parisaṅkasi, titthiyānaṁ sutvā parisaṅkasi, titthiyasāvakānaṁ sutvā parisaṅkasī”ti?", "brahmali": "Do you suspect that he has committed an offense of wrong speech?\nDo you suspect it after hearing about it from a monk, a nun, a trainee nun,\na novice monk, a novice nun, a male lay follower, or a female lay follower?\nOr do you suspect it after hearing about it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”"}]}, {"id": "pli-tv-pvr13/2", "label": "Diṭṭhaṁ diṭṭhena sameti,", "rows": [{"key": "pli-tv-pvr13:2.1", "pali": "Diṭṭhaṁ diṭṭhena sameti,", "brahmali": "If what he saw agrees with what he says he saw,"}, {"key": "pli-tv-pvr13:2.2", "pali": "diṭṭhena saṁsandate diṭṭhaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:2.3", "pali": "Diṭṭhaṁ paṭicca na upeti,", "brahmali": "But what was seen is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:2.4", "pali": "asuddhaparisaṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:2.5", "pali": "So puggalo paṭiññāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:2.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/3", "label": "Sutaṁ sutena sameti,", "rows": [{"key": "pli-tv-pvr13:3.1", "pali": "Sutaṁ sutena sameti,", "brahmali": "If what he heard agrees with what he says he heard,"}, {"key": "pli-tv-pvr13:3.2", "pali": "sutena saṁsandate sutaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:3.3", "pali": "Sutaṁ paṭicca na upeti,", "brahmali": "But what was heard is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:3.4", "pali": "asuddhaparisaṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:3.5", "pali": "So puggalo paṭiññāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:3.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/4", "label": "Mutaṁ mutena sameti,", "rows": [{"key": "pli-tv-pvr13:4.1", "pali": "Mutaṁ mutena sameti,", "brahmali": "If what he sensed agrees with what he says he sensed,"}, {"key": "pli-tv-pvr13:4.2", "pali": "mutena saṁsandate mutaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:4.3", "pali": "Mutaṁ paṭicca na upeti,", "brahmali": "But what was sensed is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:4.4", "pali": "asuddhaparisaṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:4.5", "pali": "So puggalo paṭiññāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:4.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/5", "label": "Codanāya ko ādi, kiṁ majjhe, kiṁ pariyosānaṁ?", "rows": [{"key": "pli-tv-pvr13:5.1", "pali": "Codanāya ko ādi, kiṁ majjhe, kiṁ pariyosānaṁ?", "brahmali": "What is the beginning, the middle, and the end of an accusation?"}, {"key": "pli-tv-pvr13:5.2", "pali": "Codanāya okāsakammaṁ ādi, kiriyā majjhe, samatho pariyosānaṁ.", "brahmali": "Getting permission for the accusation is the beginning, doing it is the middle, settling it is the end."}, {"key": "pli-tv-pvr13:5.3", "pali": "Codanāya kati mūlāni, kati vatthūni, kati bhūmiyo, katihākārehi codeti?", "brahmali": "How many roots does accusing have, how many bases, and how many grounds?\nAnd in how many ways does one accuse?"}, {"key": "pli-tv-pvr13:5.4", "pali": "Codanāya dve mūlāni, tīṇi vatthūni, pañca bhūmiyo, dvīhākārehi codeti.", "brahmali": "It has two roots, three bases, and five grounds.\nAnd one accuses in two ways."}, {"key": "pli-tv-pvr13:5.5", "pali": "Codanāya katamāni dve mūlāni?", "brahmali": "What are the two roots?"}, {"key": "pli-tv-pvr13:5.6", "pali": "Samūlikā vā amūlikā vā—", "brahmali": "With a root and without a root."}, {"key": "pli-tv-pvr13:5.7", "pali": "codanāya imāni dve mūlāni.", "brahmali": ""}, {"key": "pli-tv-pvr13:5.8", "pali": "Codanāya katamāni tīṇi vatthūni?", "brahmali": "What are the three bases?"}, {"key": "pli-tv-pvr13:5.9", "pali": "Diṭṭhena sutena parisaṅkāya—", "brahmali": "The seen, the heard, and the suspected."}, {"key": "pli-tv-pvr13:5.10", "pali": "codanāya imāni tīṇi vatthūni.", "brahmali": ""}, {"key": "pli-tv-pvr13:5.11", "pali": "Codanāya katamā pañca bhūmiyo?", "brahmali": "What are the five grounds?"}, {"key": "pli-tv-pvr13:5.12", "pali": "Kālena vakkhāmi no akālena, bhūtena vakkhāmi no abhūtena, saṇhena vakkhāmi no pharusena,\natthasaṁhitena vakkhāmi no anatthasaṁhitena, mettācitto vakkhāmi no dosantaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”"}, {"key": "pli-tv-pvr13:5.13", "pali": "codanāya imā pañca bhūmiyo.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/6", "label": "Katamehi dvīhākārehi codeti?", "rows": [{"key": "pli-tv-pvr13:6.1", "pali": "Katamehi dvīhākārehi codeti?", "brahmali": "What are the two ways of accusing?"}, {"key": "pli-tv-pvr13:6.2", "pali": "Kāyena vā codeti vācāya vā codeti—", "brahmali": "One accuses by body or by speech."}, {"key": "pli-tv-pvr13:6.3", "pali": "imehi dvīhākārehi codeti.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/7", "label": "2. Codakādipaṭipatti", "rows": [{"key": "pli-tv-pvr13:7.0", "pali": "2.\nCodakādipaṭipatti", "brahmali": "2.\nThe proceeding of an accuser, etc."}, {"key": "pli-tv-pvr13:7.1", "pali": "Codakena kathaṁ paṭipajjitabbaṁ?", "brahmali": "How should the accuser proceed?"}, {"key": "pli-tv-pvr13:7.2", "pali": "Cuditakena kathaṁ paṭipajjitabbaṁ?", "brahmali": "How should the accused proceed?"}, {"key": "pli-tv-pvr13:7.3", "pali": "Saṅghena kathaṁ paṭipajjitabbaṁ?", "brahmali": "How should the Sangha proceed?"}, {"key": "pli-tv-pvr13:7.4", "pali": "Anuvijjakena kathaṁ paṭipajjitabbaṁ?", "brahmali": "How should the investigator proceed?"}, {"key": "pli-tv-pvr13:7.5", "pali": "Codakena kathaṁ paṭipajjitabbanti?", "brahmali": "“How should the accuser proceed?”"}, {"key": "pli-tv-pvr13:7.6", "pali": "Codakena pañcasu dhammesu patiṭṭhāya paro codetabbo.", "brahmali": "The accuser should set up five qualities before accusing another:"}, {"key": "pli-tv-pvr13:7.7", "pali": "Kālena vakkhāmi no akālena, bhūtena vakkhāmi no abhūtena, saṇhena vakkhāmi no pharusena,\natthasaṁhitena vakkhāmi no anatthasaṁhitena, mettācitto vakkhāmi no dosantaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”"}, {"key": "pli-tv-pvr13:7.8", "pali": "codakena evaṁ paṭipajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.9", "pali": "Cuditakena kathaṁ paṭipajjitabbanti?", "brahmali": "“How should the accused proceed?”"}, {"key": "pli-tv-pvr13:7.10", "pali": "Cuditakena dvīsu dhammesu paṭipajjitabbaṁ.", "brahmali": "The accused should set up two qualities:"}, {"key": "pli-tv-pvr13:7.11", "pali": "Sacce ca akuppe ca—", "brahmali": "truth and composure."}, {"key": "pli-tv-pvr13:7.12", "pali": "cuditakena evaṁ paṭipajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.13", "pali": "Saṅghena kathaṁ paṭipajjitabbanti?", "brahmali": "“How should the Sangha proceed?”"}, {"key": "pli-tv-pvr13:7.14", "pali": "Saṅghena otiṇṇānotiṇṇaṁ jānitabbaṁ.", "brahmali": "The Sangha should know what has been brought before it and what has not."}, {"key": "pli-tv-pvr13:7.15", "pali": "Saṅghena evaṁ paṭipajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.16", "pali": "Anuvijjakena kathaṁ paṭipajjitabbanti?", "brahmali": "“How should the investigator proceed?”"}, {"key": "pli-tv-pvr13:7.17", "pali": "Anuvijjakena yena dhammena yena vinayena yena satthusāsanena taṁ\nadhikaraṇaṁ vūpasammati tathā taṁ adhikaraṇaṁ vūpasametabbaṁ.", "brahmali": "The investigator resolves that legal issue in accordance with the Teaching,\nthe Monastic Law, and the Teacher’s instruction."}, {"key": "pli-tv-pvr13:7.18", "pali": "Anuvijjakena evaṁ paṭipajjitabbaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/8", "label": "Uposatho kimatthāya,", "rows": [{"key": "pli-tv-pvr13:8.1", "pali": "Uposatho kimatthāya,", "brahmali": "What is the purpose of the observance-day ceremony?"}, {"key": "pli-tv-pvr13:8.2", "pali": "Pavāraṇā kissa kāraṇā;", "brahmali": "Why is there an invitation ceremony?"}, {"key": "pli-tv-pvr13:8.3", "pali": "Parivāso kimatthāya,", "brahmali": "What is the purpose of probation?"}, {"key": "pli-tv-pvr13:8.4", "pali": "Mūlāyapaṭikassanā kissa kāraṇā;", "brahmali": "Why is there a sending back to the beginning?"}, {"key": "pli-tv-pvr13:8.5", "pali": "Mānattaṁ kimatthāya,", "brahmali": "What is the purpose of the trial period?"}, {"key": "pli-tv-pvr13:8.6", "pali": "Abbhānaṁ kissa kāraṇā.", "brahmali": "Why is there rehabilitation?"}]}, {"id": "pli-tv-pvr13/9", "label": "Uposatho sāmaggatthāya,", "rows": [{"key": "pli-tv-pvr13:9.1", "pali": "Uposatho sāmaggatthāya,", "brahmali": "The purpose of the observance-day ceremony is unity."}, {"key": "pli-tv-pvr13:9.2", "pali": "Visuddhatthāya pavāraṇā;", "brahmali": "The purpose of the invitation ceremony is purity."}, {"key": "pli-tv-pvr13:9.3", "pali": "Parivāso mānattatthāya,", "brahmali": "The purpose of probation is the trial period."}, {"key": "pli-tv-pvr13:9.4", "pali": "Mūlāyapaṭikassanā niggahatthāya;", "brahmali": "The purpose of sending back to the beginning is restraint."}, {"key": "pli-tv-pvr13:9.5", "pali": "Mānattaṁ abbhānatthāya,", "brahmali": "The purpose of the trial period is rehabilitation."}, {"key": "pli-tv-pvr13:9.6", "pali": "Visuddhatthāya abbhānaṁ.", "brahmali": "The purpose of rehabilitation is purity."}]}, {"id": "pli-tv-pvr13/10", "label": "Chandā dosā bhayā mohā,", "rows": [{"key": "pli-tv-pvr13:10.1", "pali": "Chandā dosā bhayā mohā,", "brahmali": "If, because of desire, ill will, fear, or confusion,"}, {"key": "pli-tv-pvr13:10.2", "pali": "there ca paribhāsati;", "brahmali": "One reviles senior monks,"}, {"key": "pli-tv-pvr13:10.3", "pali": "Kāyassa bhedā duppañño,", "brahmali": "Then, when the body breaks up, that foolish person,"}, {"key": "pli-tv-pvr13:10.4", "pali": "khato upahatindriyo;", "brahmali": "Damaged, with impaired faculties,"}, {"key": "pli-tv-pvr13:10.5", "pali": "Nirayaṁ gacchati dummedho,", "brahmali": "Being stupid, goes to hell,"}, {"key": "pli-tv-pvr13:10.6", "pali": "na ca sikkhāya gāravo.", "brahmali": "Without respect for the training."}]}, {"id": "pli-tv-pvr13/11", "label": "Na ca āmisaṁ nissāya,", "rows": [{"key": "pli-tv-pvr13:11.1", "pali": "Na ca āmisaṁ nissāya,", "brahmali": "But not depending on worldly gain,"}, {"key": "pli-tv-pvr13:11.2", "pali": "na ca nissāya puggalaṁ;", "brahmali": "Not depending on individuals,"}, {"key": "pli-tv-pvr13:11.3", "pali": "Ubho ete vivajjetvā,", "brahmali": "Giving up both of these,"}, {"key": "pli-tv-pvr13:11.4", "pali": "yathādhammo tathā kare.", "brahmali": "One should act according to the Teaching."}]}, {"id": "pli-tv-pvr13/12", "label": "3. Codakassaattajhāpana", "rows": [{"key": "pli-tv-pvr13:12.0", "pali": "3.\nCodakassaattajhāpana", "brahmali": "3.\nThe accuser burning himself"}, {"key": "pli-tv-pvr13:12.1", "pali": "Kodhano upanāhī ca,", "brahmali": "“Angry and resentful,"}, {"key": "pli-tv-pvr13:12.2", "pali": "Caṇḍo ca paribhāsako;", "brahmali": "And fierce, reviling,"}, {"key": "pli-tv-pvr13:12.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:12.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/13", "label": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "rows": [{"key": "pli-tv-pvr13:13.1", "pali": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "brahmali": "Whispering in the ear, looking for flaws,"}, {"key": "pli-tv-pvr13:13.2", "pali": "Vītiharati kummaggaṁ paṭisevati;", "brahmali": "Vindictive, following the wrong path,"}, {"key": "pli-tv-pvr13:13.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:13.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/14", "label": "Akālena codeti abhūtena,", "rows": [{"key": "pli-tv-pvr13:14.1", "pali": "Akālena codeti abhūtena,", "brahmali": "Accusing at the wrong time, untruthfully,"}, {"key": "pli-tv-pvr13:14.2", "pali": "Pharusena anatthasaṁhitena;", "brahmali": "Harshly, without benefit,"}, {"key": "pli-tv-pvr13:14.3", "pali": "Dosantaro codeti no mettācitto,", "brahmali": "With a mind of ill will, not a mind of good will,"}, {"key": "pli-tv-pvr13:14.4", "pali": "Anāpattiyā āpattīti ropeti;", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:14.5", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/15", "label": "Dhammādhammaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:15.1", "pali": "Dhammādhammaṁ na jānāti,", "brahmali": "Not knowing the Teaching and what is contrary to it,"}, {"key": "pli-tv-pvr13:15.2", "pali": "Dhammādhammassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:15.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:15.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/16", "label": "Vinayāvinayaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:16.1", "pali": "Vinayāvinayaṁ na jānāti,", "brahmali": "Not knowing the Monastic Law and what is contrary to it,"}, {"key": "pli-tv-pvr13:16.2", "pali": "Vinayāvinayassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:16.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:16.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/17", "label": "Bhāsitābhāsitaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:17.1", "pali": "Bhāsitābhāsitaṁ na jānāti,", "brahmali": "Not knowing what was spoken and what was not,"}, {"key": "pli-tv-pvr13:17.2", "pali": "Bhāsitābhāsitassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:17.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:17.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/18", "label": "Āciṇṇānāciṇṇaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:18.1", "pali": "Āciṇṇānāciṇṇaṁ na jānāti,", "brahmali": "Not knowing what was practiced and what was not,"}, {"key": "pli-tv-pvr13:18.2", "pali": "Āciṇṇānāciṇṇassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:18.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:18.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/19", "label": "Paññattāpaññattaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:19.1", "pali": "Paññattāpaññattaṁ na jānāti,", "brahmali": "Not knowing what was laid down and what was not,"}, {"key": "pli-tv-pvr13:19.2", "pali": "Paññattāpaññattassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:19.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:19.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/20", "label": "Āpattānāpattiṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:20.1", "pali": "Āpattānāpattiṁ na jānāti,", "brahmali": "Not knowing the offenses and the non-offenses,"}, {"key": "pli-tv-pvr13:20.2", "pali": "Āpattānāpattiyā akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:20.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:20.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/21", "label": "Lahukagarukaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:21.1", "pali": "Lahukagarukaṁ na jānāti,", "brahmali": "Not knowing light and heavy offenses,"}, {"key": "pli-tv-pvr13:21.2", "pali": "Lahukagarukassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:21.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:21.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/22", "label": "Sāvasesānavasesaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:22.1", "pali": "Sāvasesānavasesaṁ na jānāti,", "brahmali": "Not knowing curable and incurable offenses,"}, {"key": "pli-tv-pvr13:22.2", "pali": "Sāvasesānavasesassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:22.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:22.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/23", "label": "Duṭṭhullāduṭṭhullaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:23.1", "pali": "Duṭṭhullāduṭṭhullaṁ na jānāti,", "brahmali": "Not knowing grave and minor offenses,"}, {"key": "pli-tv-pvr13:23.2", "pali": "Duṭṭhullāduṭṭhullassa akovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:23.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:23.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/24", "label": "Pubbāparaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:24.1", "pali": "Pubbāparaṁ na jānāti,", "brahmali": "Not knowing the right order,"}, {"key": "pli-tv-pvr13:24.2", "pali": "Pubbāparassa akovido;", "brahmali": "Ignorant about it,"}, {"key": "pli-tv-pvr13:24.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:24.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/25", "label": "Anusandhivacanapathaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:25.1", "pali": "Anusandhivacanapathaṁ na jānāti,", "brahmali": "Not knowing the sequence of statements,"}, {"key": "pli-tv-pvr13:25.2", "pali": "Anusandhivacanapathassa akovido;", "brahmali": "Ignorant about it,"}, {"key": "pli-tv-pvr13:25.3", "pali": "Anāpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:25.4", "pali": "Tādiso codako jhāpeti attānanti.", "brahmali": "Such an accuser burns himself.”"}]}, {"id": "pli-tv-pvr13/26", "label": "Codanākaṇḍaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr13:26.1", "pali": "Codanākaṇḍaṁ niṭṭhitaṁ.", "brahmali": "Accusations and the process of investigation are finished."}]}, {"id": "pli-tv-pvr13/27", "label": "Tassuddānaṁ", "rows": [{"key": "pli-tv-pvr13:27.1", "pali": "Tassuddānaṁ", "brahmali": "This is the summary:"}]}, {"id": "pli-tv-pvr13/28", "label": "Codanā anuvijjā ca,", "rows": [{"key": "pli-tv-pvr13:28.1", "pali": "Codanā anuvijjā ca,", "brahmali": "“Accusing, and investigating,"}, {"key": "pli-tv-pvr13:28.2", "pali": "ādi mūlenuposatho;", "brahmali": "Beginning, at the root, observance day,"}, {"key": "pli-tv-pvr13:28.3", "pali": "Gati codanakaṇḍamhi,", "brahmali": "Destiny—in accusations and the process of investigation,"}, {"key": "pli-tv-pvr13:28.4", "pali": "sāsanaṁ patiṭṭhāpayanti.", "brahmali": "They firmly establish Buddhism.”"}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"brahmali": {"pli-tv-pvr13:2.1": ["Sp 5.361: <i>Tattha diṭ�
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn50-gangapeyyalavagga", "label": "Gaṅgāpeyyālavagga — The Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.1-12", "label": "SN 50.1–12", "children": [{"id": "sn50.1-12/0", "label": "Linked Discourses 50.1–12", "rows": [{"key": "sn50.1-12:0.1", "pali": "Saṁyutta Nikāya 50.1–12", "sujato": "Linked Discourses 50.1–12"}, {"key": "sn50.1-12:0.2", "pali": "1.\nGaṅgāpeyyālavagga", "sujato": "1.\nAbbreviated Texts on the Ganges"}, {"key": "sn50.1-12:0.3", "pali": "Balādisutta", "sujato": "Sloping East, Etc."}]}, {"id": "sn50.1-12/1", "label": "“Mendicants, there are these five powers.", "rows": [{"key": "sn50.1-12:1.1", "pali": "“Pañcimāni, bhikkhave, balāni.", "sujato": "“Mendicants, there are these five powers."}, {"key": "sn50.1-12:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn50.1-12:1.3", "pali": "Saddhābalaṁ, vīriyabalaṁ, satibalaṁ, samādhibalaṁ, paññābalaṁ—", "sujato": "The powers of faith, energy, mindfulness, immersion, and wisdom."}, {"key": "sn50.1-12:1.4", "pali": "imāni kho, bhikkhave, pañca balānīti.", "sujato": "These are the five powers."}, {"key": "sn50.1-12:1.5", "pali": "Seyyathāpi, bhikkhave, gaṅgā nadī pācīnaninnā pācīnapoṇā pācīnapabbhārā;", "sujato": "The Ganges river slants, slopes, and inclines to the east."}, {"key": "sn50.1-12:1.6", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro.", "sujato": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to extinguishment."}, {"key": "sn50.1-12:1.7", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro?", "sujato": "And how does a mendicant who develops the five powers slant, slope, and incline to extinguishment?"}, {"key": "sn50.1-12:1.8", "pali": "Idha, bhikkhave, bhikkhu saddhābalaṁ bhāveti vivekanissitaṁ virāganissitaṁ nirodhanissitaṁ vossaggapariṇāmiṁ,", "sujato": "It’s when a mendicant develops the powers of faith,"}, {"key": "sn50.1-12:1.9", "pali": "vīriyabalaṁ …pe…", "sujato": "energy,"}, {"key": "sn50.1-12:1.10", "pali": "satibalaṁ …", "sujato": "mindfulness,"}, {"key": "sn50.1-12:1.11", "pali": "samādhibalaṁ …", "sujato": "immersion,"}, {"key": "sn50.1-12:1.12", "pali": "paññābalaṁ bhāveti vivekanissitaṁ virāganissitaṁ nirodhanissitaṁ vossaggapariṇāmiṁ.", "sujato": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go."}, {"key": "sn50.1-12:1.13", "pali": "Evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro”ti.", "sujato": "That’s how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to extinguishment.”"}, {"key": "sn50.1-12:1.14", "pali": "Dvādasamaṁ.", "sujato": ""}, {"key": "sn50.1-12:1.15", "pali": "Gaṅgāpeyyālavaggo paṭhamo.", "sujato": ""}]}, {"id": "sn50.1-12/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.1-12:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.1-12:2.1", "pali": "Cha pācīnato ninnā,", "sujato": "Six on slanting to the east,"}, {"key": "sn50.1-12:2.2", "pali": "cha ninnā ca samuddato;", "sujato": "and six on slanting to the ocean;"}, {"key": "sn50.1-12:2.3", "pali": "Dvete cha dvādasa honti,", "sujato": "these two sixes make twelve,"}, {"key": "sn50.1-12:2.4", "pali": "vaggo tena pavuccatīti.", "sujato": "and that’s how this chapter is recited."}]}]}]}, {"id": "sn50-appamadavagga", "label": "Appamādavagga — The Chapter on Diligence", "children": [{"id": "sn50.13-22", "label": "SN 50.13–22", "children": [{"id": "sn50.13-22/0", "label": "Linked Discourses 50.13–22", "rows": [{"key": "sn50.13-22:0.1", "pali": "Saṁyutta Nikāya 50.13", "sujato": "Linked Discourses 50.13–22"}, {"key": "sn50.13-22:0.2", "pali": "2.\nAppamādavagga", "sujato": "2.\nDiligence"}, {"key": "sn50.13-22:0.3", "pali": "Appamādavagga", "sujato": "Diligence"}]}, {"id": "sn50.13-22/1", "label": "(Tell in full as in the chapter…", "rows": [{"key": "sn50.13-22:1.1", "pali": "(Appamādavaggo vitthāretabbo.)", "sujato": "(Tell in full as in the chapter on diligence at SN 45.139–148.)"}]}, {"id": "sn50.13-22/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.13-22:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.13-22:2.1", "pali": "Tathāgataṁ padaṁ kūṭaṁ,", "sujato": "The Realized One, footprint, roof peak,"}, {"key": "sn50.13-22:2.2", "pali": "mūlaṁ sārena vassikaṁ;", "sujato": "roots, heartwood, jasmine,"}, {"key": "sn50.13-22:2.3", "pali": "Rājā candimasūriyā,", "sujato": "monarch, sun and moon,"}, {"key": "sn50.13-22:2.4", "pali": "vatthena dasamaṁ padanti.", "sujato": "and cloth is the tenth."}]}]}]}, {"id": "sn50-balakaraniyavagga", "label": "Balakaraṇīyavagga — The Chapter on Hard Work", "children": [{"id": "sn50.23-34", "label": "SN 50.23–34", "children": [{"id": "sn50.23-34/0", "label": "Linked Discourses 50.23–34", "rows": [{"key": "sn50.23-34:0.1", "pali": "Saṁyutta Nikāya 50.23", "sujato": "Linked Discourses 50.23–34"}, {"key": "sn50.23-34:0.2", "pali": "3.\nBalakaraṇīyavagga", "sujato": "3.\nHard Work"}, {"key": "sn50.23-34:0.3", "pali": "Balakaraṇīyavagga", "sujato": "Hard Work"}]}, {"id": "sn50.23-34/1", "label": "(Tell in full as in the chapter…", "rows": [{"key": "sn50.23-34:1.1", "pali": "(Balakaraṇīyavaggo vitthāretabbo.)", "sujato": "(Tell in full as in the chapter on hard work at SN 45.149–160.)"}]}, {"id": "sn50.23-34/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.23-34:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.23-34:2.1", "pali": "Balaṁ bījañca nāgo ca,", "sujato": "Hard work, seeds, and dragons,"}, {"key": "sn50.23-34:2.2", "pali": "rukkho kumbhena sūkiyā;", "sujato": "a tree, a pot, and a spike,"}, {"key": "sn50.23-34:2.3", "pali": "Ākāsena ca dve meghā,", "sujato": "the atmosphere, and two on clouds,"}, {"key": "sn50.23-34:2.4", "pali": "nāvā āgantukā nadīti.", "sujato": "a ship, a guest house, and a river."}]}]}]}, {"id": "sn50-esanavagga", "label": "Esanāvagga — The Chapter on Searches", "children": [{"id": "sn50.35-44", "label": "SN 50.35–44", "children": [{"id": "sn50.35-44/0", "label": "Linked Discourses 50.35–44", "rows": [{"key": "sn50.35-44:0.1", "pali": "Saṁyutta Nikāya 50.35", "sujato": "Linked Discourses 50.35–44"}, {"key": "sn50.35-44:0.2", "pali": "4.\nEsanāvagga", "sujato": "4.\nSearches"}, {"key": "sn50.35-44:0.3", "pali": "Esanāvagga", "sujato": "Searches"}]}, {"id": "sn50.35-44/1", "label": "(Tell in full as in the chapter…", "rows": [{"key": "sn50.35-44:1.1", "pali": "(Esanāvaggo vitthāretabbo.)", "sujato": "(Tell in full as in the chapter on searches at SN 45.161–170.)"}]}, {"id": "sn50.35-44/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.35-44:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.35-44:2.1", "pali": "Esanā vidhā āsavo,", "sujato": "Searches, discriminations, defilements,"}, {"key": "sn50.35-44:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato": "states of existence, three kinds of suffering,"}, {"key": "sn50.35-44:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato": "barrenness, stains, and troubles,"}, {"key": "sn50.35-44:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato": "feelings, craving, and thirst."}]}]}]}, {"id": "sn50-oghavagga", "label": "Oghavagga — The Chapter on Floods", "children": [{"id": "sn50.45-54", "label": "SN 50.45–54", "children": [{"id": "sn50.45-54/0", "label": "Linked Discourses 50.45–54", "rows": [{"key": "sn50.45-54:0.1", "pali": "Saṁyutta Nikāya 50.45–54", "sujato": "Linked Discourses 50.45–54"}, {"key": "sn50.45-54:0.2", "pali": "5.\nOghavagga", "sujato": "5.\nFloods"}, {"key": "sn50.45-54:0.3", "pali": "Oghādisutta", "sujato": "Floods, Etc."}]}, {"id": "sn50.45-54/1", "label": "“Mendicants, there are five higher fetters.", "rows": [{"key": "sn50.45-54:1.1", "pali": "“Pañcimāni, bhikkhave, uddhambhāgiyāni saṁyojanāni.", "sujato": "“Mendicants, there are five higher fetters."}, {"key": "sn50.45-54:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn50.45-54:1.3", "pali": "Rūparāgo, arūparāgo, māno, uddhaccaṁ, avijjā—", "sujato": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance."}, {"key": "sn50.45-54:1.4", "pali": "imāni kho, bhikkhave, pañcuddhambhāgiyāni saṁyojanāni.", "sujato": "These are the five higher fetters."}, {"key": "sn50.45-54:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañcannaṁ uddhambhāgiyānaṁ saṁyojanānaṁ abhiññāya pariññāya parikkhayāya pahānāya pañca balāni bhāvetabbāni.", "sujato": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters."}, {"key": "sn50.45-54:1.6", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn50.45-54:1.7", "pali": "Idha, bhikkhave, bhikkhu, saddhābalaṁ bhāveti vivekanissitaṁ virāganissitaṁ nirodhanissitaṁ vossaggapariṇāmiṁ,", "sujato": "It’s when a mendicant develops the powers of faith,"}, {"key": "sn50.45-54:1.8", "pali": "vīriyabalaṁ …pe…", "sujato": "energy,"}, {"key": "sn50.45-54:1.9", "pali": "satibalaṁ …", "sujato": "mindfulness,"}, {"key": "sn50.45-54:1.10", "pali": "samādhibalaṁ …", "sujato": "immersion,"}, {"key": "sn50.45-54:1.11", "pali": "paññābalaṁ bhāveti vivekanissitaṁ virāganissitaṁ nirodhanissitaṁ vossaggapariṇāmiṁ.", "sujato": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go."}, {"key": "sn50.45-54:1.12", "pali": "Imesaṁ kho, bhikkhave,\npañcannaṁ uddhambhāgiyānaṁ saṁyojanānaṁ abhiññāya pariññāya parikkhayāya pahānāya imāni pañca balāni bhāvetabbānī”ti.", "sujato": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”"}, {"key": "sn50.45-54:1.13", "pali": "(Evaṁ vitthāretabbā.)", "sujato": "(Tell in full as in SN 45.171–179, with the above as the final discourse.)"}]}]}]}, {"id": "sn50-punagangapeyyalavagga", "label": "Punagaṅgāpeyyālavagga — Another Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.55-66", "label": "SN 50.55–66", "children": [{"id": "sn50.55-66/0", "label": "Linked Discourses 50.55–66", "rows": [{"key": "sn50.55-66:0.1", "pali": "Saṁyutta Nikāya 50.55–66", "sujato": "Linked Discourses 50.55–66"}, {"key": "sn50.55-66:0.2", "pali": "6.\nPunagaṅgāpeyyālavagga", "sujato": "6.\nAnother Chapter of Abbreviated Texts on the Ganges"}, {"key": "sn50.55-66:0.3", "pali": "Pācīnādisutta", "sujato": "Sloping East, Etc."}]}, {"id": "sn50.55-66/1", "label": "“Mendicants, the Ganges river slants, slopes, and…", "rows": [{"key": "sn50.55-66:1.1", "pali": "“Seyyathāpi, bhikkhave, gaṅgā nadī pācīnaninnā pācīnapoṇā pācīnapabbhārā;", "sujato": "“Mendicants, the Ganges river slants, slopes, and inclines to the east."}, {"key": "sn50.55-66:1.2", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro.", "sujato": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to extinguishment."}, {"key": "sn50.55-66:1.3", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro?", "sujato": "And how does a mendicant who develops the five powers slant, slope, and incline to extinguishment?"}, {"key": "sn50.55-66:1.4", "pali": "Idha, bhikkhave, bhikkhu, saddhābalaṁ bhāveti rāgavinayapariyosānaṁ dosavinayapariyosānaṁ mohavinayapariyosānaṁ …", "sujato": "It’s when a mendicant develops the powers of faith, energy, mindfulness, immersion,\nand wisdom, which culminate in the removal of greed, hate, and delusion."}, {"key": "sn50.55-66:1.5", "pali": "evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbānaninno hoti nibbānapoṇo nibbānapabbhāro”ti.", "sujato": "That’s how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to extinguishment.”"}, {"key": "sn50.55-66:1.6", "pali": "Vitthāretabbā.", "sujato": "(Tell in full for each of the different rivers as in SN 45.91–102, removal of greed version.)"}, {"key": "sn50.55-66:1.7", "pali": "Dvādasamaṁ.", "sujato": ""}, {"key": "sn50.55-66:1.8", "pali": "Gaṅgāpeyyālavaggo chaṭṭho.", "sujato": ""}]}, {"id": "sn50.55-66/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.55-66:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.55-66:2.1", "pali": "Cha pācīnato ninnā,", "sujato": "Six on slanting to the east,"}, {"key": "sn50.55-66:2.2", "pali": "cha ninnā ca samuddato;", "sujato": "and six on slanting to the ocean;"}, {"key": "sn50.55-66:2.3", "pali": "Dvete cha dvādasa honti,", "sujato": "these two sixes make twelve,"}, {"key": "sn50.55-66:2.4", "pali": "vaggo tena pavuccatīti.", "sujato": "and that’s how this chapter is recited."}]}]}]}, {"id": "sn50-punaappamadavagga", "label": "Punaappamādavagga — Another Chapter on Diligence", "children": [{"id": "sn50.67-76", "label": "SN 50.67–76", "children": [{"id": "sn50.67-76/0", "label": "Linked Discourses 50.67–76", "rows": [{"key": "sn50.67-76:0.1", "pali": "Saṁyutta Nikāya 50.67", "sujato": "Linked Discourses 50.67–76"}, {"key": "sn50.67-76:0.2", "pali": "6.\nPunagaṅgāpeyyālavagga", "sujato": "6.\nAnother Chapter of Abbreviated Texts on the Ganges"}, {"key": "sn50.67-76:0.3", "pali": "Punaappamādavagga", "sujato": "Another Chapter on Diligence"}]}, {"id": "sn50.67-76/1", "label": "(This text consists of the title only.…", "rows": [{"key": "sn50.67-76:1.1", "pali": "On Display:\nTitle of Section Only", "sujato": "(This text consists of the title only.\nTell in full as in SN 45.139–148, removal of greed version.)"}]}]}]}, {"id": "sn50-punabalakaraniyavagga", "label": "Punabalakaraṇīyavagga — Another Chapter on Hard Work", "children": [{"id": "sn50.77-88", "label": "SN 50.77–88", "children": [{"id": "sn50.77-88/0", "label": "Linked Discourses 50.77–88", "rows": [{"key": "sn50.77-88:0.1", "pali": "Saṁyutta Nikāya 50.77", "sujato": "Linked Discourses 50.77–88"}, {"key": "sn50.77-88:0.2", "pali": "7.\nPunabalakaraṇīyavagga", "sujato": "7.\nAnother Chapter on Hard Work"}, {"key": "sn50.77-88:0.3", "pali": "Punabalakaraṇīyavagga", "sujato": "Another Chapter on Hard Work"}]}, {"id": "sn50.77-88/1", "label": "(Tell in full as in SN 45.149–160,…", "rows": [{"key": "sn50.77-88:1.1", "pali": "(Appamādavagga-balakaraṇīyavaggā vitthāretabbā.)", "sujato": "(Tell in full as in SN 45.149–160, removal of greed version.)"}]}]}]}, {"id": "sn50-punaesanavagga", "label": "Punaesanāvagga — Another Chapter on Searches", "children": [{"id": "sn50.89-98", "label": "SN 50.89–98", "children": [{"id": "sn50.89-98/0", "label": "Linked Discourses 50.89–98", "rows": [{"key": "sn50.89-98:0.1", "pali": "Saṁyutta Nikāya 50.89–98", "sujato": "Linked Discourses 50.89–98"}, {"key": "sn50.89-98:0.2", "pali": "8.\nPunaesanāvagga", "sujato": "8.\nAnother Chapter on Searches"}, {"key": "sn50.89-98:0.3", "pali": "Punaesanādisutta", "sujato": "Another Series on Searches, Etc."}]}, {"id": "sn50.89-98/1", "label": "(Tell in full as in SN 45.161–170,…", "rows": [{"key": "sn50.89-98:1.1", "pali": "(Evaṁ esanāpāḷi vitthāretabbā—rāgavinayapariyosānaṁ dosavinayapariyosānaṁ mohavinayapariyosānaṁ.)", "sujato": "(Tell in full as in SN 45.161–170, removal of greed version.)"}, {"key": "sn50.89-98:1.2", "pali": "Esanāvaggo navamo.", "sujato": ""}]}, {"id": "sn50.89-98/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.89-98:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.89-98:2.1", "pali": "Esanā vidhā āsavo,", "sujato": "Searches, discriminations, defilements,"}, {"key": "sn50.89-98:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato": "states of existence, three kinds of suffering,"}, {"key": "sn50.89-98:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato": "barrenness, stains, and troubles,"}, {"key": "sn50.89-98:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato": "feelings, craving, and thirst."}]}]}]}, {"id": "sn50-punaoghavagga", "label": "Punaoghavagga — Another Chapter on Floods", "children": [{"id": "sn50.99-108", "label": "SN 50.99–108", "children": [{"id": "sn50.99-108/0", "label": "Linked Discourses 50.99–108", "rows": [{"key": "sn50.99-108:0.1", "pali": "Saṁyutta Nikāya 50.99–108", "sujato": "Linked Discourses 50.99–108"}, {"key": "sn50.99-108:0.2", "pali": "9.\nPunaoghavagga", "sujato": "9.\nAnother Chapter on Floods"}, {"key": "sn50.99-108:0.3", "pali": "Punaoghādisutta", "sujato": "Another Series on Floods, Etc."}]}, {"id": "sn50.99-108/1", "label": "“Mendicants, there are five higher fetters.", "rows": [{"key": "sn50.99-108:1.1", "pali": "“Pañcimāni, bhikkhave, uddhambhāgiyāni saṁyojanāni.", "sujato": "“Mendicants, there are five higher fetters."}, {"key": "sn50.99-108:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn50.99-108:1.3", "pali": "Rūparāgo, arūparāgo, māno, uddhaccaṁ avijjā—", "sujato": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance."}, {"key": "sn50.99-108:1.4", "pali": "imāni kho, bhikkhave, pañcuddhambhāgiyāni saṁyojanāni.", "sujato": "These are the five higher fetters."}, {"key": "sn50.99-108:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañcannaṁ uddhambhāgiyānaṁ saṁyojanānaṁ abhiññāya pariññāya parikkhayāya pahānāya pañca balāni bhāvetabbāni.", "sujato": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters."}, {"key": "sn50.99-108:1.6", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn50.99-108:1.7", "pali": "Idha, bhikkhave, bhikkhu saddhābalaṁ bhāveti …pe…\npaññābalaṁ bhāveti rāgavinayapariyosānaṁ dosavinayapariyosānaṁ mohavinayapariyosānaṁ.", "sujato": "A mendicant develops the powers of faith, energy, mindfulness, immersion,\nand wisdom, which culminate in the removal of greed, hate, and delusion."}, {"key": "sn50.99-108:1.8", "pali": "Imesaṁ kho, bhikkhave,\npañcannaṁ uddhambhāgiyānaṁ saṁyojanānaṁ abhiññāya pariññāya parikkhayāya pahānāya imāni pañca balāni bhāvetabbānī”ti.", "sujato": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”"}, {"key": "sn50.99-108:1.9", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn50.99-108:1.10", "pali": "Oghavaggo dasamo.", "sujato": ""}]}, {"id": "sn50.99-108/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn50.99-108:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn50.99-108:2.1", "pali": "Ogho yogo upādānaṁ,", "sujato": "Floods, yokes, grasping,"}, {"key": "sn50.99-108:2.2", "pali": "ganthā anusayena ca;", "sujato": "ties, and underlying tendencies,"}, {"key": "sn50.99-108:2.3", "pali": "Kāmaguṇā nīvaraṇā,", "sujato": "kinds of sensual stimulation, hindrances,"}, {"key": "sn50.99-108:2.4", "pali": "khandhā oruddhambhāgiyāti.", "sujato": "aggregates, and fetters high and low."}, {"key": "sn50.99-108:2.5", "pali": "Balasaṁyuttaṁ chaṭṭhaṁ.", "sujato": "The Linked Discourses on the Powers is the sixth section."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn50.1-12:1.1": ["As seen in <a class=\"xref\" da
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

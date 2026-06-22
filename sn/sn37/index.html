@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn37-pathamapeyyalavagga", "label": "Paṭhamapeyyālavagga — First Chapter of Abbreviated Texts", "children": [{"id": "sn37.1", "label": "SN 37.1 · A Female", "children": [{"id": "sn37.1/0", "label": "Linked Discourses 37.1", "rows": [{"key": "sn37.1:0.1", "pali": "Saṁyutta Nikāya 37.1", "sujato": "Linked Discourses 37.1"}, {"key": "sn37.1:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.1:0.3", "pali": "Mātugāmasutta", "sujato": "A Female"}]}, {"id": "sn37.1/1", "label": "“Mendicants, when a lady has five factors…", "rows": [{"key": "sn37.1:1.1", "pali": "“Pañcahi, bhikkhave, aṅgehi samannāgato mātugāmo ekantaamanāpo hoti purisassa.", "sujato": "“Mendicants, when a lady has five factors she is extremely undesirable to a man."}, {"key": "sn37.1:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.1:1.3", "pali": "Na ca rūpavā hoti, na ca bhogavā hoti, na ca sīlavā hoti, alaso ca hoti, pajañcassa na labhati—", "sujato": "She’s not attractive, wealthy, or ethical;\nshe’s idle, and she doesn’t beget children."}, {"key": "sn37.1:1.4", "pali": "imehi kho, bhikkhave, pañcahi aṅgehi samannāgato mātugāmo ekantaamanāpo hoti purisassa.", "sujato": "When a lady has these five factors she is extremely undesirable to a man."}, {"key": "sn37.1:1.5", "pali": "Pañcahi, bhikkhave, aṅgehi samannāgato mātugāmo ekantamanāpo hoti purisassa.", "sujato": "When a lady has five factors she is extremely desirable to a man."}, {"key": "sn37.1:1.6", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.1:1.7", "pali": "Rūpavā ca hoti, bhogavā ca hoti, sīlavā ca hoti, dakkho ca hoti analaso, pajañcassa labhati—", "sujato": "She’s attractive, wealthy, and ethical;\nshe’s deft and tireless, and she begets children."}, {"key": "sn37.1:1.8", "pali": "imehi kho, bhikkhave, pañcahi aṅgehi samannāgato mātugāmo ekantamanāpo hoti purisassā”ti.", "sujato": "When a lady has these five factors she is extremely desirable to a man.”"}, {"key": "sn37.1:1.9", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.2", "label": "SN 37.2 · A Man", "children": [{"id": "sn37.2/0", "label": "Linked Discourses 37.2", "rows": [{"key": "sn37.2:0.1", "pali": "Saṁyutta Nikāya 37.2", "sujato": "Linked Discourses 37.2"}, {"key": "sn37.2:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.2:0.3", "pali": "Purisasutta", "sujato": "A Man"}]}, {"id": "sn37.2/1", "label": "“Mendicants, when a man has five factors…", "rows": [{"key": "sn37.2:1.1", "pali": "“Pañcahi, bhikkhave, aṅgehi samannāgato puriso ekantaamanāpo hoti mātugāmassa.", "sujato": "“Mendicants, when a man has five factors he is extremely undesirable to a lady."}, {"key": "sn37.2:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.2:1.3", "pali": "Na ca rūpavā hoti, na ca bhogavā hoti, na ca sīlavā hoti, alaso ca hoti, pajañcassa na labhati—", "sujato": "He’s not attractive, wealthy, or ethical;\nhe’s idle, and he doesn’t beget children."}, {"key": "sn37.2:1.4", "pali": "imehi kho, bhikkhave, pañcahi aṅgehi samannāgato puriso ekantaamanāpo hoti mātugāmassa.", "sujato": "When a man has these five factors he is extremely undesirable to a lady."}, {"key": "sn37.2:1.5", "pali": "Pañcahi, bhikkhave, aṅgehi samannāgato puriso ekantamanāpo hoti mātugāmassa.", "sujato": "When a man has five factors he is extremely desirable to a lady."}, {"key": "sn37.2:1.6", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.2:1.7", "pali": "Rūpavā ca hoti, bhogavā ca hoti, sīlavā ca hoti, dakkho ca hoti analaso, pajañcassa labhati—", "sujato": "He’s attractive, wealthy, and ethical;\nhe’s deft and tireless, and he begets children."}, {"key": "sn37.2:1.8", "pali": "imehi kho, bhikkhave, pañcahi aṅgehi samannāgato puriso ekantamanāpo hoti mātugāmassā”ti.", "sujato": "When a man has these five factors he is extremely desirable to a lady.”"}, {"key": "sn37.2:1.9", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.3", "label": "SN 37.3 · Particular Suffering", "children": [{"id": "sn37.3/0", "label": "Linked Discourses 37.3", "rows": [{"key": "sn37.3:0.1", "pali": "Saṁyutta Nikāya 37.3", "sujato": "Linked Discourses 37.3"}, {"key": "sn37.3:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.3:0.3", "pali": "Āveṇikadukkhasutta", "sujato": "Particular Suffering"}]}, {"id": "sn37.3/1", "label": "“Mendicants, there are these five kinds of…", "rows": [{"key": "sn37.3:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa āveṇikāni dukkhāni, yāni mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "“Mendicants, there are these five kinds of suffering that particularly apply to ladies.\nThey’re undergone by ladies and not by men."}, {"key": "sn37.3:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.3:1.3", "pali": "Idha, bhikkhave, mātugāmo daharova samāno patikulaṁ gacchati, ñātakehi vinā hoti.", "sujato": "Firstly, a lady, while still young, goes to live with her husband’s family and is separated from her relatives."}, {"key": "sn37.3:1.4", "pali": "Idaṁ, bhikkhave, mātugāmassa paṭhamaṁ āveṇikaṁ dukkhaṁ, yaṁ mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "This is the first kind of suffering that particularly applies to ladies."}, {"key": "sn37.3:1.5", "pali": "Puna caparaṁ, bhikkhave, mātugāmo utunī hoti.", "sujato": "Furthermore, a lady undergoes the menstrual cycle."}, {"key": "sn37.3:1.6", "pali": "Idaṁ, bhikkhave, mātugāmassa dutiyaṁ āveṇikaṁ dukkhaṁ, yaṁ mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "This is the second kind of suffering that particularly applies to ladies."}, {"key": "sn37.3:1.7", "pali": "Puna caparaṁ, bhikkhave, mātugāmo gabbhinī hoti.", "sujato": "Furthermore, a lady undergoes pregnancy."}, {"key": "sn37.3:1.8", "pali": "Idaṁ, bhikkhave, mātugāmassa tatiyaṁ āveṇikaṁ dukkhaṁ, yaṁ mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "This is the third kind of suffering that particularly applies to ladies."}, {"key": "sn37.3:1.9", "pali": "Puna caparaṁ, bhikkhave, mātugāmo vijāyati.", "sujato": "Furthermore, a lady gives birth."}, {"key": "sn37.3:1.10", "pali": "Idaṁ, bhikkhave, mātugāmassa catutthaṁ āveṇikaṁ dukkhaṁ, yaṁ mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "This is the fourth kind of suffering that particularly applies to ladies."}, {"key": "sn37.3:1.11", "pali": "Puna caparaṁ, bhikkhave, mātugāmo purisassa pāricariyaṁ upeti.", "sujato": "Furthermore, a lady provides services for a man."}, {"key": "sn37.3:1.12", "pali": "Idaṁ kho, bhikkhave, mātugāmassa pañcamaṁ āveṇikaṁ dukkhaṁ, yaṁ mātugāmo paccanubhoti, aññatreva purisehi.", "sujato": "This is the fifth kind of suffering that particularly applies to ladies."}, {"key": "sn37.3:1.13", "pali": "Imāni kho, bhikkhave, pañca mātugāmassa āveṇikāni dukkhāni, yāni mātugāmo paccanubhoti, aññatreva purisehī”ti.", "sujato": "These are the five kinds of suffering that particularly apply to ladies.\nThey’re undergone by ladies and not by men.”"}, {"key": "sn37.3:1.14", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.4", "label": "SN 37.4 · Three Qualities", "children": [{"id": "sn37.4/0", "label": "Linked Discourses 37.4", "rows": [{"key": "sn37.4:0.1", "pali": "Saṁyutta Nikāya 37.4", "sujato": "Linked Discourses 37.4"}, {"key": "sn37.4:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.4:0.3", "pali": "Tīhidhammehisutta", "sujato": "Three Qualities"}]}, {"id": "sn37.4/1", "label": "“Mendicants, when ladies have three qualities, when…", "rows": [{"key": "sn37.4:1.1", "pali": "“Tīhi, bhikkhave, dhammehi samannāgato mātugāmo yebhuyyena kāyassa\nbhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": "“Mendicants, when ladies have three qualities, when their body breaks up, after death,\nthey are mostly reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn37.4:1.2", "pali": "Katamehi tīhi?", "sujato": "What three?"}, {"key": "sn37.4:1.3", "pali": "Idha, bhikkhave, mātugāmo pubbaṇhasamayaṁ maccheramalapariyuṭṭhitena cetasā agāraṁ ajjhāvasati.", "sujato": "A female lives at home with a heart full of the stain of stinginess in the morning,\njealousy in the afternoon, and sexual desire in the evening."}, {"key": "sn37.4:1.4", "pali": "Majjhanhikasamayaṁ issāpariyuṭṭhitena cetasā agāraṁ ajjhāvasati.", "sujato": ""}, {"key": "sn37.4:1.5", "pali": "Sāyanhasamayaṁ kāmarāgapariyuṭṭhitena cetasā agāraṁ ajjhāvasati.", "sujato": ""}, {"key": "sn37.4:1.6", "pali": "Imehi kho, bhikkhave,\ntīhi dhammehi samannāgato mātugāmo yebhuyyena kāyassa bhedā\nparaṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": "When ladies possess these three qualities, when their body breaks up, after death,\nthey are mostly reborn in a place of loss, a bad place, the underworld, hell.”"}, {"key": "sn37.4:1.7", "pali": "Catutthaṁ.", "sujato": ""}, {"key": "sn37.4:1.8", "pali": "(…)", "sujato": ""}]}]}, {"id": "sn37.5", "label": "SN 37.5 · Irritable", "children": [{"id": "sn37.5/0", "label": "Linked Discourses 37.5", "rows": [{"key": "sn37.5:0.1", "pali": "Saṁyutta Nikāya 37.5", "sujato": "Linked Discourses 37.5"}, {"key": "sn37.5:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.5:0.3", "pali": "Kodhanasutta", "sujato": "Irritable"}]}, {"id": "sn37.5/1", "label": "Then Venerable Anuruddha went up to the…", "rows": [{"key": "sn37.5:1.1", "pali": "Atha kho āyasmā anuruddho yena bhagavā tenupasaṅkami;\nupasaṅkamitvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā anuruddho bhagavantaṁ etadavoca:", "sujato": "Then Venerable Anuruddha went up to the Buddha, sat down to one side, and said to him:"}, {"key": "sn37.5:1.2", "pali": "“idhāhaṁ, bhante, mātugāmaṁ passāmi dibbena cakkhunā visuddhena atikkantamānusakena\nkāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjantaṁ.", "sujato": "“Sometimes, sir, with my clairvoyance that’s purified and superhuman, I see that a lady—when her body breaks up,\nafter death—is reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn37.5:1.3", "pali": "Katīhi nu kho, bhante,\ndhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti?", "sujato": "How many qualities do ladies have so that they’re reborn in a place of loss, a bad place, the underworld, hell?”"}]}, {"id": "sn37.5/2", "label": "“Anuruddha, when ladies have five qualities, when…", "rows": [{"key": "sn37.5:2.1", "pali": "“Pañcahi kho, anuruddha,\ndhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": "“Anuruddha, when ladies have five qualities, when their body breaks up,\nafter death, they are reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn37.5:2.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.5:2.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, kodhano ca hoti, duppañño ca hoti—", "sujato": "They’re faithless, shameless, imprudent, irritable, and witless."}, {"key": "sn37.5:2.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": "When ladies possess these five qualities, when their body breaks up, after death,\nthey are reborn in a place of loss, a bad place, the underworld, hell.”"}, {"key": "sn37.5:2.5", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn37.6", "label": "SN 37.6 · Acrimony", "children": [{"id": "sn37.6/0", "label": "Linked Discourses 37.6", "rows": [{"key": "sn37.6:0.1", "pali": "Saṁyutta Nikāya 37.6", "sujato": "Linked Discourses 37.6"}, {"key": "sn37.6:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.6:0.3", "pali": "Upanāhīsutta", "sujato": "Acrimony"}]}, {"id": "sn37.6/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā…", "rows": [{"key": "sn37.6:1.1", "pali": "“Pañcahi, anuruddha,\ndhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.6:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.6:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, upanāhī ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, acrimonious, and witless. …”"}, {"key": "sn37.6:1.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.6:1.5", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn37.7", "label": "SN 37.7 · Jealous", "children": [{"id": "sn37.7/0", "label": "Linked Discourses 37.7", "rows": [{"key": "sn37.7:0.1", "pali": "Saṁyutta Nikāya 37.7", "sujato": "Linked Discourses 37.7"}, {"key": "sn37.7:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.7:0.3", "pali": "Issukīsutta", "sujato": "Jealous"}]}, {"id": "sn37.7/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā…", "rows": [{"key": "sn37.7:1.1", "pali": "“Pañcahi, anuruddha,\ndhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.7:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.7:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, issukī ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, jealous, and witless. …”"}, {"key": "sn37.7:1.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.7:1.5", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn37.8", "label": "SN 37.8 · Stingy", "children": [{"id": "sn37.8/0", "label": "Linked Discourses 37.8", "rows": [{"key": "sn37.8:0.1", "pali": "Saṁyutta Nikāya 37.8", "sujato": "Linked Discourses 37.8"}, {"key": "sn37.8:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.8:0.3", "pali": "Maccharīsutta", "sujato": "Stingy"}]}, {"id": "sn37.8/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā…", "rows": [{"key": "sn37.8:1.1", "pali": "“Pañcahi, anuruddha,\ndhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.8:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.8:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, maccharī ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, stingy, and witless. …”"}, {"key": "sn37.8:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe…", "sujato": ""}, {"key": "sn37.8:1.5", "pali": "apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.8:1.6", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.9", "label": "SN 37.9 · Adultery", "children": [{"id": "sn37.9/0", "label": "Linked Discourses 37.9", "rows": [{"key": "sn37.9:0.1", "pali": "Saṁyutta Nikāya 37.9", "sujato": "Linked Discourses 37.9"}, {"key": "sn37.9:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.9:0.3", "pali": "Aticārīsutta", "sujato": "Adultery"}]}, {"id": "sn37.9/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… apāyaṁ…", "rows": [{"key": "sn37.9:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.9:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.9:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, aticārī ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, adulterous, and witless. …”"}, {"key": "sn37.9:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe… upapajjatī”ti.", "sujato": ""}, {"key": "sn37.9:1.5", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn37.10", "label": "SN 37.10 · Unethical", "children": [{"id": "sn37.10/0", "label": "Linked Discourses 37.10", "rows": [{"key": "sn37.10:0.1", "pali": "Saṁyutta Nikāya 37.10", "sujato": "Linked Discourses 37.10"}, {"key": "sn37.10:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.10:0.3", "pali": "Dussīlasutta", "sujato": "Unethical"}]}, {"id": "sn37.10/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ…", "rows": [{"key": "sn37.10:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.10:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.10:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, dussīlo ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, unethical, and witless. …”"}, {"key": "sn37.10:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.10:1.5", "pali": "Dasamaṁ.", "sujato": ""}]}]}, {"id": "sn37.11", "label": "SN 37.11 · Unlearned", "children": [{"id": "sn37.11/0", "label": "Linked Discourses 37.11", "rows": [{"key": "sn37.11:0.1", "pali": "Saṁyutta Nikāya 37.11", "sujato": "Linked Discourses 37.11"}, {"key": "sn37.11:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.11:0.3", "pali": "Appassutasutta", "sujato": "Unlearned"}]}, {"id": "sn37.11/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ…", "rows": [{"key": "sn37.11:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.11:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.11:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, appassuto ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, unlearned, and witless. …”"}, {"key": "sn37.11:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.11:1.5", "pali": "Ekādasamaṁ.", "sujato": ""}]}]}, {"id": "sn37.12", "label": "SN 37.12 · Lazy", "children": [{"id": "sn37.12/0", "label": "Linked Discourses 37.12", "rows": [{"key": "sn37.12:0.1", "pali": "Saṁyutta Nikāya 37.12", "sujato": "Linked Discourses 37.12"}, {"key": "sn37.12:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.12:0.3", "pali": "Kusītasutta", "sujato": "Lazy"}]}, {"id": "sn37.12/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ…", "rows": [{"key": "sn37.12:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.12:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.12:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, kusīto ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, lazy, and witless. …”"}, {"key": "sn37.12:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe… apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.12:1.5", "pali": "Dvādasamaṁ.", "sujato": ""}]}]}, {"id": "sn37.13", "label": "SN 37.13 · Unmindful", "children": [{"id": "sn37.13/0", "label": "Linked Discourses 37.13", "rows": [{"key": "sn37.13:0.1", "pali": "Saṁyutta Nikāya 37.13", "sujato": "Linked Discourses 37.13"}, {"key": "sn37.13:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.13:0.3", "pali": "Muṭṭhassatisutta", "sujato": "Unmindful"}]}, {"id": "sn37.13/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ…", "rows": [{"key": "sn37.13:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjati.", "sujato": ""}, {"key": "sn37.13:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.13:1.3", "pali": "Assaddho ca hoti, ahiriko ca hoti, anottappī ca hoti, muṭṭhassati ca hoti, duppañño ca hoti—", "sujato": "“…\nThey’re faithless, shameless, imprudent, unmindful, and witless. …”"}, {"key": "sn37.13:1.4", "pali": "imehi kho, anuruddha, pañcahi dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.13:1.5", "pali": "Terasamaṁ.", "sujato": ""}]}]}, {"id": "sn37.14", "label": "SN 37.14 · Five Threats", "children": [{"id": "sn37.14/0", "label": "Linked Discourses 37.14", "rows": [{"key": "sn37.14:0.1", "pali": "Saṁyutta Nikāya 37.14", "sujato": "Linked Discourses 37.14"}, {"key": "sn37.14:0.2", "pali": "1.\nPaṭhamapeyyālavagga", "sujato": "1.\nAbbreviated Texts"}, {"key": "sn37.14:0.3", "pali": "Pañcaverasutta", "sujato": "Five Threats"}]}, {"id": "sn37.14/1", "label": "“Anuruddha, when ladies have five qualities, when…", "rows": [{"key": "sn37.14:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo …pe… nirayaṁ upapajjati.", "sujato": "“Anuruddha, when ladies have five qualities, when their body breaks up,\nafter death, they are reborn in a place of loss, a bad place, the underworld, hell."}, {"key": "sn37.14:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.14:1.3", "pali": "Pāṇātipātī ca hoti, adinnādāyī ca hoti, kāmesumicchācārī ca hoti,\nmusāvādī ca hoti, surāmerayamajjappamādaṭṭhāyī ca hoti—", "sujato": "They kill living creatures, steal, commit sexual misconduct, lie, and consume beer, wine, and liquor intoxicants."}, {"key": "sn37.14:1.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapajjatī”ti.", "sujato": "When ladies possess these five qualities, when their body breaks up, after death,\nthey are reborn in a place of loss, a bad place, the underworld, hell.”"}, {"key": "sn37.14:1.5", "pali": "Cuddasamaṁ.", "sujato": ""}, {"key": "sn37.14:1.6", "pali": "Paṭhamapeyyālavaggo.", "sujato": ""}]}, {"id": "sn37.14/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn37.14:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn37.14:2.1", "pali": "Mātugāmo puriso ca,", "sujato": ""}, {"key": "sn37.14:2.2", "pali": "āveṇikā tidhammo ca;", "sujato": ""}, {"key": "sn37.14:2.3", "pali": "Kodhano upanāhī ca,", "sujato": ""}, {"key": "sn37.14:2.4", "pali": "issukī maccharena ca;", "sujato": ""}, {"key": "sn37.14:2.5", "pali": "Aticārī ca dussīlo,", "sujato": ""}, {"key": "sn37.14:2.6", "pali": "appassuto ca kusīto;", "sujato": ""}, {"key": "sn37.14:2.7", "pali": "Muṭṭhassati pañcaveraṁ,", "sujato": ""}, {"key": "sn37.14:2.8", "pali": "kaṇhapakkhe pakāsito.", "sujato": ""}]}]}]}, {"id": "sn37-dutiyapeyyalavagga", "label": "Dutiyapeyyālavagga — Second Chapter of Abbreviated Texts", "children": [{"id": "sn37.15", "label": "SN 37.15 · Loving", "children": [{"id": "sn37.15/0", "label": "Linked Discourses 37.15", "rows": [{"key": "sn37.15:0.1", "pali": "Saṁyutta Nikāya 37.15", "sujato": "Linked Discourses 37.15"}, {"key": "sn37.15:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.15:0.3", "pali": "Akkodhanasutta", "sujato": "Loving"}]}, {"id": "sn37.15/1", "label": "Then Venerable Anuruddha went up to the…", "rows": [{"key": "sn37.15:1.1", "pali": "Atha kho āyasmā anuruddho yena bhagavā tenupasaṅkami;\nupasaṅkamitvā …pe… ekamantaṁ nisinno kho āyasmā anuruddho bhagavantaṁ etadavoca:", "sujato": "Then Venerable Anuruddha went up to the Buddha … and asked him,"}, {"key": "sn37.15:1.2", "pali": "“idhāhaṁ, bhante, mātugāmaṁ passāmi dibbena cakkhunā visuddhena\natikkantamānusakena kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjantaṁ.", "sujato": "“Sometimes, sir, with my clairvoyance that’s purified and superhuman,\nI see that a lady—when her body breaks up, after death—is reborn in a good place, a heavenly realm."}, {"key": "sn37.15:1.3", "pali": "Katīhi nu kho, bhante, dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjatī”ti?", "sujato": "How many qualities do ladies have so that they’re reborn in a good place, a heavenly realm?”"}]}, {"id": "sn37.15/2", "label": "“Anuruddha, when ladies have five qualities, when…", "rows": [{"key": "sn37.15:2.1", "pali": "“Pañcahi kho, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": "“Anuruddha, when ladies have five qualities, when their body breaks up,\nafter death, they are reborn in a good place, a heavenly realm."}, {"key": "sn37.15:2.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.15:2.3", "pali": "Saddho ca hoti, hirimā ca hoti, ottappī ca hoti, akkodhano ca hoti, paññavā ca hoti—", "sujato": "They’re faithful, conscientious, prudent, loving, and wise."}, {"key": "sn37.15:2.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjatī”ti.", "sujato": "When ladies possess these five qualities, when their body breaks up,\nafter death, they are reborn in a good place, a heavenly realm.”"}, {"key": "sn37.15:2.5", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.16", "label": "SN 37.16 · Free of Acrimony", "children": [{"id": "sn37.16/0", "label": "Linked Discourses 37.16", "rows": [{"key": "sn37.16:0.1", "pali": "Saṁyutta Nikāya 37.16", "sujato": "Linked Discourses 37.16"}, {"key": "sn37.16:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.16:0.3", "pali": "Anupanāhīsutta", "sujato": "Free of Acrimony"}]}, {"id": "sn37.16/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā…", "rows": [{"key": "sn37.16:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": ""}, {"key": "sn37.16:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.16:1.3", "pali": "Saddho ca hoti, hirimā ca hoti, ottappī ca hoti, anupanāhī ca hoti, paññavā ca hoti—", "sujato": "“…\nThey’re faithful, conscientious, prudent, free of acrimony, and wise. …”"}, {"key": "sn37.16:1.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.16:1.5", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.17", "label": "SN 37.17 · Free of Jealousy", "children": [{"id": "sn37.17/0", "label": "Linked Discourses 37.17", "rows": [{"key": "sn37.17:0.1", "pali": "Saṁyutta Nikāya 37.17", "sujato": "Linked Discourses 37.17"}, {"key": "sn37.17:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.17:0.3", "pali": "Anissukīsutta", "sujato": "Free of Jealousy"}]}, {"id": "sn37.17/1", "label": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā…", "rows": [{"key": "sn37.17:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": ""}, {"key": "sn37.17:1.2", "pali": "Katamehi pañcahi?", "sujato": ""}, {"key": "sn37.17:1.3", "pali": "Saddho ca hoti, hirimā ca hoti, ottappī ca hoti, anissukī ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, free of jealousy, and wise. …”"}, {"key": "sn37.17:1.4", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.18", "label": "SN 37.18 · Free of Stinginess", "children": [{"id": "sn37.18/0", "label": "Linked Discourses 37.18", "rows": [{"key": "sn37.18:0.1", "pali": "Saṁyutta Nikāya 37.18", "sujato": "Linked Discourses 37.18"}, {"key": "sn37.18:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.18:0.3", "pali": "Amaccharīsutta", "sujato": "Free of Stinginess"}]}, {"id": "sn37.18/1", "label": "“… They’re faithful, conscientious, prudent, free of…", "rows": [{"key": "sn37.18:1.1", "pali": "“Amaccharī ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, free of stinginess, and wise. …”"}, {"key": "sn37.18:1.2", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn37.19", "label": "SN 37.19 · Not Adulterous", "children": [{"id": "sn37.19/0", "label": "Linked Discourses 37.19", "rows": [{"key": "sn37.19:0.1", "pali": "Saṁyutta Nikāya 37.19", "sujato": "Linked Discourses 37.19"}, {"key": "sn37.19:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.19:0.3", "pali": "Anaticārīsutta", "sujato": "Not Adulterous"}]}, {"id": "sn37.19/1", "label": "“… They’re faithful, conscientious, prudent, not adulterous,…", "rows": [{"key": "sn37.19:1.1", "pali": "“Anaticārī ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, not adulterous, and wise. …”"}, {"key": "sn37.19:1.2", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn37.20", "label": "SN 37.20 · Ethical", "children": [{"id": "sn37.20/0", "label": "Linked Discourses 37.20", "rows": [{"key": "sn37.20:0.1", "pali": "Saṁyutta Nikāya 37.20", "sujato": "Linked Discourses 37.20"}, {"key": "sn37.20:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.20:0.3", "pali": "Susīlasutta", "sujato": "Ethical"}]}, {"id": "sn37.20/1", "label": "“… They’re faithful, conscientious, prudent, ethical, and…", "rows": [{"key": "sn37.20:1.1", "pali": "“Sīlavā ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, ethical, and wise. …”"}, {"key": "sn37.20:1.2", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn37.21", "label": "SN 37.21 · Very Learned", "children": [{"id": "sn37.21/0", "label": "Linked Discourses 37.21", "rows": [{"key": "sn37.21:0.1", "pali": "Saṁyutta Nikāya 37.21", "sujato": "Linked Discourses 37.21"}, {"key": "sn37.21:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.21:0.3", "pali": "Bahussutasutta", "sujato": "Very Learned"}]}, {"id": "sn37.21/1", "label": "“… They’re faithful, conscientious, prudent, learned, and…", "rows": [{"key": "sn37.21:1.1", "pali": "“Bahussuto ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, learned, and wise. …”"}, {"key": "sn37.21:1.2", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn37.22", "label": "SN 37.22 · Energetic", "children": [{"id": "sn37.22/0", "label": "Linked Discourses 37.22", "rows": [{"key": "sn37.22:0.1", "pali": "Saṁyutta Nikāya 37.22", "sujato": "Linked Discourses 37.22"}, {"key": "sn37.22:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.22:0.3", "pali": "Āraddhavīriyasutta", "sujato": "Energetic"}]}, {"id": "sn37.22/1", "label": "“… They’re faithful, conscientious, prudent, energetic, and…", "rows": [{"key": "sn37.22:1.1", "pali": "“Āraddhavīriyo ca hoti, paññavā ca hoti …pe….", "sujato": "“…\nThey’re faithful, conscientious, prudent, energetic, and wise. …”"}, {"key": "sn37.22:1.2", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.23", "label": "SN 37.23 · Mindful", "children": [{"id": "sn37.23/0", "label": "Linked Discourses 37.23", "rows": [{"key": "sn37.23:0.1", "pali": "Saṁyutta Nikāya 37.23", "sujato": "Linked Discourses 37.23"}, {"key": "sn37.23:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.23:0.3", "pali": "Upaṭṭhitassatisutta", "sujato": "Mindful"}]}, {"id": "sn37.23/1", "label": "“… They’re faithful, conscientious, prudent, mindful, and…", "rows": [{"key": "sn37.23:1.1", "pali": "“Upaṭṭhitassati ca hoti, paññavā ca hoti …pe…", "sujato": "“…\nThey’re faithful, conscientious, prudent, mindful, and wise. …”"}, {"key": "sn37.23:1.2", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjatī”ti.", "sujato": ""}, {"key": "sn37.23:1.3", "pali": "Navamaṁ.", "sujato": ""}]}, {"id": "sn37.23/2", "label": "Ime aṭṭha suttantasaṅkhepā.", "rows": [{"key": "sn37.23:2.1", "pali": "Ime aṭṭha suttantasaṅkhepā.", "sujato": ""}]}]}, {"id": "sn37.24", "label": "SN 37.24 · Five Precepts", "children": [{"id": "sn37.24/0", "label": "Linked Discourses 37.24", "rows": [{"key": "sn37.24:0.1", "pali": "Saṁyutta Nikāya 37.24", "sujato": "Linked Discourses 37.24"}, {"key": "sn37.24:0.2", "pali": "2.\nDutiyapeyyālavagga", "sujato": "2.\nAbbreviated Texts"}, {"key": "sn37.24:0.3", "pali": "Pañcasīlasutta", "sujato": "Five Precepts"}]}, {"id": "sn37.24/1", "label": "“Anuruddha, when ladies have five qualities, when…", "rows": [{"key": "sn37.24:1.1", "pali": "“Pañcahi, anuruddha, dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": "“Anuruddha, when ladies have five qualities, when their body breaks up,\nafter death, they are reborn in a good place, a heavenly realm."}, {"key": "sn37.24:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.24:1.3", "pali": "Pāṇātipātā paṭivirato ca hoti, adinnādānā paṭivirato ca hoti, kāmesumicchācārā paṭivirato ca hoti,\nmusāvādā paṭivirato ca hoti, surāmerayamajjappamādaṭṭhānā paṭivirato ca hoti—", "sujato": "They don’t kill living creatures, steal, commit sexual misconduct, lie, or consume beer, wine, and liquor intoxicants."}, {"key": "sn37.24:1.4", "pali": "imehi kho, anuruddha,\npañcahi dhammehi samannāgato mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjatī”ti.", "sujato": "When ladies possess these five qualities, when their body breaks up,\nafter death, they are reborn in a good place, a heavenly realm.”"}, {"key": "sn37.24:1.5", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn37.24:1.6", "pali": "Dutiyapeyyālavaggo.", "sujato": ""}]}, {"id": "sn37.24/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn37.24:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn37.24:2.1", "pali": "Dutiye ca akkodhano,", "sujato": ""}, {"key": "sn37.24:2.2", "pali": "anupanāhī anissukī;", "sujato": ""}, {"key": "sn37.24:2.3", "pali": "Amaccharī anaticārī,", "sujato": ""}, {"key": "sn37.24:2.4", "pali": "sīlavā ca bahussuto;", "sujato": ""}, {"key": "sn37.24:2.5", "pali": "Vīriyaṁ sati sīlañca,", "sujato": ""}, {"key": "sn37.24:2.6", "pali": "sukkapakkhe pakāsito.", "sujato": ""}]}]}]}, {"id": "sn37-balavagga", "label": "Balavagga — The Chapter on Powers", "children": [{"id": "sn37.25", "label": "SN 37.25 · Assured", "children": [{"id": "sn37.25/0", "label": "Linked Discourses 37.25", "rows": [{"key": "sn37.25:0.1", "pali": "Saṁyutta Nikāya 37.25", "sujato": "Linked Discourses 37.25"}, {"key": "sn37.25:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.25:0.3", "pali": "Visāradasutta", "sujato": "Assured"}]}, {"id": "sn37.25/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.25:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.25:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.25:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ—", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.25:1.4", "pali": "imāni kho, bhikkhave, pañca mātugāmassa balāni.", "sujato": "These are the five powers of a lady."}, {"key": "sn37.25:1.5", "pali": "Imehi kho, bhikkhave, pañcahi balehi samannāgato mātugāmo visārado agāraṁ ajjhāvasatī”ti.", "sujato": "A lady living at home with these five qualities is self-assured.”"}, {"key": "sn37.25:1.6", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.26", "label": "SN 37.26 · Under Her Thumb", "children": [{"id": "sn37.26/0", "label": "Linked Discourses 37.26", "rows": [{"key": "sn37.26:0.1", "pali": "Saṁyutta Nikāya 37.26", "sujato": "Linked Discourses 37.26"}, {"key": "sn37.26:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.26:0.3", "pali": "Pasayhasutta", "sujato": "Under Her Thumb"}]}, {"id": "sn37.26/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.26:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.26:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.26:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ—", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.26:1.4", "pali": "imāni kho, bhikkhave, pañca mātugāmassa balāni.", "sujato": "These are the five powers of a lady."}, {"key": "sn37.26:1.5", "pali": "Imehi kho, bhikkhave, pañcahi balehi samannāgato mātugāmo sāmikaṁ pasayha agāraṁ ajjhāvasatī”ti.", "sujato": "A lady living at home with these five powers has her husband under her thumb.”"}, {"key": "sn37.26:1.6", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.27", "label": "SN 37.27 · Mastered", "children": [{"id": "sn37.27/0", "label": "Linked Discourses 37.27", "rows": [{"key": "sn37.27:0.1", "pali": "Saṁyutta Nikāya 37.27", "sujato": "Linked Discourses 37.27"}, {"key": "sn37.27:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.27:0.3", "pali": "Abhibhuyyasutta", "sujato": "Mastered"}]}, {"id": "sn37.27/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.27:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.27:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.27:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ—", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.27:1.4", "pali": "imāni kho, bhikkhave, pañca mātugāmassa balāni.", "sujato": "These are the five powers of a lady."}, {"key": "sn37.27:1.5", "pali": "Imehi kho, bhikkhave, pañcahi balehi samannāgato mātugāmo sāmikaṁ abhibhuyya vattatī”ti.", "sujato": "A lady with these five powers lives having mastered her husband.”"}, {"key": "sn37.27:1.6", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn37.28", "label": "SN 37.28 · One", "children": [{"id": "sn37.28/0", "label": "Linked Discourses 37.28", "rows": [{"key": "sn37.28:0.1", "pali": "Saṁyutta Nikāya 37.28", "sujato": "Linked Discourses 37.28"}, {"key": "sn37.28:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.28:0.3", "pali": "Ekasutta", "sujato": "One"}]}, {"id": "sn37.28/1", "label": "“Mendicants, by means of one power a…", "rows": [{"key": "sn37.28:1.1", "pali": "“Ekena ca kho, bhikkhave, balena samannāgato puriso mātugāmaṁ abhibhuyya vattati.", "sujato": "“Mendicants, by means of one power a man lives having mastered a lady."}, {"key": "sn37.28:1.2", "pali": "Katamena ekena balena?", "sujato": "By means of what one power?"}, {"key": "sn37.28:1.3", "pali": "Issariyabalena abhibhūtaṁ mātugāmaṁ neva rūpabalaṁ tāyati, na bhogabalaṁ tāyati,\nna ñātibalaṁ tāyati, na puttabalaṁ tāyati, na sīlabalaṁ tāyatī”ti.", "sujato": "When a lady has been mastered by the power of authority, her powers of attractiveness,\nwealth, relatives, children, and ethical behavior do not avail her.”"}, {"key": "sn37.28:1.4", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn37.29", "label": "SN 37.29 · In That Respect", "children": [{"id": "sn37.29/0", "label": "Linked Discourses 37.29", "rows": [{"key": "sn37.29:0.1", "pali": "Saṁyutta Nikāya 37.29", "sujato": "Linked Discourses 37.29"}, {"key": "sn37.29:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.29:0.3", "pali": "Aṅgasutta", "sujato": "In That Respect"}]}, {"id": "sn37.29/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.29:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.29:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.29:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ.", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.29:1.4", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca bhogabalena—", "sujato": "A lady who has the power of attractiveness but not the power of wealth"}, {"key": "sn37.29:1.5", "pali": "evaṁ so tenaṅgena aparipūro hoti.", "sujato": "is incomplete in that respect."}, {"key": "sn37.29:1.6", "pali": "Yato ca kho, bhikkhave, mātugāmo rūpabalena ca samannāgato hoti, bhogabalena ca—", "sujato": "But when she has the power of attractiveness and the power of wealth"}, {"key": "sn37.29:1.7", "pali": "evaṁ so tenaṅgena paripūro hoti.", "sujato": "she’s complete in that respect."}, {"key": "sn37.29:1.8", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca, na ca ñātibalena—", "sujato": "A lady who has the powers of attractiveness and wealth, but not the power of relatives"}, {"key": "sn37.29:1.9", "pali": "evaṁ so tenaṅgena aparipūro hoti.", "sujato": "is incomplete in that respect."}, {"key": "sn37.29:1.10", "pali": "Yato ca kho, bhikkhave, mātugāmo rūpabalena ca samannāgato hoti, bhogabalena ca, ñātibalena ca—", "sujato": "But when she has the powers of attractiveness, wealth, and relatives"}, {"key": "sn37.29:1.11", "pali": "evaṁ so tenaṅgena paripūro hoti.", "sujato": "she’s complete in that respect."}, {"key": "sn37.29:1.12", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca, ñātibalena ca, na ca puttabalena—", "sujato": "A lady who has the powers of attractiveness, wealth, and relatives, but not the power of children"}, {"key": "sn37.29:1.13", "pali": "evaṁ so tenaṅgena aparipūro hoti.", "sujato": "is incomplete in that respect."}, {"key": "sn37.29:1.14", "pali": "Yato ca kho, bhikkhave, mātugāmo rūpabalena ca samannāgato hoti, bhogabalena ca, ñātibalena ca, puttabalena ca—", "sujato": "But when she has the powers of attractiveness, wealth, relatives, and children"}, {"key": "sn37.29:1.15", "pali": "evaṁ so tenaṅgena paripūro hoti.", "sujato": "she’s complete in that respect."}, {"key": "sn37.29:1.16", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca, ñātibalena ca, puttabalena ca, na ca sīlabalena—", "sujato": "A lady who has the powers of attractiveness, wealth, relatives, and children, but not the power of ethical behavior"}, {"key": "sn37.29:1.17", "pali": "evaṁ so tenaṅgena aparipūro hoti.", "sujato": "is incomplete in that respect."}, {"key": "sn37.29:1.18", "pali": "Yato ca kho, bhikkhave, mātugāmo rūpabalena ca samannāgato hoti,\nbhogabalena ca, ñātibalena ca, puttabalena ca, sīlabalena ca—", "sujato": "But when she has the powers of attractiveness, wealth, relatives, children, and ethical behavior"}, {"key": "sn37.29:1.19", "pali": "evaṁ so tenaṅgena paripūro hoti.", "sujato": "she’s complete in that respect."}, {"key": "sn37.29:1.20", "pali": "Imāni kho, bhikkhave, pañca mātugāmassa balānī”ti.", "sujato": "These are the five powers of a lady.”"}, {"key": "sn37.29:1.21", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn37.30", "label": "SN 37.30 · They Send Her Away", "children": [{"id": "sn37.30/0", "label": "Linked Discourses 37.30", "rows": [{"key": "sn37.30:0.1", "pali": "Saṁyutta Nikāya 37.30", "sujato": "Linked Discourses 37.30"}, {"key": "sn37.30:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.30:0.3", "pali": "Nāsentisutta", "sujato": "They Send Her Away"}]}, {"id": "sn37.30/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.30:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.30:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.30:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ.", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.30:1.4", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca sīlabalena, nāsenteva naṁ, kule na vāsenti.", "sujato": "If a lady has the power of attractiveness but not that of ethical behavior,\nthe family will send her away, they won’t accommodate her."}, {"key": "sn37.30:1.5", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca, na ca sīlabalena, nāsenteva naṁ, kule na vāsenti.", "sujato": "If a lady has the powers of attractiveness and wealth but not that of ethical behavior,\nthe family will send her away, they won’t accommodate her."}, {"key": "sn37.30:1.6", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca,\nñātibalena ca, na ca sīlabalena, nāsenteva naṁ, kule na vāsenti.", "sujato": "If a lady has the powers of attractiveness, wealth, and relatives,\nbut not that of ethical behavior, the family will send her away, they won’t accommodate her."}, {"key": "sn37.30:1.7", "pali": "Rūpabalena ca, bhikkhave, mātugāmo samannāgato hoti, bhogabalena ca,\nñātibalena ca, puttabalena ca, na ca sīlabalena, nāsenteva naṁ, kule na vāsenti.", "sujato": "If a lady has the powers of attractiveness, wealth, relatives, and children,\nbut not that of ethical behavior, the family will send her away, they won’t accommodate her."}, {"key": "sn37.30:1.8", "pali": "Sīlabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca rūpabalena, vāsenteva naṁ, kule na nāsenti.", "sujato": "If a lady has the power of ethical behavior but not that of attractiveness,\nthe family will accommodate her, they won’t send her away."}, {"key": "sn37.30:1.9", "pali": "Sīlabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca bhogabalena, vāsenteva naṁ, kule na nāsenti.", "sujato": "If a lady has the power of ethical behavior but not that of wealth,\nthe family will accommodate her, they won’t send her away."}, {"key": "sn37.30:1.10", "pali": "Sīlabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca ñātibalena, vāsenteva naṁ, kule na nāsenti.", "sujato": "If a lady has the power of ethical behavior but not that of relatives,\nthe family will accommodate her, they won’t send her away."}, {"key": "sn37.30:1.11", "pali": "Sīlabalena ca, bhikkhave, mātugāmo samannāgato hoti, na ca puttabalena, vāsenteva naṁ, kule na nāsenti.", "sujato": "If a lady has the power of ethical behavior but not that of children,\nthe family will accommodate her, they won’t send her away."}, {"key": "sn37.30:1.12", "pali": "Imāni kho, bhikkhave, pañca mātugāmassa balānī”ti.", "sujato": "These are the five powers of a lady.”"}, {"key": "sn37.30:1.13", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn37.31", "label": "SN 37.31 · Cause", "children": [{"id": "sn37.31/0", "label": "Linked Discourses 37.31", "rows": [{"key": "sn37.31:0.1", "pali": "Saṁyutta Nikāya 37.31", "sujato": "Linked Discourses 37.31"}, {"key": "sn37.31:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.31:0.3", "pali": "Hetusutta", "sujato": "Cause"}]}, {"id": "sn37.31/1", "label": "“Mendicants, there are these five powers of…", "rows": [{"key": "sn37.31:1.1", "pali": "“Pañcimāni, bhikkhave, mātugāmassa balāni.", "sujato": "“Mendicants, there are these five powers of a lady."}, {"key": "sn37.31:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.31:1.3", "pali": "Rūpabalaṁ, bhogabalaṁ, ñātibalaṁ, puttabalaṁ, sīlabalaṁ.", "sujato": "Attractiveness, wealth, relatives, children, and ethical behavior."}, {"key": "sn37.31:1.4", "pali": "Na, bhikkhave, mātugāmo rūpabalahetu vā bhogabalahetu vā ñātibalahetu vā\nputtabalahetu vā kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": "It is not because of the powers of attractiveness, wealth, relatives, or children that ladies,\nwhen their body breaks up, after death, are reborn in a good place, a heavenly realm."}, {"key": "sn37.31:1.5", "pali": "Sīlabalahetu kho, bhikkhave, mātugāmo kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapajjati.", "sujato": "It is because of the power of ethical behavior that ladies,\nwhen their body breaks up, after death, are reborn in a good place, a heavenly realm."}, {"key": "sn37.31:1.6", "pali": "Imāni kho, bhikkhave, pañca mātugāmassa balānī”ti.", "sujato": "These are the five powers of a lady.”"}, {"key": "sn37.31:1.7", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn37.32", "label": "SN 37.32 · Things", "children": [{"id": "sn37.32/0", "label": "Linked Discourses 37.32", "rows": [{"key": "sn37.32:0.1", "pali": "Saṁyutta Nikāya 37.32", "sujato": "Linked Discourses 37.32"}, {"key": "sn37.32:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.32:0.3", "pali": "Ṭhānasutta", "sujato": "Things"}]}, {"id": "sn37.32/1", "label": "“Mendicants, there are five things that are…", "rows": [{"key": "sn37.32:1.1", "pali": "“Pañcimāni, bhikkhave, ṭhānāni dullabhāni akatapuññena mātugāmena.", "sujato": "“Mendicants, there are five things that are hard to get for ladies who have not made merit."}, {"key": "sn37.32:1.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.32:1.3", "pali": "Patirūpe kule jāyeyyanti—", "sujato": "‘May I be born into a suitable family!’"}, {"key": "sn37.32:1.4", "pali": "idaṁ, bhikkhave, paṭhamaṁ ṭhānaṁ dullabhaṁ akatapuññena mātugāmena.", "sujato": "This is the first thing."}, {"key": "sn37.32:1.5", "pali": "Patirūpe kule jāyitvā patirūpaṁ kulaṁ gaccheyyanti—", "sujato": "‘Having been born in a suitable family, may I marry into a suitable family!’"}, {"key": "sn37.32:1.6", "pali": "idaṁ, bhikkhave, dutiyaṁ ṭhānaṁ dullabhaṁ akatapuññena mātugāmena.", "sujato": "This is the second thing."}, {"key": "sn37.32:1.7", "pali": "Patirūpe kule jāyitvā, patirūpaṁ kulaṁ gantvā, asapatti agāraṁ ajjhāvaseyyanti—", "sujato": "‘Having been born in a suitable family and married into a suitable family, may I live at home without a co-wife!’"}, {"key": "sn37.32:1.8", "pali": "idaṁ, bhikkhave, tatiyaṁ ṭhānaṁ dullabhaṁ akatapuññena mātugāmena.", "sujato": "This is the third thing."}, {"key": "sn37.32:1.9", "pali": "Patirūpe kule jāyitvā, patirūpaṁ kulaṁ gantvā, asapatti agāraṁ ajjhāvasantī puttavatī assanti—", "sujato": "‘Having been born in a suitable family, and married into a suitable family,\nand living at home without a co-wife, may I have children!’"}, {"key": "sn37.32:1.10", "pali": "idaṁ, bhikkhave, catutthaṁ ṭhānaṁ dullabhaṁ akatapuññena mātugāmena.", "sujato": "This is the fourth thing."}, {"key": "sn37.32:1.11", "pali": "Patirūpe kule jāyitvā, patirūpaṁ kulaṁ gantvā,\nasapatti agāraṁ ajjhāvasantī puttavatī samānā sāmikaṁ abhibhuyya vatteyyanti—", "sujato": "‘Having been born in a suitable family, and married into a suitable family,\nand living at home without a co-wife, and having had children, may I live having mastered my husband!’"}, {"key": "sn37.32:1.12", "pali": "idaṁ, bhikkhave, pañcamaṁ ṭhānaṁ dullabhaṁ akatapuññena mātugāmena.", "sujato": "This is the fifth thing."}, {"key": "sn37.32:1.13", "pali": "Imāni kho, bhikkhave, pañca ṭhānāni dullabhāni akatapuññena mātugāmenāti.", "sujato": "These are the five things that are hard to get for ladies who have not made merit."}]}, {"id": "sn37.32/2", "label": "There are five things that are easy…", "rows": [{"key": "sn37.32:2.1", "pali": "Pañcimāni, bhikkhave, ṭhānāni sulabhāni katapuññena mātugāmena.", "sujato": "There are five things that are easy to get for ladies who have made merit."}, {"key": "sn37.32:2.2", "pali": "Katamāni pañca?", "sujato": "What five?"}, {"key": "sn37.32:2.3", "pali": "Patirūpe kule jāyeyyanti—", "sujato": "‘May I be born into a suitable family!’"}, {"key": "sn37.32:2.4", "pali": "idaṁ, bhikkhave, paṭhamaṁ ṭhānaṁ sulabhaṁ katapuññena mātugāmena.", "sujato": "This is the first thing."}, {"key": "sn37.32:2.5", "pali": "Patirūpe kule jāyitvā patirūpaṁ kulaṁ gaccheyyanti—", "sujato": "‘Having been born into a suitable family, may I marry into a suitable family!’"}, {"key": "sn37.32:2.6", "pali": "idaṁ, bhikkhave, dutiyaṁ ṭhānaṁ sulabhaṁ katapuññena mātugāmena.", "sujato": "This is the second thing."}, {"key": "sn37.32:2.7", "pali": "Patirūpe kule jāyitvā patirūpaṁ kulaṁ gantvā asapatti agāraṁ ajjhāvaseyyanti—", "sujato": "‘Having been born into a suitable family and married into a suitable family, may I live at home without a co-wife!’"}, {"key": "sn37.32:2.8", "pali": "idaṁ, bhikkhave, tatiyaṁ ṭhānaṁ sulabhaṁ katapuññena mātugāmena.", "sujato": "This is the third thing."}, {"key": "sn37.32:2.9", "pali": "Patirūpe kule jāyitvā patirūpaṁ kulaṁ gantvā asapatti agāraṁ ajjhāvasantī puttavatī assanti—", "sujato": "‘Having been born into a suitable family, and married into a suitable family,\nand living at home without a co-wife, may I have children!’"}, {"key": "sn37.32:2.10", "pali": "idaṁ, bhikkhave, catutthaṁ ṭhānaṁ sulabhaṁ katapuññena mātugāmena.", "sujato": "This is the fourth thing."}, {"key": "sn37.32:2.11", "pali": "Patirūpe kule jāyitvā patirūpaṁ kulaṁ gantvā asapatti agāraṁ\najjhāvasantī puttavatī samānā sāmikaṁ abhibhuyya vatteyyanti—", "sujato": "‘Having been born into a suitable family, and married into a suitable family,\nand living at home without a co-wife, and having had children, may I live having mastered my husband!’"}, {"key": "sn37.32:2.12", "pali": "idaṁ, bhikkhave, pañcamaṁ ṭhānaṁ sulabhaṁ katapuññena mātugāmena.", "sujato": "This is the fifth thing."}, {"key": "sn37.32:2.13", "pali": "Imāni kho, bhikkhave, pañca ṭhānāni sulabhāni katapuññena mātugāmenā”ti.", "sujato": "These are the five things that are easy to get for ladies who have made merit.”"}, {"key": "sn37.32:2.14", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn37.33", "label": "SN 37.33 · Living With Self-Assurance", "children": [{"id": "sn37.33/0", "label": "Linked Discourses 37.33", "rows": [{"key": "sn37.33:0.1", "pali": "Saṁyutta Nikāya 37.33", "sujato": "Linked Discourses 37.33"}, {"key": "sn37.33:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.33:0.3", "pali": "Pañcasīlavisāradasutta", "sujato": "Living With Self-Assurance"}]}, {"id": "sn37.33/1", "label": "“Mendicants, a lady living at home with…", "rows": [{"key": "sn37.33:1.1", "pali": "“Pañcahi, bhikkhave, dhammehi samannāgato mātugāmo visārado agāraṁ ajjhāvasati.", "sujato": "“Mendicants, a lady living at home with five qualities is self-assured."}, {"key": "sn37.33:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.33:1.3", "pali": "Pāṇātipātā paṭivirato ca hoti, adinnādānā paṭivirato ca hoti, kāmesumicchācārā paṭivirato ca hoti,\nmusāvādā paṭivirato ca hoti, surāmerayamajjappamādaṭṭhānā paṭivirato ca hoti—", "sujato": "She doesn’t kill living creatures, steal, commit sexual misconduct, lie, or consume beer, wine, and liquor intoxicants."}, {"key": "sn37.33:1.4", "pali": "imehi kho, bhikkhave, pañcahi dhammehi samannāgato mātugāmo visārado agāraṁ ajjhāvasatī”ti.", "sujato": "A lady living at home with these five qualities is self-assured.”"}, {"key": "sn37.33:1.5", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn37.34", "label": "SN 37.34 · Growth", "children": [{"id": "sn37.34/0", "label": "Linked Discourses 37.34", "rows": [{"key": "sn37.34:0.1", "pali": "Saṁyutta Nikāya 37.34", "sujato": "Linked Discourses 37.34"}, {"key": "sn37.34:0.2", "pali": "3.\nBalavagga", "sujato": "3.\nPowers"}, {"key": "sn37.34:0.3", "pali": "Vaḍḍhīsutta", "sujato": "Growth"}]}, {"id": "sn37.34/1", "label": "“Mendicants, a female noble disciple who grows…", "rows": [{"key": "sn37.34:1.1", "pali": "“Pañcahi, bhikkhave, vaḍḍhīhi vaḍḍhamānā ariyasāvikā ariyāya vaḍḍhiyā vaḍḍhati sārādāyinī ca hoti varādāyinī ca kāyassa.", "sujato": "“Mendicants, a female noble disciple who grows in five ways grows nobly,\ntaking on what is essential and excellent in this life."}, {"key": "sn37.34:1.2", "pali": "Katamehi pañcahi?", "sujato": "What five?"}, {"key": "sn37.34:1.3", "pali": "Saddhāya vaḍḍhati, sīlena vaḍḍhati, sutena vaḍḍhati, cāgena vaḍḍhati, paññāya vaḍḍhati—", "sujato": "She grows in faith, ethics, learning, generosity, and wisdom."}, {"key": "sn37.34:1.4", "pali": "imehi kho, bhikkhave, pañcahi vaḍḍhīhi vaḍḍhamānā ariyasāvikā ariyāya vaḍḍhiyā vaḍḍhati,\nsārādāyinī ca hoti, varādāyinī ca kāyassāti.", "sujato": "A female noble disciple who grows in these five ways grows nobly,\ntaking on what is essential and excellent in this life."}]}, {"id": "sn37.34/2", "label": "When she grows in faith and ethics,", "rows": [{"key": "sn37.34:2.1", "pali": "Saddhāya sīlena ca yādha vaḍḍhati,", "sujato": "When she grows in faith and ethics,"}, {"key": "sn37.34:2.2", "pali": "Paññāya cāgena sutena cūbhayaṁ;", "sujato": "wisdom, and both generosity and learning—"}, {"key": "sn37.34:2.3", "pali": "Sā tādisī sīlavatī upāsikā,", "sujato": "a virtuous laywoman such as she"}, {"key": "sn37.34:2.4", "pali": "Ādīyati sāramidheva attano”ti.", "sujato": "takes on what is essential for herself in this life.”"}, {"key": "sn37.34:2.5", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn37.34:2.6", "pali": "Balavaggo tatiyo.", "sujato": ""}]}, {"id": "sn37.34/3", "label": "Tassuddānaṁ", "rows": [{"key": "sn37.34:3.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn37.34:3.1", "pali": "Visāradā pasayha abhibhuyya,", "sujato": ""}, {"key": "sn37.34:3.2", "pali": "Ekaṁ aṅgena pañcamaṁ;", "sujato": ""}, {"key": "sn37.34:3.3", "pali": "Nāsenti hetu ṭhānañca,", "sujato": ""}, {"key": "sn37.34:3.4", "pali": "Visārado vaḍḍhinā dasāti.", "sujato": ""}, {"key": "sn37.34:3.5", "pali": "Mātugāmasaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses on ladies are complete."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn37.1:1.1": ["<i>Mātugāma</i> literally means 
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

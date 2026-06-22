@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 141", "rows": [{"key": "mn141:0.1", "pali": "Majjhima Nikāya 141", "sujato": "Middle Discourses 141", "thanissaro": "", "pts": ""}, {"key": "mn141:0.2", "pali": "Saccavibhaṅgasutta", "sujato": "The Analysis of the Truths", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn141:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn141:1.2", "pali": "ekaṁ samayaṁ bhagavā bārāṇasiyaṁ viharati isipatane migadāye.", "sujato": "At one time the Buddha was staying near Varanasi, in the deer park at Isipatana.", "thanissaro": "on one occasion the Blessed One was staying near Bārāṇasī in the Deer Park at Isipatana.", "pts": "At one time the Lord was staying near Benares in the deer-park at Isipatana."}, {"key": "mn141:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,", "thanissaro": "There he addressed the monks:", "pts": "While he was there the Lord addressed the monks, saying:"}, {"key": "mn141:1.4", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”", "thanissaro": "“Monks!”", "pts": "\"Monks.\""}, {"key": "mn141:1.5", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied.", "thanissaro": "“Yes, lord,” the monks responded to him.", "pts": "\"Revered One,\" these monks answered the Lord in assent."}, {"key": "mn141:1.6", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "thanissaro": "The Blessed One said,", "pts": "The Lord spoke thus:"}]}, {"id": "2", "label": "“Near Varanasi, in the deer park at…", "rows": [{"key": "mn141:2.1", "pali": "“Tathāgatena, bhikkhave,\narahatā sammāsambuddhena bārāṇasiyaṁ isipatane migadāye anuttaraṁ dhammacakkaṁ pavattitaṁ\nappaṭivattiyaṁ samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ, yadidaṁ—", "sujato": "“Near Varanasi, in the deer park at Isipatana, the Realized One, the perfected one,\nthe fully awakened Buddha rolled forth the supreme Wheel of Dhamma.\nAnd that wheel cannot be rolled back by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "thanissaro": "“Monks, near Bārāṇasī, in the Deer Park at Isipatana, the Tathāgata—worthy & rightly self-awakened—\nset in motion the unexcelled Wheel of Dhamma that cannot be stopped by contemplative or brahman,\ndeva, Māra, or Brahmā or anyone at all in the cosmos:", "pts": "\"The matchless Wheel of Dhamma set rolling by the Tathāāgata, the perfected one,\nfully Self-Awakened One in the deer-park at Isipatana near Benares cannot be rolled\nback by a recluse or brahman or deva or Māra or Brahmā or by anyone in the world."}, {"key": "mn141:2.2", "pali": "catunnaṁ ariyasaccānaṁ ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ.", "sujato": "It is the teaching, advocating, establishing, clarifying, analyzing, and revealing of the four noble truths.", "thanissaro": "in other words, the declaration, teaching, description, setting-forth,\nrevelation, explanation, and making-plain of the four noble truths.", "pts": "That is to say, it was a proclamation of the four ariyan truths, a teaching,\nlaying down, establishing, opening up, analysing, and making of them plain."}, {"key": "mn141:2.3", "pali": "Katamesaṁ catunnaṁ?", "sujato": "What four?", "thanissaro": "Of which four?", "pts": "Of what four?"}]}, {"id": "3", "label": "The noble truths of suffering, the origin…", "rows": [{"key": "mn141:3.1", "pali": "Dukkhassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhasamudayassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhanirodhassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhanirodhagāminiyā paṭipadāya ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ.", "sujato": "The noble truths of suffering, the origin of suffering, the cessation of suffering,\nand the practice that leads to the cessation of suffering.", "thanissaro": "The declaration, teaching, description, setting-forth, revelation,\nexplanation, and making-plain of the noble truth of stress.\nThe declaration, teaching, description, setting forth, revelation,\nexplanation, and making-plain of the noble truth of the origination of stress…\nthe noble truth of the cessation of stress… the noble truth of the path of practice leading to the cessation of stress.", "pts": "It was a proclamation, a teaching, laying down, establishing,\nopening up, analysing and making plain of the ariyan truth of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the arising of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the stopping of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the course leading to the stopping of anguish."}]}, {"id": "4", "label": "Near Varanasi, in the deer park at…", "rows": [{"key": "mn141:4.1", "pali": "Tathāgatena, bhikkhave,\narahatā sammāsambuddhena bārāṇasiyaṁ isipatane migadāye anuttaraṁ dhammacakkaṁ pavattitaṁ\nappaṭivattiyaṁ samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ, yadidaṁ—", "sujato": "Near Varanasi, in the deer park at Isipatana, the Realized One, the perfected one,\nthe fully awakened Buddha rolled forth the supreme Wheel of Dhamma.\nAnd that wheel cannot be rolled back by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "thanissaro": "Near Bārāṇasī, in the Deer Park at Isipatana, the Tathāgata—worthy & rightly self-awakened—\nset in motion the unexcelled Wheel of Dhamma that cannot be stopped by contemplative or brahman,\ndeva, Māra, or Brahmā or anyone at all in the cosmos:", "pts": "The matchless Wheel of Dhamma} monks, set rolling by the Tathāāgata, the perfected one,\nfully Self-Awakened One in the deer-park at Isipatana near Benares cannot be rolled\nback by a recluse or brahman or deva or Māra or Brahmā or by anyone in the world."}, {"key": "mn141:4.2", "pali": "imesaṁ catunnaṁ ariyasaccānaṁ ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ.", "sujato": "It is the teaching, advocating, establishing, clarifying, analyzing, and revealing of the four noble truths.", "thanissaro": "in other words, the declaration, teaching, description, setting-forth,\nrevelation, explanation, and making-plain of these four noble truths.", "pts": "That is to say, it was a proclamation of the four ariyan truths, a teaching,\nlaying down, establishing, opening up, analysing, and making of them plain."}]}, {"id": "5", "label": "Mendicants, you should cultivate friendship with Sāriputta…", "rows": [{"key": "mn141:5.1", "pali": "Sevatha, bhikkhave, sāriputtamoggallāne;", "sujato": "Mendicants, you should cultivate friendship with Sāriputta and Moggallāna.", "thanissaro": "“Monks, associate with Sāriputta & Moggallāna.", "pts": "Monks, follow Sāriputta and Moggallāna;"}, {"key": "mn141:5.2", "pali": "bhajatha, bhikkhave, sāriputtamoggallāne.", "sujato": "You should associate with Sāriputta and Moggallāna.", "thanissaro": "Consort with Sāriputta & Moggallāna.", "pts": "monks, associate with Sāriputta and Moggallāna;"}, {"key": "mn141:5.3", "pali": "Paṇḍitā bhikkhū anuggāhakā sabrahmacārīnaṁ.", "sujato": "They’re astute, and they support their spiritual companions.", "thanissaro": "Sāriputta & Moggallāna are wise & sympathetic toward the monks who are their companions in the holy life.", "pts": "they are wise monks who are helpers to Brahma-farers."}, {"key": "mn141:5.4", "pali": "Seyyathāpi, bhikkhave, janetā, evaṁ sāriputto;", "sujato": "Sāriputta is like one who gives birth,", "thanissaro": "Like the mother giving birth:\nThat’s Sāriputta.", "pts": "Monks, like a mother, so is Sāriputta;"}, {"key": "mn141:5.5", "pali": "seyyathāpi jātassa āpādetā, evaṁ moggallāno.", "sujato": "while Moggallāna is like one who raises the child.", "thanissaro": "Like the nurse raising a child after it’s born:\nThat’s Moggallāna.", "pts": "like a child's foster-mother, so is Moggallāna."}, {"key": "mn141:5.6", "pali": "Sāriputto, bhikkhave, sotāpattiphale vineti, moggallāno uttamatthe.", "sujato": "Sāriputta guides people to the fruit of stream-entry, Moggallāna to the highest goal.", "thanissaro": "Sāriputta trains (others) to the fruit of stream-entry;\nMoggallāna, to the highest goal.\nSāriputta is capable of declaring, teaching,", "pts": "Sāriputta, monks, trains (one) in the fruit of stream-attainment, Moggallāna in the highest goal."}, {"key": "mn141:5.7", "pali": "Sāriputto, bhikkhave,\npahoti cattāri ariyasaccāni vitthārena ācikkhituṁ desetuṁ paññāpetuṁ paṭṭhapetuṁ vivarituṁ vibhajituṁ uttānīkātun”ti.", "sujato": "Sāriputta is able to explain, teach, assert, establish, clarify, analyze, and reveal the four noble truths in detail.”", "thanissaro": "describing, setting forth, revealing, explaining, and making plain the four noble truths in detail.”", "pts": "Sāriputta, monks, is able to proclaim, teach, lay down, establish,\nopen up, analyse and make plain the four ariyan truths in full.\""}]}, {"id": "6", "label": "That is what the Buddha said.", "rows": [{"key": "mn141:6.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "thanissaro": "That is what the Blessed One said.", "pts": "Thus spoke the Lord;"}, {"key": "mn141:6.2", "pali": "Idaṁ vatvāna sugato uṭṭhāyāsanā vihāraṁ pāvisi.", "sujato": "When he had spoken, the Holy One got up from his seat and entered his dwelling.", "thanissaro": "Having said it, he—the One Well-Gone—rose from his seat and entered his dwelling.", "pts": "and having said this, the Well-farer rose from his seat and entered a dwelling-place. §"}]}, {"id": "7", "label": "Then soon after the Buddha left, Venerable…", "rows": [{"key": "mn141:7.1", "pali": "Tatra kho āyasmā sāriputto acirapakkantassa bhagavato bhikkhū āmantesi:", "sujato": "Then soon after the Buddha left, Venerable Sāriputta said to the mendicants,", "thanissaro": "Then Ven. Sāriputta, not long after the Blessed One had left, addressed the monks,", "pts": "Soon after the Lord had departed the venerable Sāriputta addressed the monks who were there, saying;"}, {"key": "mn141:7.2", "pali": "“āvuso bhikkhave”ti.", "sujato": "“Reverends, mendicants!”", "thanissaro": "“Friends!”", "pts": "\"Reverend monks.\""}, {"key": "mn141:7.3", "pali": "“Āvuso”ti kho te bhikkhū āyasmato sāriputtassa paccassosuṁ.", "sujato": "“Reverend,” they replied.", "thanissaro": "“Yes, friend,” the monks responded to him.", "pts": "\"Your reverence,\" these monks answered the venerable Sāriputta in assent."}, {"key": "mn141:7.4", "pali": "Āyasmā sāriputto etadavoca:", "sujato": "Sāriputta said this:", "thanissaro": "Ven. Sāriputta said,", "pts": "The venerable Sāriputta spoke thus:"}]}, {"id": "8", "label": "“Near Varanasi, in the deer park at…", "rows": [{"key": "mn141:8.1", "pali": "“Tathāgatena, āvuso,\narahatā sammāsambuddhena bārāṇasiyaṁ isipatane migadāye anuttaraṁ dhammacakkaṁ pavattitaṁ\nappaṭivattiyaṁ samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ, yadidaṁ—", "sujato": "“Near Varanasi, in the deer park at Isipatana, the Realized One, the perfected one,\nthe fully awakened Buddha rolled forth the supreme Wheel of Dhamma.\nAnd that wheel cannot be rolled back by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "thanissaro": "“Friends, near Bārāṇasī, in the Deer Park at Isipatana, the Tathāgata—worthy & rightly self-awakened—\nset in motion the unexcelled Wheel of Dhamma that cannot be stopped by contemplative or brahman,\ndeva, Māra, or Brahmā or anyone at all in the cosmos:", "pts": "\"Your reverences, the matchless Wheel of Dhamma set rolling by the Tathāāgata, perfected one,\nfully Self-Awakened One in the deer-park at Isipatana near Benares cannot be rolled\nback by a recluse or brahman or deva or Māra or Brahmā or by anyone in the world."}, {"key": "mn141:8.2", "pali": "catunnaṁ ariyasaccānaṁ ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ.", "sujato": "It is the teaching, advocating, establishing, clarifying, analyzing, and revealing of the four noble truths.", "thanissaro": "in other words, the declaration, teaching, description, setting-forth,\nrevelation, explanation, and making-plain of the four noble truths.", "pts": "That is to say, it was a proclamation of the four ariyan truths, a teaching,\nlaying down, establishing, opening up, analysing, and making of them plain."}, {"key": "mn141:8.3", "pali": "Katamesaṁ catunnaṁ?", "sujato": "What four?", "thanissaro": "Of which four?", "pts": "Of what four?"}]}, {"id": "9", "label": "The noble truths of suffering, the origin…", "rows": [{"key": "mn141:9.1", "pali": "Dukkhassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhasamudayassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhanirodhassa ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ,\ndukkhanirodhagāminiyā paṭipadāya ariyasaccassa ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkammaṁ.", "sujato": "The noble truths of suffering, the origin of suffering, the cessation of suffering,\nand the practice that leads to the cessation of suffering.", "thanissaro": "The declaration, teaching, description, setting-forth, revelation,\nexplanation, and making-plain of the noble truth of stress…\nthe noble truth of the origination of stress… the noble truth of the cessation of stress…\nthe noble truth of the path of practice leading to the cessation of stress.\nNear Bārāṇasī, in the Deer Park at Isipatana, the Tathāgata—the worthy & rightly self-awakened—\nset in motion the unexcelled Wheel of Dhamma that cannot be stopped by contemplative or brahman,\ndeva, Māra, or Brahmā or anyone at all in the cosmos:\nin other words, the declaration, teaching, description, setting-forth,\nrevelation, explanation, and making-plain of these four noble truths.", "pts": "It was a proclamation, a teaching, laying down, establishing,\nopening up, analysing and making plain of the ariyan truth of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the arising of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the stopping of anguish.\nIt was a proclamation, a teaching, laying down, establishing, opening up,\nanalysing and making plain of the ariyan truth of the course leading to the stopping of anguish.\nThe matchless Wheel of Dhamma} monks, set rolling by the Tathāāgata, the perfected one,\nfully Self-Awakened One in the deer-park at Isipatana near Benares cannot be rolled\nback by a recluse or brahman or deva or Māra or Brahmā or by anyone in the world.\nThat is to say, it was a proclamation of the four ariyan truths, a teaching,\nlaying down, establishing, opening up, analysing, and making of them plain. §"}]}, {"id": "10", "label": "And what is the noble truth of…", "rows": [{"key": "mn141:10.1", "pali": "Katamañcāvuso, dukkhaṁ ariyasaccaṁ?", "sujato": "And what is the noble truth of suffering?", "thanissaro": "“Now what, friends, is the noble truth of stress?", "pts": "And what, your reverences, is the ariyan truth of anguish?"}, {"key": "mn141:10.2", "pali": "Jātipi dukkhā, jarāpi dukkhā, maraṇampi dukkhaṁ,\nsokaparidevadukkhadomanassupāyāsāpi dukkhā, yampicchaṁ na labhati tampi dukkhaṁ;\nsaṅkhittena pañcupādānakkhandhā dukkhā.", "sujato": "Rebirth is suffering;\nold age is suffering;\ndeath is suffering;\nsorrow, lamentation, pain, sadness, and distress are suffering;\nnot getting what you wish for is suffering.\nIn brief, the five grasping aggregates are suffering.", "thanissaro": "Birth is stressful, aging is stressful, death is stressful;\nsorrow, lamentation, pain, distress, & despair are stressful;\nnot getting what is wanted is stressful.\nIn short, the five clinging-aggregates are stressful.", "pts": "Birth is anguish and ageing is anguish and dying is anguish;\nand grief, sorrow, suffering, misery and despair are anguish.\nAnd not getting what one desires, that too is anguish.\nIn brief, the five groups of grasping are anguish. ■"}]}, {"id": "11", "label": "And what is rebirth?", "rows": [{"key": "mn141:11.1", "pali": "Katamā cāvuso, jāti?", "sujato": "And what is rebirth?", "thanissaro": "“And what is birth?", "pts": "And what, your reverences, is birth?"}, {"key": "mn141:11.2", "pali": "Yā tesaṁ tesaṁ sattānaṁ tamhi tamhi sattanikāye jāti sañjāti\nokkanti abhinibbatti khandhānaṁ pātubhāvo āyatanānaṁ paṭilābho,", "sujato": "The rebirth, inception, conception, regeneration, manifestation of the aggregates,\nand acquisition of the sense fields of the various sentient beings in the various orders of sentient beings.", "thanissaro": "Whatever birth, taking birth, descent, coming-to-be, coming-forth, appearance of aggregates,", "pts": "It is the conception, the production, the descent, the rebirth,\nthe coming forth of various beings in the various classes of beings,\nthe appearance of the groups (of grasping), the acquiring of the sense-bases."}, {"key": "mn141:11.3", "pali": "ayaṁ vuccatāvuso:\n‘jāti’.", "sujato": "This is called rebirth.", "thanissaro": "& acquisition of (sense) spheres of the various beings in this or that group of beings, that is called birth.", "pts": "This, your reverences, is called birth. ■"}]}, {"id": "12", "label": "And what is old age?", "rows": [{"key": "mn141:12.1", "pali": "Katamā cāvuso, jarā?", "sujato": "And what is old age?", "thanissaro": "“And what is aging?", "pts": "And what, your reverences, is old age?"}, {"key": "mn141:12.2", "pali": "Yā tesaṁ tesaṁ sattānaṁ tamhi tamhi sattanikāye jarā jīraṇatā\nkhaṇḍiccaṁ pāliccaṁ valittacatā āyuno saṁhāni indriyānaṁ paripāko,", "sujato": "The old age, decrepitude, broken teeth, grey hair, wrinkly skin, diminished vitality,\nand failing faculties of the various sentient beings in the various orders of sentient beings.", "thanissaro": "Whatever aging, decrepitude, brokenness, graying, wrinkling, decline of life-force,", "pts": "It is the old age, decrepitude, broken teeth, greying hair, wrinkly skin, the dwindling of the life-span,\nthe collapse of the sense-organs of the various beings in the various classes of beings."}, {"key": "mn141:12.3", "pali": "ayaṁ vuccatāvuso:\n‘jarā’.", "sujato": "This is called old age.", "thanissaro": "weakening of the faculties of the various beings in this or that group of beings, that is called aging.", "pts": "This, your reverences, is called old age. ■"}]}, {"id": "13", "label": "And what is death?", "rows": [{"key": "mn141:13.1", "pali": "Katamañcāvuso, maraṇaṁ?", "sujato": "And what is death?", "thanissaro": "“And what is death?", "pts": "And what, your reverences, is dying?"}, {"key": "mn141:13.2", "pali": "Yā tesaṁ tesaṁ sattānaṁ tamhā tamhā sattanikāyā cuti cavanatā bhedo antaradhānaṁ maccu\nmaraṇaṁ kālaṅkiriyā khandhānaṁ bhedo kaḷevarassa nikkhepo jīvitindriyassupacchedo,", "sujato": "The passing away, passing on, disintegration, demise, mortality, death, decease, breaking up of the aggregates,\nlaying to rest of the corpse,\nand cutting off of the life faculty of the various sentient beings in the various orders of sentient beings.", "thanissaro": "Whatever deceasing, passing away, breaking up, disappearance, dying, death,\ncompletion of time, break-up of the aggregates, casting off of the body,", "pts": "It is the falling away, the passing away, the breaking up, the disappearance, the death and dying,\nthe action of time, the breaking up of the groups (of grasping), the laying down of the body."}, {"key": "mn141:13.3", "pali": "idaṁ vuccatāvuso:\n‘maraṇaṁ’.", "sujato": "This is called death.", "thanissaro": "interruption in the life faculty of the various beings in this or that group of beings, that is called death.", "pts": "This, your reverences, is called dying. ■"}]}, {"id": "14", "label": "And what is sorrow?", "rows": [{"key": "mn141:14.1", "pali": "Katamo cāvuso, soko?", "sujato": "And what is sorrow?", "thanissaro": "“And what is sorrow?", "pts": "And what, your reverences, is grief?"}, {"key": "mn141:14.2", "pali": "Yo kho, āvuso, aññataraññatarena byasanena samannāgatassa aññataraññatarena\ndukkhadhammena phuṭṭhassa soko socanā socitattaṁ antosoko antoparisoko,", "sujato": "The sorrow, sorrowing, state of sorrow, inner sorrow,\ninner deep sorrow in someone who has undergone misfortune, who has experienced suffering.", "thanissaro": "Whatever sorrow, sorrowing, sadness, inward sorrow,", "pts": "It, your reverences, is the grief, sorrow, sorrowfulness, the inward grief,\nthe inner pain of one visited by some kind of calamity or other, smitten by some kind of ill or other.\nIt is the crying, the wailing, the act of crying, the act of wailing, the state of crying,\nthe state of wailing of one visited by some calamity or other, smitten by some kind of ill or other."}, {"key": "mn141:14.3", "pali": "ayaṁ vuccatāvuso:\n‘soko’.", "sujato": "This is called sorrow.", "thanissaro": "inward sadness of anyone suffering from misfortune, touched by a painful thing, that is called sorrow.", "pts": "This, your reverences, is called sorrow. ■"}]}, {"id": "15", "label": "And what is lamentation?", "rows": [{"key": "mn141:15.1", "pali": "Katamo cāvuso, paridevo?", "sujato": "And what is lamentation?", "thanissaro": "“And what is lamentation?", "pts": ""}, {"key": "mn141:15.2", "pali": "Yo kho, āvuso, aññataraññatarena byasanena samannāgatassa aññataraññatarena\ndukkhadhammena phuṭṭhassa ādevo paridevo ādevanā paridevanā ādevitattaṁ paridevitattaṁ,", "sujato": "The wail, lament, wailing, lamenting,\nstate of wailing and lamentation in someone who has undergone misfortune, who has experienced suffering.", "thanissaro": "Whatever crying, grieving, lamenting, weeping, wailing,", "pts": ""}, {"key": "mn141:15.3", "pali": "ayaṁ vuccatāvuso:\n‘paridevo’.", "sujato": "This is called lamentation.", "thanissaro": "lamentation of anyone suffering from misfortune, touched by a painful thing, that is called lamentation.", "pts": ""}]}, {"id": "16", "label": "And what is pain?", "rows": [{"key": "mn141:16.1", "pali": "Katamañcāvuso, dukkhaṁ?", "sujato": "And what is pain?", "thanissaro": "“And what is pain?", "pts": "And what, your reverences, is suffering?"}, {"key": "mn141:16.2", "pali": "Yaṁ kho, āvuso, kāyikaṁ dukkhaṁ kāyikaṁ asātaṁ kāyasamphassajaṁ dukkhaṁ asātaṁ vedayitaṁ,", "sujato": "Physical pain, physical unpleasantness, the painful, unpleasant feeling that’s born from physical contact.", "thanissaro": "Whatever is experienced as bodily pain, bodily discomfort,", "pts": "It, your reverences, is physical suffering,\nphysical disagreeableness arising from an impingement on the body and experienced as suffering, as disagreeableness."}, {"key": "mn141:16.3", "pali": "idaṁ vuccatāvuso:\n‘dukkhaṁ’.", "sujato": "This is called pain.", "thanissaro": "pain or discomfort born of bodily contact, that is called pain.", "pts": "This, your reverences, is called suffering. ■"}]}, {"id": "17", "label": "And what is sadness?", "rows": [{"key": "mn141:17.1", "pali": "Katamañcāvuso, domanassaṁ?", "sujato": "And what is sadness?", "thanissaro": "“And what is distress?", "pts": "And what, your reverences, is misery?"}, {"key": "mn141:17.2", "pali": "Yaṁ kho, āvuso, cetasikaṁ dukkhaṁ cetasikaṁ asātaṁ manosamphassajaṁ dukkhaṁ asātaṁ vedayitaṁ,", "sujato": "Mental pain, mental displeasure, the painful, unpleasant feeling that’s born from mind contact.", "thanissaro": "Whatever is experienced as mental pain, mental discomfort,", "pts": "It, your reverences, is mental suffering,\nmental disagreeableness arising from an impingement on the mind and experienced as suffering, as disagreeableness."}, {"key": "mn141:17.3", "pali": "idaṁ vuccatāvuso:\n‘domanassaṁ’.", "sujato": "This is called sadness.", "thanissaro": "pain or discomfort born of mental contact, that is called distress.", "pts": "This, your reverences, is called misery. ■"}]}, {"id": "18", "label": "And what is distress?", "rows": [{"key": "mn141:18.1", "pali": "Katamo cāvuso, upāyāso?", "sujato": "And what is distress?", "thanissaro": "“And what is despair?", "pts": "And what, your reverences, is despair?"}, {"key": "mn141:18.2", "pali": "Yo kho, āvuso, aññataraññatarena byasanena samannāgatassa aññataraññatarena\ndukkhadhammena phuṭṭhassa āyāso upāyāso āyāsitattaṁ upāyāsitattaṁ,", "sujato": "The stress, distress, state of stress and distress in someone who has undergone misfortune,\nwho has experienced suffering.", "thanissaro": "Whatever despair, despondency, desperation of anyone suffering from misfortune,", "pts": "It, your reverences, is despondency, despair, the state of despondency,\nthe state of despair of one visited by some calamity or other, smitten by some kind of ill or other."}, {"key": "mn141:18.3", "pali": "ayaṁ vuccatāvuso:\n‘upāyāso’.", "sujato": "This is called distress.", "thanissaro": "touched by a painful thing, that is called despair.", "pts": "This, your reverences, is called despair. ■"}]}, {"id": "19", "label": "And what is ‘not getting what you…", "rows": [{"key": "mn141:19.1", "pali": "Katamañcāvuso, yampicchaṁ na labhati tampi dukkhaṁ?", "sujato": "And what is ‘not getting what you wish for is suffering’?", "thanissaro": "“And what is the stress of not getting what is wanted?", "pts": "And what, your reverences is meant by 'not getting what one desires, that too is anguish'?"}, {"key": "mn141:19.2", "pali": "Jātidhammānaṁ, āvuso, sattānaṁ evaṁ icchā uppajjati:", "sujato": "In sentient beings who are liable to be reborn, such a wish arises:", "thanissaro": "In beings subject to birth, the wish arises,", "pts": "Your reverences, a wish like this arises in creatures liable to birth:"}, {"key": "mn141:19.3", "pali": "‘aho vata mayaṁ na jātidhammā assāma;\nna ca vata no jāti āgaccheyyā’ti.", "sujato": "‘Oh, if only we were not liable to be reborn!\nIf only rebirth would not come to us!’", "thanissaro": "‘O, may we not be subject to birth, and may birth not come to us.’", "pts": "'0 might we be not liable to birth and birth not come to us.'"}, {"key": "mn141:19.4", "pali": "Na kho panetaṁ icchāya pattabbaṁ.", "sujato": "But you can’t get that by wishing.", "thanissaro": "But this is not to be achieved by wishing.", "pts": "But this is not to be had for the wishing."}, {"key": "mn141:19.5", "pali": "Idampi:\n‘yampicchaṁ na labhati tampi dukkhaṁ’.", "sujato": "This is:\n‘not getting what you wish for is suffering.’", "thanissaro": "This is the stress of not getting what is wanted.", "pts": "So 'not getting what one desires, that too is anguish.'"}, {"key": "mn141:19.6", "pali": "Jarādhammānaṁ, āvuso, sattānaṁ …pe…", "sujato": "In sentient beings who are liable to grow old …", "thanissaro": "In beings subject to aging…", "pts": "Your reverences, a wish like this arises in creatures liable to ageing:\n'0 might we be not liable to ageing and ageing not come to us.'\nBut this is not to be had for the wishing.\nSo 'not getting what one desires, that too is anguish.'"}, {"key": "mn141:19.7", "pali": "byādhidhammānaṁ, āvuso, sattānaṁ …", "sujato": "fall ill …", "thanissaro": "illness…", "pts": "Your reverences, a wish like this arises in creatures liable to disease:\n'0 might we be not liable to disease and disease not come to us.'\nBut this is not to be had for the wishing.\nSo 'not getting what one desires, that too is anguish.'"}, {"key": "mn141:19.8", "pali": "maraṇadhammānaṁ, āvuso, sattānaṁ …", "sujato": "die …", "thanissaro": "death…", "pts": ""}, {"key": "mn141:19.9", "pali": "sokaparidevadukkhadomanassupāyāsadhammānaṁ, āvuso, sattānaṁ evaṁ icchā uppajjati:", "sujato": "experience sorrow, lamentation, pain, sadness, and distress, such a wish arises:", "thanissaro": "sorrow, lamentation, pain, distress, & despair, the wish arises,", "pts": "Your reverences, a wish like this arises in creatures liable to grief, sorrow, suffering, misery and despair:"}, {"key": "mn141:19.10", "pali": "‘aho vata mayaṁ na sokaparidevadukkhadomanassupāyāsadhammā assāma;\nna ca vata no sokaparidevadukkhadomanassupāyāsā āgaccheyyun’ti.", "sujato": "‘Oh, if only we were not liable to experience sorrow, lamentation, pain, sadness, and distress!\nIf only sorrow, lamentation, pain, sadness, and distress would not come to us!’", "thanissaro": "‘O, may we not be subject to aging… illness… death… sorrow, lamentation, pain, distress, & despair,\nand may aging… illness… death… sorrow, lamentation, pain, distress, & despair not come to us.’", "pts": "'0 might we be not liable to grief, sorrow, suffering, misery and despair and grief,\nsorrow, suffering, misery and despair not come to us.'"}, {"key": "mn141:19.11", "pali": "Na kho panetaṁ icchāya pattabbaṁ.", "sujato": "But you can’t get that by wishing.", "thanissaro": "But this is not to be achieved by wishing.", "pts": "But this is not to be had for the wishing."}, {"key": "mn141:19.12", "pali": "Idampi:\n‘yampicchaṁ na labhati tampi dukkhaṁ’.", "sujato": "This is:\n‘not getting what you wish for is suffering.’", "thanissaro": "This is the stress of not getting what is wanted.", "pts": "So 'not getting what one desires, that too is anguish.'"}]}, {"id": "20", "label": "And what is ‘in brief, the five…", "rows": [{"key": "mn141:20.1", "pali": "Katame cāvuso, saṅkhittena pañcupādānakkhandhā dukkhā?", "sujato": "And what is ‘in brief, the five grasping aggregates are suffering’?", "thanissaro": "“And what are the five clinging-aggregates that, in short, are stressful?", "pts": "And what, in brief, your reverences, are the five groups of grasping that are anguish?"}, {"key": "mn141:20.2", "pali": "Seyyathidaṁ—rūpupādānakkhandho, vedanupādānakkhandho,\nsaññupādānakkhandho, saṅkhārupādānakkhandho, viññāṇupādānakkhandho.", "sujato": "They are the grasping aggregates that consist of form, feeling, perception, choices, and consciousness.", "thanissaro": "The form clinging-aggregate, the feeling clinging-aggregate, the perception clinging-aggregate,\nthe fabrication clinging-aggregate, the consciousness clinging-aggregate:", "pts": "These are:\nthe group of grasping after material shape, the group of grasping after feeling, the group of grasping after perception,\nthe group of grasping after the habitual tendencies, the group of grasping after consciousness."}, {"key": "mn141:20.3", "pali": "Ime vuccantāvuso:\n‘saṅkhittena pañcupādānakkhandhā dukkhā’.", "sujato": "This is called ‘in brief, the five grasping aggregates are suffering.’", "thanissaro": "These are called the five clinging-aggregates that, in short, are stressful.", "pts": "Your reverences, these are called in brief the five groups of grasping that are anguish."}, {"key": "mn141:20.4", "pali": "Idaṁ vuccatāvuso:\n‘dukkhaṁ ariyasaccaṁ’.", "sujato": "This is called the noble truth of suffering.", "thanissaro": "“This, friends, is called the noble truth of stress.", "pts": "Your reverences, this is called the ariyan truth of anguish."}]}, {"id": "21", "label": "And what is the noble truth of…", "rows": [{"key": "mn141:21.1", "pali": "Katamañcāvuso, dukkhasamudayaṁ ariyasaccaṁ?", "sujato": "And what is the noble truth of the origin of suffering?", "thanissaro": "“And what, friends, is the noble truth of the origination of stress?", "pts": "And what, your reverences, is the ariyan truth of the arising of anguish?"}, {"key": "mn141:21.2", "pali": "Yāyaṁ taṇhā ponobbhavikā nandīrāgasahagatā tatratatrābhinandinī, seyyathidaṁ—", "sujato": "It’s the craving that leads to future lives,\nmixed up with relishing and greed, taking pleasure there wherever it alights.\nThat is,", "thanissaro": "The craving that makes for further becoming—accompanied by passion & delight,", "pts": "Whatever craving is connected with again-becoming, accompanied by delight and attachment,\nfinding delight in this and that, namely the craving for sense-pleasures,"}, {"key": "mn141:21.3", "pali": "kāmataṇhā bhavataṇhā vibhavataṇhā,", "sujato": "craving for sensual pleasures, craving for existence, and craving for nonexistence.", "thanissaro": "relishing now here & now there—i.e., craving for sensuality, craving for becoming, craving for non-becoming.", "pts": "the craving for becoming, the craving for annihilation - this,"}, {"key": "mn141:21.4", "pali": "idaṁ vuccatāvuso:\n‘dukkhasamudayaṁ ariyasaccaṁ’.", "sujato": "This is called the noble truth of the origin of suffering.", "thanissaro": "“This is called the noble truth of the origination of stress.", "pts": "your reverences, is called the ariyan truth of the arising of anguish."}]}, {"id": "22", "label": "And what is the noble truth of…", "rows": [{"key": "mn141:22.1", "pali": "Katamañcāvuso, dukkhanirodhaṁ ariyasaccaṁ?", "sujato": "And what is the noble truth of the cessation of suffering?", "thanissaro": "“And what, friends, is the noble truth of the cessation of stress?", "pts": "And what, your reverences, is the ariyan truth of the stopping of anguish?"}, {"key": "mn141:22.2", "pali": "Yo tassāyeva taṇhāya asesavirāganirodho cāgo paṭinissaggo mutti anālayo,", "sujato": "It’s the fading away and cessation of that very same craving with nothing left over;\ngiving it away, letting it go, releasing it, and not clinging to it.", "thanissaro": "The remainderless fading & cessation, renunciation, relinquishment, release, & letting go of that very craving.", "pts": "Whatever is the stopping, with no attachment remaining,\nof that self-same craving, the relinquishment of it, casting aside of it,"}, {"key": "mn141:22.3", "pali": "idaṁ vuccatāvuso:\n‘dukkhanirodhaṁ ariyasaccaṁ’.", "sujato": "This is called the noble truth of the cessation of suffering.", "thanissaro": "“This is called the noble truth of the cessation of stress.", "pts": "release from it, independence of it, this, your reverences, is called the ariyan truth of the stopping of anguish."}]}, {"id": "23", "label": "And what is the noble truth of…", "rows": [{"key": "mn141:23.1", "pali": "Katamañcāvuso, dukkhanirodhagāminī paṭipadā ariyasaccaṁ?", "sujato": "And what is the noble truth of the practice that leads to the cessation of suffering?", "thanissaro": "“And what, friends, is the noble truth of the path of practice leading to the cessation of stress?", "pts": "And what, your reverences, is the ariyan truth of the course leading to the stopping of anguish?"}, {"key": "mn141:23.2", "pali": "Ayameva ariyo aṭṭhaṅgiko maggo, seyyathidaṁ—", "sujato": "It is simply this noble eightfold path, that is:", "thanissaro": "Just this very noble eightfold path:", "pts": "It is this ariyan Eightfold Way itself, that is to say:"}, {"key": "mn141:23.3", "pali": "sammādiṭṭhi, sammāsaṅkappo, sammāvācā, sammākammanto, sammāājīvo, sammāvāyāmo, sammāsati, sammāsamādhi.", "sujato": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right immersion.", "thanissaro": "right view, right resolve, right speech, right action,\nright livelihood, right effort, right mindfulness, right concentration.", "pts": "right view, right aspiration, right speech, right action, right mode of livelihood,\nright endeavour, right mindfulness, right concentration. ■"}]}, {"id": "24", "label": "And what is right view?", "rows": [{"key": "mn141:24.1", "pali": "Katamā cāvuso, sammādiṭṭhi?", "sujato": "And what is right view?", "thanissaro": "“And what is right view?", "pts": "And what, your reverences, is right view?"}, {"key": "mn141:24.2", "pali": "Yaṁ kho, āvuso, dukkhe ñāṇaṁ, dukkhasamudaye ñāṇaṁ, dukkhanirodhe ñāṇaṁ, dukkhanirodhagāminiyā paṭipadāya ñāṇaṁ,", "sujato": "Knowing about suffering, the origin of suffering, the cessation of suffering,\nand the practice that leads to the cessation of suffering.", "thanissaro": "Knowledge in terms of stress, knowledge in terms of the origination of stress,\nknowledge in terms of the cessation of stress,\nknowledge in terms of the way of practice leading to the cessation of stress:", "pts": "Whatever, your reverences, is knowledge of anguish,\nknowledge of the arising of anguish, knowledge of the stopping of anguish,"}, {"key": "mn141:24.3", "pali": "ayaṁ vuccatāvuso:\n‘sammādiṭṭhi’.", "sujato": "This is called right view.", "thanissaro": "This is called right view.", "pts": "knowledge of the course leading to the stopping of anguish - this, your reverences, is called right view. ■"}]}, {"id": "25", "label": "And what is right purpose?", "rows": [{"key": "mn141:25.1", "pali": "Katamo cāvuso, sammāsaṅkappo?", "sujato": "And what is right purpose?", "thanissaro": "“And what is right resolve?", "pts": "And what, your reverences, is right aspiration?"}, {"key": "mn141:25.2", "pali": "Nekkhammasaṅkappo, abyāpādasaṅkappo, avihiṁsāsaṅkappo,", "sujato": "Purposes of renunciation, good will, and harmlessness.", "thanissaro": "The resolve for renunciation, for freedom from ill will, for harmlessness:", "pts": "Aspiration for renunciation, aspiration for non-malevolence,"}, {"key": "mn141:25.3", "pali": "ayaṁ vuccatāvuso:\n‘sammāsaṅkappo’.", "sujato": "This is called right purpose.", "thanissaro": "This is called right resolve.", "pts": "aspiration for harmlessness - this, your reverences, is called right aspiration. ■"}]}, {"id": "26", "label": "And what is right speech?", "rows": [{"key": "mn141:26.1", "pali": "Katamā cāvuso, sammāvācā?", "sujato": "And what is right speech?", "thanissaro": "“And what is right speech?", "pts": "And what, your reverences, is right speech?"}, {"key": "mn141:26.2", "pali": "Musāvādā veramaṇī, pisuṇāya vācāya veramaṇī, pharusāya vācāya veramaṇī, samphappalāpā veramaṇī,", "sujato": "Refraining from lying, backbiting, harsh speech, and talking nonsense.", "thanissaro": "Abstaining from lying, from divisive speech, from abusive speech, & from idle chatter:", "pts": "Refraining from lying speech, refraining from slanderous speech, refraining from harsh speech,"}, {"key": "mn141:26.3", "pali": "ayaṁ vuccatāvuso:\n‘sammāvācā’.", "sujato": "This is called right speech.", "thanissaro": "This is called right speech.", "pts": "refraining from gossip, this, your reverences, is called right speech. ■"}]}, {"id": "27", "label": "And what is right action?", "rows": [{"key": "mn141:27.1", "pali": "Katamo cāvuso, sammākammanto?", "sujato": "And what is right action?", "thanissaro": "“And what is right action?", "pts": "And what, your reverences, is right action?"}, {"key": "mn141:27.2", "pali": "Pāṇātipātā veramaṇī, adinnādānā veramaṇī, kāmesumicchācārā veramaṇī,", "sujato": "Refraining from killing living creatures, stealing, and sexual misconduct.", "thanissaro": "Abstaining from taking life, from stealing, & from sexual misconduct:", "pts": "Refraining from onslaught on creatures, refraining from taking what has not been given,"}, {"key": "mn141:27.3", "pali": "ayaṁ vuccatāvuso:\n‘sammākammanto’.", "sujato": "This is called right action.", "thanissaro": "This is called right action.", "pts": "refraining from going wrongly among the sense-pleasures, this, your reverences, is called right action. ■"}]}, {"id": "28", "label": "And what is right livelihood?", "rows": [{"key": "mn141:28.1", "pali": "Katamo cāvuso, sammāājīvo?", "sujato": "And what is right livelihood?", "thanissaro": "“And what is right livelihood?", "pts": "And what, your reverences, is right mode of livelihood?"}, {"key": "mn141:28.2", "pali": "Idhāvuso, ariyasāvako micchāājīvaṁ pahāya sammāājīvena jīvikaṁ kappeti,", "sujato": "It’s when a noble disciple gives up wrong livelihood and earns a living by right livelihood.", "thanissaro": "There is the case where a disciple of the noble ones,\nhaving abandoned dishonest livelihood, keeps his life going with right livelihood:", "pts": "As to this, your reverences, a disciple of the ariyans,\ngetting rid of a wrong mode of livelihood, makes his living by a right mode of livelihood."}, {"key": "mn141:28.3", "pali": "ayaṁ vuccatāvuso:\n‘sammāājīvo’.", "sujato": "This is called right livelihood.", "thanissaro": "This is called right livelihood.", "pts": "This, your reverences, is called right mode of livelihood. ■"}]}, {"id": "29", "label": "And what is right effort?", "rows": [{"key": "mn141:29.1", "pali": "Katamo cāvuso, sammāvāyāmo?", "sujato": "And what is right effort?", "thanissaro": "“And what is right effort?", "pts": "And what, your reverences, is right endeavour?"}, {"key": "mn141:29.2", "pali": "Idhāvuso, bhikkhu anuppannānaṁ pāpakānaṁ akusalānaṁ dhammānaṁ anuppādāya\nchandaṁ janeti vāyamati vīriyaṁ ārabhati cittaṁ paggaṇhāti padahati,", "sujato": "It’s when a mendicant generates enthusiasm, tries, makes an effort,\nexerts the mind, and strives so that bad, unskillful qualities don’t arise.", "thanissaro": "There is the case where a monk generates desire, endeavors, arouses persistence,\nupholds & exerts his intent for the sake of the non-arising of evil, unskillful qualities that have not yet arisen…", "pts": "As to this, your reverences, a monk generates desire, endeavours, stirs up energy,\nexerts his mind and strives for the non-arising of evil unskilled states that have not arisen;"}, {"key": "mn141:29.3", "pali": "uppannānaṁ pāpakānaṁ akusalānaṁ dhammānaṁ pahānāya chandaṁ janeti vāyamati vīriyaṁ ārabhati cittaṁ paggaṇhāti padahati,", "sujato": "They generate enthusiasm, try, make an effort, exert the mind,\nand strive so that bad, unskillful qualities that have arisen are given up.", "thanissaro": "for the sake of the abandoning of evil, unskillful qualities that have arisen…", "pts": "he generates desire, endeavours, stirs up energy,\nexerts his mind and strives for the the getting rid of of evil unskilled states that have arisen;"}, {"key": "mn141:29.4", "pali": "anuppannānaṁ kusalānaṁ dhammānaṁ uppādāya chandaṁ janeti vāyamati vīriyaṁ ārabhati cittaṁ paggaṇhāti padahati,", "sujato": "They generate enthusiasm, try, make an effort, exert the mind, and strive so that skillful qualities arise.", "thanissaro": "for the sake of the arising of skillful qualities that have not yet arisen…", "pts": "he generates desire, endeavours, stirs up energy,\nexerts his mind and strives for the arising of skilled states that have not arisen"}, {"key": "mn141:29.5", "pali": "uppannānaṁ kusalānaṁ dhammānaṁ ṭhitiyā asammosāya bhiyyobhāvāya vepullāya bhāvanāya\npāripūriyā chandaṁ janeti vāyamati vīriyaṁ ārabhati cittaṁ paggaṇhāti padahati,", "sujato": "They generate enthusiasm, try, make an effort, exert the mind,\nand strive so that skillful qualities that have arisen remain,\nare not lost, but increase, mature, and are completed by development.", "thanissaro": "(and) for the maintenance, non-confusion, increase, plenitude,\ndevelopment, & culmination of skillful qualities that have arisen:", "pts": "he generates desire, endeavours, stirs up energy, exerts his mind and strives for the maintenance,\npreservation, increase, maturity, development and completion of skilled states that have arisen."}, {"key": "mn141:29.6", "pali": "ayaṁ vuccatāvuso:\n‘sammāvāyāmo’.", "sujato": "This is called right effort.", "thanissaro": "This is called right effort.", "pts": "This, your reverences, is called right endeavour. ■"}]}, {"id": "30", "label": "And what is right mindfulness?", "rows": [{"key": "mn141:30.1", "pali": "Katamā cāvuso, sammāsati?", "sujato": "And what is right mindfulness?", "thanissaro": "“And what is right mindfulness?", "pts": "And what, your reverences, is right mindfulness?"}, {"key": "mn141:30.2", "pali": "Idhāvuso, bhikkhu kāye kāyānupassī viharati ātāpī sampajāno satimā vineyya loke abhijjhādomanassaṁ.", "sujato": "It’s when a mendicant meditates by observing an aspect of the body—keen,\naware, and mindful, rid of covetousness and displeasure for the world.", "thanissaro": "There is the case where a monk remains focused on the body in & of itself—ardent,\nalert, & mindful—putting aside greed & distress with reference to the world.", "pts": "As to this, your reverences, a monk fares along contemplating the body in the body, ardent,\nclearly conscious (of them), mindful (of them) so as to control the covetousness and dejection in the world."}, {"key": "mn141:30.3", "pali": "Vedanāsu vedanānupassī viharati …pe…", "sujato": "They meditate observing an aspect of feelings …", "thanissaro": "He remains focused on feelings in & of themselves…", "pts": "He fares along contemplating the feelings in the feelings, ardent, clearly conscious (of them),\nmindful (of them) so as to control the covetousness and dejection in the world."}, {"key": "mn141:30.4", "pali": "citte cittānupassī viharati …", "sujato": "mind …", "thanissaro": "the mind in & of itself…", "pts": "He fares along contemplating the mind in the mind, ardent, clearly conscious (of them),\nmindful (of them) so as to control the covetousness and dejection in the world."}, {"key": "mn141:30.5", "pali": "dhammesu dhammānupassī viharati ātāpī sampajāno satimā vineyya loke abhijjhādomanassaṁ,", "sujato": "principles—keen, aware, and mindful, rid of covetousness and displeasure for the world.", "thanissaro": "mental qualities in & of themselves—ardent, alert, & mindful—putting aside greed & distress with reference to the world.", "pts": "He fares along contemplating the mental states in the mental states, ardent, clearly conscious (of them),\nmindful (of them) so as to control the covetousness and dejection in the world."}, {"key": "mn141:30.6", "pali": "ayaṁ vuccatāvuso:\n‘sammāsati’.", "sujato": "This is called right mindfulness.", "thanissaro": "This is called right mindfulness.", "pts": "This, your reverences, is called right mindfulness. ■"}]}, {"id": "31", "label": "And what is right immersion?", "rows": [{"key": "mn141:31.1", "pali": "Katamo cāvuso, sammāsamādhi?", "sujato": "And what is right immersion?", "thanissaro": "“And what is right concentration?", "pts": "And what, your reverences, is right concentration?"}, {"key": "mn141:31.2", "pali": "Idhāvuso, bhikkhu vivicceva kāmehi vivicca akusalehi dhammehi savitakkaṁ\nsavicāraṁ vivekajaṁ pītisukhaṁ paṭhamaṁ jhānaṁ upasampajja viharati,", "sujato": "It’s when a mendicant, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, enters and remains in the first absorption,\nwhich has the rapture and bliss born of seclusion, while placing the mind and keeping it connected.", "thanissaro": "There is the case where a monk—quite secluded from sensuality,\nsecluded from unskillful qualities—enters & remains in the first jhāna:\nrapture & pleasure born of seclusion, accompanied by directed thought & evaluation.", "pts": "As to this, your reverences, a monk, aloof from the pleasures of the senses, aloof from unskilled states of mind,\nentering into the first meditation which is accompanied by initial thought and discursive thought,\nis born of aloofness, and is rapturous and joyful, abides in it."}, {"key": "mn141:31.3", "pali": "vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso ekodibhāvaṁ avitakkaṁ\navicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja viharati,", "sujato": "As the placing of the mind and keeping it connected are stilled, they enter and remain in the second absorption,\nwhich has the rapture and bliss born of immersion, with internal clarity and mind at one,\nwithout placing the mind and keeping it connected.", "thanissaro": "With the stilling of directed thoughts & evaluations, he enters & remains in the second jhāna:\nrapture & pleasure born of concentration,\nunification of awareness free from directed thought & evaluation—internal assurance.", "pts": "And again, your reverences, a monk, by allaying initial and discursive thought,\nhis mind subjectively tranquillised and fixed on one point,\nenters on and abides in the second meditation which is devoid of initial and discursive thought,\nis born of concentration and is rapturous and joyful."}, {"key": "mn141:31.4", "pali": "pītiyā ca virāgā upekkhako ca viharati …pe… tatiyaṁ jhānaṁ …pe…", "sujato": "And with the fading away of rapture, they enter and remain in the third absorption, where they meditate with equanimity,\nmindful and aware, personally experiencing the bliss of which the noble ones declare,\n‘Equanimous and mindful, one meditates in bliss.’", "thanissaro": "With the fading of rapture he remains equanimous, mindful, & alert, and senses pleasure with the body.\nHe enters & remains in the third jhāna, of which the noble ones declare,\n‘Equanimous & mindful, he has a pleasant abiding.’", "pts": "And again, your reverences, a monk, by the fading out of rapture, dwells with equanimity,\nattentive and clearly conscious, and experiences in his person that joy of which the ariyans say:\n'Joyful lives he who has equanimity and is mindful,' and he enters on and abides in the third meditation."}, {"key": "mn141:31.5", "pali": "catutthaṁ jhānaṁ upasampajja viharati,", "sujato": "With the giving up of pleasure and pain and the disappearance of former happiness and sadness,\nthey enter and remain in the fourth absorption, without pleasure or pain, with pure equanimity and mindfulness.", "thanissaro": "With the abandoning of pleasure & pain—as with the earlier disappearance of elation & distress—\nhe enters & remains in the fourth jhāna:\npurity of equanimity & mindfulness, neither pleasure nor pain.", "pts": "And again, your reverences, a monk by getting rid of joy,\nby getting rid of anguish, by the going down of his former pleasures and sorrows,\nenters on and abides in the fourth meditation which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness."}, {"key": "mn141:31.6", "pali": "ayaṁ vuccatāvuso:\n‘sammāsamādhi’.", "sujato": "This is called right immersion.", "thanissaro": "This is called right concentration.", "pts": "This, your reverences, is called right concentration."}, {"key": "mn141:31.7", "pali": "Idaṁ vuccatāvuso:\n‘dukkhanirodhagāminī paṭipadā ariyasaccaṁ’.", "sujato": "This is called the noble truth of the practice that leads to the cessation of suffering.", "thanissaro": "“This is called the noble truth of the path of practice leading to the cessation of stress.", "pts": "This, your reverences, is called the ariyan truth of the course leading to the stopping of anguish."}]}, {"id": "32", "label": "Near Varanasi, in the deer park at…", "rows": [{"key": "mn141:32.1", "pali": "Tathāgatenāvuso, arahatā sammāsambuddhena bārāṇasiyaṁ isipatane migadāye anuttaraṁ dhammacakkaṁ pavattitaṁ\nappaṭivattiyaṁ samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ, yadidaṁ—", "sujato": "Near Varanasi, in the deer park at Isipatana, the Realized One, the perfected one,\nthe fully awakened Buddha rolled forth the supreme Wheel of Dhamma.\nAnd that wheel cannot be rolled back by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "thanissaro": "“Friends, near Bārāṇasī, in the Deer Park at Isipatana, the Tathāgata—the worthy & rightly self-awakened—\nset in motion the unexcelled Wheel of Dhamma that cannot be stopped by contemplative or brahman,\ndeva, Māra, or Brahmā or anyone at all in the cosmos:", "pts": "Your reverences, the matchless Wheel of Dhamma set rolling by the Tathāāgata, the perfected one,\nfully Self-Awakened One in the deer-park at Isipatana near Benares cannot be rolled\nback by a recluse or brahman or deva or Māra or Brahmā or by anyone in the world."}, {"key": "mn141:32.2", "pali": "imesaṁ catunnaṁ ariyasaccānaṁ ācikkhanā desanā paññāpanā paṭṭhapanā vivaraṇā vibhajanā uttānīkamman”ti.", "sujato": "It is the teaching, advocating, establishing, clarifying, analyzing, and revealing of the four noble truths.”", "thanissaro": "in other words, the declaration, teaching, description, setting-forth,\nrevelation, explanation, and making-plain of these four noble truths.”", "pts": "That is to say, it was a proclamation a teaching, laying down, establishing,\nopening up, analysing, and making plain of these four ariyan truths.\""}, {"key": "mn141:32.3", "pali": "Idamavoca āyasmā sāriputto.", "sujato": "That’s what Venerable Sāriputta said.", "thanissaro": "That is what Ven. Sāriputta said.", "pts": "Thus spoke the venerable Sāriputta."}, {"key": "mn141:32.4", "pali": "Attamanā te bhikkhū āyasmato sāriputtassa bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the mendicants approved what Sāriputta said.", "thanissaro": "Gratified, the monks delighted in Ven. Sāriputta’s words.", "pts": "Delighted, these monks rejoiced in what the venerable Sāriputta had said."}, {"key": "mn141:32.5", "pali": "Saccavibhaṅgasuttaṁ niṭṭhitaṁ ekādasamaṁ.", "sujato": "", "thanissaro": "", "pts": "Discourse on the Analysis of the Truths:\nThe Eleventh"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn141:2.1": ["This is in reference to the Dhammac
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

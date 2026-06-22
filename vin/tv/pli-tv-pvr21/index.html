@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "pli-tv-pvr21/0", "label": "Parivāra", "rows": [{"key": "pli-tv-pvr21:0.1", "pali": "Parivāra", "brahmali": "The Compendium"}, {"key": "pli-tv-pvr21:0.2", "pali": "21.\nPañcavagga", "brahmali": "Legal procedures, why the Monastic Law, resolution of legal issues"}, {"key": "pli-tv-pvr21:0.3", "pali": "1.\nKammavagga", "brahmali": "1.\nThe subchapter on legal procedures"}]}, {"id": "pli-tv-pvr21/1", "label": "Cattāri kammāni.", "rows": [{"key": "pli-tv-pvr21:1.1", "pali": "Cattāri kammāni.", "brahmali": "There are four kinds of legal procedures:"}, {"key": "pli-tv-pvr21:1.2", "pali": "Apalokanakammaṁ, ñattikammaṁ, ñattidutiyakammaṁ, ñatticatutthakammaṁ—", "brahmali": "the legal procedure consisting of getting permission, the legal procedure consisting of one motion,\nthe legal procedure consisting of one motion and one announcement,\nand the legal procedure consisting of one motion and three announcements."}, {"key": "pli-tv-pvr21:1.3", "pali": "imāni cattāri kammāni.", "brahmali": ""}, {"key": "pli-tv-pvr21:1.4", "pali": "Katihākārehi vipajjanti?", "brahmali": "In how many ways do they fail?"}, {"key": "pli-tv-pvr21:1.5", "pali": "Imāni cattāri kammāni pañcahākārehi vipajjanti—", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:1.6", "pali": "vatthuto vā ñattito vā anussāvanato vā sīmato vā parisato vā.", "brahmali": "with respect to object, motion, announcement, monastery zone, or gathering."}]}, {"id": "pli-tv-pvr21/2", "label": "Kathaṁ vatthuto kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:2.1", "pali": "Kathaṁ vatthuto kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to object?"}, {"key": "pli-tv-pvr21:2.2", "pali": "Sammukhākaraṇīyaṁ kammaṁ asammukhā karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they don’t do a legal procedure face-to-face that should be done face-to-face,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.3", "pali": "paṭipucchākaraṇīyaṁ kammaṁ appaṭipucchā karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure without questioning that should be done with questioning,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.4", "pali": "paṭiññāya karaṇīyaṁ kammaṁ appaṭiññāya karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure without admission that should be done by admission,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.5", "pali": "sativinayārahassa amūḷhavinayaṁ deti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they apply resolution because of past insanity to one deserving resolution through recollection,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.6", "pali": "amūḷhavinayārahassa tassapāpiyasikākammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure of further penalty against one deserving resolution because of past insanity,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.7", "pali": "tassapāpiyasikākammārahassa tajjanīyakammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure of condemnation against one deserving a procedure of further penalty,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.8", "pali": "tajjanīyakammārahassa niyassakammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure of demotion against one deserving a procedure of condemnation,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.9", "pali": "niyassakammārahassa pabbājanīyakammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a procedure of banishment against one deserving a procedure of demotion,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.10", "pali": "pabbājanīyakammārahassa paṭisāraṇīyakammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a procedure of reconciliation against one deserving a procedure of banishment,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.11", "pali": "paṭisāraṇīyakammārahassa ukkhepanīyakammaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do a legal procedure of ejection against one deserving a procedure of reconciliation,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.12", "pali": "ukkhepanīyakammārahassa parivāsaṁ deti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they give probation to one deserving a procedure of ejection,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.13", "pali": "parivāsārahaṁ mūlāya paṭikassati, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they send back to the beginning one deserving probation,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.14", "pali": "mūlāyapaṭikassanārahassa mānattaṁ deti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they give the trial period to one deserving to be sent back to the beginning,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.15", "pali": "mānattārahaṁ abbheti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they rehabilitate one deserving the trial period,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.16", "pali": "abbhānārahaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they give full ordination to one deserving rehabilitation,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.17", "pali": "anuposathe uposathaṁ karoti, vatthuvipannaṁ adhammakammaṁ;", "brahmali": "If they do the observance-day ceremony on a non-observance day,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.18", "pali": "apavāraṇāya pavāreti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they do the invitation ceremony on a non-invitation day,\nthat procedure has failed with respect to object and is illegitimate."}, {"key": "pli-tv-pvr21:2.19", "pali": "Evaṁ vatthuto kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/3", "label": "Kathaṁ ñattito kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:3.1", "pali": "Kathaṁ ñattito kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to motion?"}, {"key": "pli-tv-pvr21:3.2", "pali": "Pañcahākārehi ñattito kammāni vipajjanti—", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:3.3", "pali": "vatthuṁ na parāmasati, saṅghaṁ na parāmasati, puggalaṁ na parāmasati, ñattiṁ na parāmasati, pacchā vā ñattiṁ ṭhapeti—", "brahmali": "they do not touch on the object, the Sangha, the person,\nor the motion, or the motion is put forward after the announcement."}, {"key": "pli-tv-pvr21:3.4", "pali": "imehi pañcahākārehi ñattito kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/4", "label": "Kathaṁ anussāvanato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:4.1", "pali": "Kathaṁ anussāvanato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to announcement?"}, {"key": "pli-tv-pvr21:4.2", "pali": "Pañcahākārehi anussāvanato kammāni vipajjanti—", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:4.3", "pali": "vatthuṁ na parāmasati, saṅghaṁ na parāmasati, puggalaṁ na parāmasati, sāvanaṁ hāpeti, akāle vā sāveti—", "brahmali": "they do not touch on the object, the Sangha, or the person,\nor an announcement is omitted, or the announcement is made at the wrong time."}, {"key": "pli-tv-pvr21:4.4", "pali": "imehi pañcahākārehi anussāvanato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/5", "label": "Kathaṁ sīmato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:5.1", "pali": "Kathaṁ sīmato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to the monastery zone?"}, {"key": "pli-tv-pvr21:5.2", "pali": "Ekādasahi ākārehi sīmato kammāni vipajjanti—", "brahmali": "In eleven ways:"}, {"key": "pli-tv-pvr21:5.3", "pali": "atikhuddakaṁ sīmaṁ sammannati, atimahatiṁ sīmaṁ sammannati, khaṇḍanimittaṁ sīmaṁ sammannati,\nchāyānimittaṁ sīmaṁ sammannati, animittaṁ sīmaṁ sammannati,\nbahisīme ṭhito sīmaṁ sammannati, nadiyā sīmaṁ sammannati, samudde sīmaṁ sammannati,\njātassare sīmaṁ sammannati, sīmāya sīmaṁ sambhindati, sīmāya sīmaṁ ajjhottharati—", "brahmali": "(1) they establish a zone that is too small;\n(2) they establish a zone that is too large;\n(3) they establish an incomplete zone;\n(4) they establish a zone with a shadow as a zone marker;\n(5) they establish a zone without zone markers;\n(6) they establish a zone while standing outside it;\n(7) they establish a zone in a river;\n(8) they establish a zone in an ocean;\n(9) they establish a zone in a lake;\n(10) they establish a zone that merges with an existing zone;\n(11) they establish a zone that encloses an existing zone."}, {"key": "pli-tv-pvr21:5.4", "pali": "imehi ekādasahi ākārehi sīmato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/6", "label": "Kathaṁ parisato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:6.1", "pali": "Kathaṁ parisato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to gathering?"}, {"key": "pli-tv-pvr21:6.2", "pali": "Dvādasahi ākārehi parisato kammāni vipajjanti—", "brahmali": "In twelve ways:"}, {"key": "pli-tv-pvr21:6.3", "pali": "catuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te anāgatā honti, chandārahānaṁ chando anāhaṭo hoti,\nsammukhībhūtā paṭikkosanti, catuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti,\ncatuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando āhaṭo hoti, sammukhībhūtā paṭikkosanti.", "brahmali": "In regard to legal procedures that require a group of four:\n(1) the monks who should be present haven’t all arrived,\nconsent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(2) the monks who should be present have arrived,\nbut consent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(3) the monks who should be present have arrived,\nand consent has been brought for those who are eligible to give their consent,\nbut someone present objects to the decision."}, {"key": "pli-tv-pvr21:6.4", "pali": "Pañcavaggakaraṇe kamme …pe…", "brahmali": "In regard to legal procedures that require a group of five:\n…\n(4-6) …"}, {"key": "pli-tv-pvr21:6.5", "pali": "dasavaggakaraṇe kamme …pe…", "brahmali": "In regard to legal procedures that require a group of ten:\n…\n(7-9) …"}, {"key": "pli-tv-pvr21:6.6", "pali": "vīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te anāgatā honti, chandārahānaṁ chando anāhaṭo hoti,\nsammukhībhūtā paṭikkosanti, vīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti,\nvīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando āhaṭo hoti, sammukhībhūtā paṭikkosanti—", "brahmali": "In regard to legal procedures that require a group of twenty:\n(10) the monks who should be present haven’t all arrived,\nconsent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(11) the monks who should be present have arrived,\nbut consent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(12) the monks who should be present have arrived,\nand consent has been brought for those who are eligible to give their consent,\nbut someone present objects to the decision."}, {"key": "pli-tv-pvr21:6.7", "pali": "imehi dvādasahi ākārehi parisato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/7", "label": "Catuvaggakaraṇe kamme cattāro bhikkhū pakatattā kammapattā, avasesā…", "rows": [{"key": "pli-tv-pvr21:7.1", "pali": "Catuvaggakaraṇe kamme cattāro bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of four, four regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:7.2", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:7.3", "pali": "Pañcavaggakaraṇe kamme pañca bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of five, five regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:7.4", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:7.5", "pali": "Dasavaggakaraṇe kamme dasa bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of ten, ten regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:7.6", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:7.7", "pali": "Vīsativaggakaraṇe kamme vīsati bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of twenty, twenty regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:7.8", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}]}, {"id": "pli-tv-pvr21/8", "label": "Cattāri kammāni—", "rows": [{"key": "pli-tv-pvr21:8.1", "pali": "Cattāri kammāni—", "brahmali": "There are four kinds of legal procedures:"}, {"key": "pli-tv-pvr21:8.2", "pali": "apalokanakammaṁ, ñattikammaṁ, ñattidutiyakammaṁ, ñatticatutthakammaṁ.", "brahmali": "the procedure consisting of getting permission, the procedure consisting of one motion,\nthe procedure consisting of one motion and one announcement,\nand the procedure consisting of one motion and three announcements."}, {"key": "pli-tv-pvr21:8.3", "pali": "Imāni cattāri kammāni katihākārehi vipajjanti?", "brahmali": "In how many ways do they fail?"}, {"key": "pli-tv-pvr21:8.4", "pali": "Imāni cattāri kammāni pañcahākārehi vipajjanti—", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:8.5", "pali": "vatthuto vā ñattito vā anussāvanato vā sīmato vā parisato vā.", "brahmali": "with respect to object, motion, announcement, monastery zone, or gathering."}]}, {"id": "pli-tv-pvr21/9", "label": "Kathaṁ vatthuto kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:9.1", "pali": "Kathaṁ vatthuto kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to object?"}, {"key": "pli-tv-pvr21:9.2", "pali": "Paṇḍakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a <i lang='pi' translate='no'>paṇḍaka</i>,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.3", "pali": "Theyyasaṁvāsakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a fake monk, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.4", "pali": "Titthiyapakkantakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to one who has previously left to join the monastics of another religion,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.5", "pali": "Tiracchānagataṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to an animal, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.6", "pali": "Mātughātakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a matricide, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.7", "pali": "Pitughātakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a patricide, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.8", "pali": "Arahantaghātakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a murderer of a perfected one,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.9", "pali": "Bhikkhunidūsakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a rapist of a nun, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.10", "pali": "Saṅghabhedakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to one who has caused a schism in the Sangha,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.11", "pali": "Lohituppādakaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to one who has caused the Buddha to bleed,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.12", "pali": "Ubhatobyañjanaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a gynandromorph, that procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.13", "pali": "Ūnavīsativassaṁ puggalaṁ upasampādeti, vatthuvipannaṁ adhammakammaṁ.", "brahmali": "If they give the full ordination to a person less then twenty years old,\nthat procedure has failed in object and is illegitimate."}, {"key": "pli-tv-pvr21:9.14", "pali": "Evaṁ vatthuto kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/10", "label": "Kathaṁ ñattito kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:10.1", "pali": "Kathaṁ ñattito kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to motion?"}, {"key": "pli-tv-pvr21:10.2", "pali": "Pañcahākārehi ñattito kammāni vipajjanti.", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:10.3", "pali": "Vatthuṁ na parāmasati, saṅghaṁ na parāmasati, puggalaṁ na parāmasati, ñattiṁ na parāmasati, pacchā vā ñattiṁ ṭhapeti—", "brahmali": "they do not touch on the object, the Sangha, the person,\nor the motion, or the motion is put forward after the announcement."}, {"key": "pli-tv-pvr21:10.4", "pali": "imehi pañcahākārehi ñattito kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/11", "label": "Kathaṁ anussāvanato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:11.1", "pali": "Kathaṁ anussāvanato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to announcement?"}, {"key": "pli-tv-pvr21:11.2", "pali": "Pañcahākārehi anussāvanato kammāni vipajjanti—", "brahmali": "In five ways:"}, {"key": "pli-tv-pvr21:11.3", "pali": "vatthuṁ na parāmasati, saṅghaṁ na parāmasati, puggalaṁ na parāmasati, sāvanaṁ hāpeti, akāle vā sāveti—", "brahmali": "they do not touch on the object, the Sangha, or the person,\nor an announcement is omitted, or the announcement is made at the wrong time."}, {"key": "pli-tv-pvr21:11.4", "pali": "imehi pañcahākārehi anussāvanato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/12", "label": "Kathaṁ sīmato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:12.1", "pali": "Kathaṁ sīmato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to the monastery zone?"}, {"key": "pli-tv-pvr21:12.2", "pali": "Ekādasahi ākārehi sīmato kammāni vipajjanti.", "brahmali": "In eleven ways:"}, {"key": "pli-tv-pvr21:12.3", "pali": "Atikhuddakaṁ sīmaṁ sammannati, atimahatiṁ sīmaṁ sammannati, khaṇḍanimittaṁ sīmaṁ sammannati,\nchāyānimittaṁ sīmaṁ sammannati, animittaṁ sīmaṁ sammannati,\nbahisīme ṭhito sīmaṁ sammannati, nadiyā sīmaṁ sammannati, samudde sīmaṁ sammannati,\njātassare sīmaṁ sammannati, sīmāya sīmaṁ sambhindati, sīmāya sīmaṁ ajjhottharati—", "brahmali": "(1) they establish a zone that is too small;\n(2) they establish a zone that is too large;\n(3) they establish an incomplete zone;\n(4) they establish a zone with a shadow as a zone marker;\n(5) they establish a zone without zone markers;\n(6) they establish a zone while standing outside it;\n(7) they establish a zone in a river;\n(8) they establish a zone in an ocean;\n(9) they establish a zone in a lake;\n(10) they establish a zone that merges with an existing zone;\n(11) they establish a zone that encloses an existing zone."}, {"key": "pli-tv-pvr21:12.4", "pali": "imehi ekādasahi ākārehi sīmato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/13", "label": "Kathaṁ parisato kammāni vipajjanti?", "rows": [{"key": "pli-tv-pvr21:13.1", "pali": "Kathaṁ parisato kammāni vipajjanti?", "brahmali": "How do legal procedures fail with respect to gathering?"}, {"key": "pli-tv-pvr21:13.2", "pali": "Dvādasahi ākārehi parisato kammāni vipajjanti—", "brahmali": "In twelve ways:"}, {"key": "pli-tv-pvr21:13.3", "pali": "catuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te anāgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti,\ncatuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti.\nCatuvaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando āhaṭo hoti, sammukhībhūtā paṭikkosanti.", "brahmali": "In regard to legal procedures that require a group of four:\n(1) the monks who should be present haven’t all arrived,\nconsent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(2) the monks who should be present have arrived,\nbut consent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(3) the monks who should be present have arrived,\nand consent has been brought for those who are eligible to give their consent,\nbut someone present objects to the decision."}, {"key": "pli-tv-pvr21:13.4", "pali": "Pañcavaggakaraṇe kamme …pe…", "brahmali": "In regard to legal procedures that require a group of five:\n…\n(4-6) …"}, {"key": "pli-tv-pvr21:13.5", "pali": "dasavaggakaraṇe kamme …pe…", "brahmali": "In regard to legal procedures that require a group of ten:\n…\n(7-9) …"}, {"key": "pli-tv-pvr21:13.6", "pali": "vīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te anāgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti.", "brahmali": "In regard to legal procedures that require a group of twenty:\n(10) the monks who should be present haven’t all arrived,\nconsent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(11) the monks who should be present have arrived,\nbut consent has not been brought for those who are eligible to give their consent,\nor someone present objects to the decision;\n(12) the monks who should be present have arrived,\nand consent has been brought for those who are eligible to give their consent,\nbut someone present objects to the decision."}, {"key": "pli-tv-pvr21:13.7", "pali": "Vīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti,\nchandārahānaṁ chando anāhaṭo hoti, sammukhībhūtā paṭikkosanti.\nVīsativaggakaraṇe kamme yāvatikā bhikkhū kammapattā te āgatā honti, chandārahānaṁ chando āhaṭo hoti,\nsammukhībhūtā paṭikkosanti—imehi dvādasahi ākārehi parisato kammāni vipajjanti.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/14", "label": "Apalokanakammaṁ kati ṭhānāni gacchati?", "rows": [{"key": "pli-tv-pvr21:14.1", "pali": "Apalokanakammaṁ kati ṭhānāni gacchati?", "brahmali": "In how many situations does the legal procedure consisting of getting permission apply?"}, {"key": "pli-tv-pvr21:14.2", "pali": "Ñattikammaṁ kati ṭhānāni gacchati?", "brahmali": "In how many situations does the legal procedure consisting of one motion apply?"}, {"key": "pli-tv-pvr21:14.3", "pali": "Ñattidutiyakammaṁ kati ṭhānāni gacchati?", "brahmali": "In how many situations does the legal procedure consisting of one motion and one announcement apply?"}, {"key": "pli-tv-pvr21:14.4", "pali": "Ñatticatutthakammaṁ kati ṭhānāni gacchati?", "brahmali": "In how many situations does the legal procedure consisting of one motion and three announcements apply?"}, {"key": "pli-tv-pvr21:14.5", "pali": "Apalokanakammaṁ pañca ṭhānāni gacchati.", "brahmali": "A legal procedure consisting of getting permission applies in five situations."}, {"key": "pli-tv-pvr21:14.6", "pali": "Ñattikammaṁ nava ṭhānāni gacchati.", "brahmali": "A legal procedure consisting of one motion applies in nine situations."}, {"key": "pli-tv-pvr21:14.7", "pali": "Ñattidutiyakammaṁ satta ṭhānāni gacchati.", "brahmali": "A legal procedure consisting of one motion and one announcement applies in seven situations."}, {"key": "pli-tv-pvr21:14.8", "pali": "Ñatticatutthakammaṁ satta ṭhānāni gacchati.", "brahmali": "A legal procedure consisting of one motion and three announcements applies in seven situations."}]}, {"id": "pli-tv-pvr21/15", "label": "Apalokanakammaṁ katamāni pañca ṭhānāni gacchati?", "rows": [{"key": "pli-tv-pvr21:15.1", "pali": "Apalokanakammaṁ katamāni pañca ṭhānāni gacchati?", "brahmali": "In which five situations does the legal procedure consisting of getting permission apply?"}, {"key": "pli-tv-pvr21:15.2", "pali": "Osāraṇaṁ, nissāraṇaṁ, bhaṇḍukammaṁ, brahmadaṇḍaṁ, kammalakkhaṇaññeva pañcamaṁ—", "brahmali": "Admittance, sending away, shaving, the supreme penalty, and any legal procedure with similar characteristics."}, {"key": "pli-tv-pvr21:15.3", "pali": "apalokanakammaṁ imāni pañca ṭhānāni gacchati.", "brahmali": ""}, {"key": "pli-tv-pvr21:15.4", "pali": "Ñattikammaṁ katamāni nava ṭhānāni gacchati?", "brahmali": "In which nine situations does the legal procedure consisting of one motion apply?"}, {"key": "pli-tv-pvr21:15.5", "pali": "Osāraṇaṁ, nissāraṇaṁ, uposathaṁ, pavāraṇaṁ, sammutiṁ, dānaṁ, paṭiggahaṁ, paccukkaḍḍhanaṁ, kammalakkhaṇaññeva navamaṁ—", "brahmali": "Admittance, sending away, the observance day, the invitation ceremony, agreements,\ngiving, receiving, postponement, and any legal procedure with similar characteristics."}, {"key": "pli-tv-pvr21:15.6", "pali": "ñattikammaṁ imāni nava ṭhānāni gacchati.", "brahmali": ""}, {"key": "pli-tv-pvr21:15.7", "pali": "Ñattidutiyakammaṁ katamāni satta ṭhānāni gacchati?", "brahmali": "In which seven situations does the legal procedure consisting of one motion and one announcement apply?"}, {"key": "pli-tv-pvr21:15.8", "pali": "Osāraṇaṁ, nissāraṇaṁ, sammutiṁ, dānaṁ, uddharaṇaṁ, desanaṁ, kammalakkhaṇaññeva sattamaṁ—", "brahmali": "Admittance, sending away, agreements, giving, ending of the robe season,\napproval, and any legal procedure with similar characteristics."}, {"key": "pli-tv-pvr21:15.9", "pali": "ñattidutiyakammaṁ imāni satta ṭhānāni gacchati.", "brahmali": ""}, {"key": "pli-tv-pvr21:15.10", "pali": "Ñatticatutthakammaṁ katamāni satta ṭhānāni gacchati?", "brahmali": "In which seven situations does the legal procedure consisting of one motion and three announcements apply?"}, {"key": "pli-tv-pvr21:15.11", "pali": "Osāraṇaṁ, nissāraṇaṁ, sammutiṁ, dānaṁ, niggahaṁ, samanubhāsanaṁ, kammalakkhaṇaññeva sattamaṁ—", "brahmali": "Admittance, sending away, agreements, giving, restraining,\npressing, and any legal procedure with similar characteristics."}, {"key": "pli-tv-pvr21:15.12", "pali": "ñatticatutthakammaṁ imāni satta ṭhānāni gacchati.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/16", "label": "Catuvaggakaraṇe kamme cattāro bhikkhū pakatattā kammapattā, avasesā…", "rows": [{"key": "pli-tv-pvr21:16.1", "pali": "Catuvaggakaraṇe kamme cattāro bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of four, four regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:16.2", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:16.3", "pali": "Pañcavaggakaraṇe kamme pañca bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of five, five regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:16.4", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:16.5", "pali": "Dasavaggakaraṇe kamme dasa bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of ten, ten regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:16.6", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}, {"key": "pli-tv-pvr21:16.7", "pali": "Vīsativaggakaraṇe kamme vīsati bhikkhū pakatattā kammapattā, avasesā pakatattā chandārahā.", "brahmali": "In regard to legal procedures that require a group of twenty, twenty regular monks should be present,\nwhile the remainder of regular monks are entitled to give their consent."}, {"key": "pli-tv-pvr21:16.8", "pali": "Yassa saṅgho kammaṁ karoti so neva kammapatto nāpi chandāraho, api ca kammāraho.", "brahmali": "The one who is subject to the legal procedure should neither take part in the decision nor give his consent,\nbut is deserving of the legal procedure."}]}, {"id": "pli-tv-pvr21/17", "label": "Kammavaggo niṭṭhito paṭhamo.", "rows": [{"key": "pli-tv-pvr21:17.1", "pali": "Kammavaggo niṭṭhito paṭhamo.", "brahmali": "The first subchapter on legal procedures is finished."}]}, {"id": "pli-tv-pvr21/18", "label": "2. Atthavasavagga", "rows": [{"key": "pli-tv-pvr21:18.0", "pali": "2.\nAtthavasavagga", "brahmali": "2.\nThe subchapter on reasons"}, {"key": "pli-tv-pvr21:18.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:18.2", "pali": "Saṅghasuṭṭhutāya, saṅghaphāsutāya—", "brahmali": "for the well-being of the Sangha and for the comfort of the Sangha."}, {"key": "pli-tv-pvr21:18.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/19", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:19.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:19.2", "pali": "Dummaṅkūnaṁ puggalānaṁ niggahāya, pesalānaṁ bhikkhūnaṁ phāsuvihārāya—", "brahmali": "for the restraint of bad people and for the ease of good monks."}, {"key": "pli-tv-pvr21:19.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/20", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:20.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:20.2", "pali": "Diṭṭhadhammikānaṁ āsavānaṁ saṁvarāya, samparāyikānaṁ āsavānaṁ paṭighātāya—", "brahmali": "for the restraint of the corruptions relating to the present life\nand for the restraint of the corruptions relating to future lives."}, {"key": "pli-tv-pvr21:20.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/21", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:21.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:21.2", "pali": "Diṭṭhadhammikānaṁ verānaṁ saṁvarāya, samparāyikānaṁ verānaṁ paṭighātāya—", "brahmali": "for the restraint of threats relating to the present life and for avoiding threats relating to future lives."}, {"key": "pli-tv-pvr21:21.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/22", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:22.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:22.2", "pali": "Diṭṭhadhammikānaṁ vajjānaṁ saṁvarāya, samparāyikānaṁ vajjānaṁ paṭighātāya—", "brahmali": "for the restraint of faults relating to the present life and for avoiding faults relating to future lives."}, {"key": "pli-tv-pvr21:22.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/23", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:23.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:23.2", "pali": "Diṭṭhadhammikānaṁ bhayānaṁ saṁvarāya, samparāyikānaṁ bhayānaṁ paṭighātāya—", "brahmali": "for the restraint of dangers relating to the present life and for avoiding dangers relating to future lives."}, {"key": "pli-tv-pvr21:23.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/24", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:24.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:24.2", "pali": "Diṭṭhadhammikānaṁ akusalānaṁ dhammānaṁ saṁvarāya, samparāyikānaṁ akusalānaṁ dhammānaṁ paṭighātāya—", "brahmali": "for the restraint of unwholesome qualities relating to the present\nlife and for avoiding unwholesome qualities relating to future lives."}, {"key": "pli-tv-pvr21:24.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/25", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:25.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:25.2", "pali": "Gihīnaṁ anukampāya, pāpicchānaṁ pakkhupacchedāya—", "brahmali": "out of compassion for householders and for breaking up the factions of those with bad desires."}, {"key": "pli-tv-pvr21:25.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/26", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:26.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:26.2", "pali": "Appasannānaṁ pasādāya, pasannānaṁ bhiyyobhāvāya—", "brahmali": "to give rise to confidence in those without it and to increase the confidence of those who have it."}, {"key": "pli-tv-pvr21:26.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/27", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "rows": [{"key": "pli-tv-pvr21:27.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": "The Buddha laid down the training rules for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:27.2", "pali": "Saddhammaṭṭhitiyā, vinayānuggahāya—", "brahmali": "for the longevity of the true Teaching and for supporting the training."}, {"key": "pli-tv-pvr21:27.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ sikkhāpadaṁ paññattaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/28", "label": "Atthavasavaggo niṭṭhito dutiyo.", "rows": [{"key": "pli-tv-pvr21:28.1", "pali": "Atthavasavaggo niṭṭhito dutiyo.", "brahmali": "The second subchapter on reasons is finished."}]}, {"id": "pli-tv-pvr21/29", "label": "3. Paññattavagga", "rows": [{"key": "pli-tv-pvr21:29.0", "pali": "3.\nPaññattavagga", "brahmali": "3.\nThe subchapter on laying down"}, {"key": "pli-tv-pvr21:29.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ pātimokkhaṁ paññattaṁ …pe…", "brahmali": "The Buddha laid down the Monastic Code for his disciples for two reasons:\n…"}, {"key": "pli-tv-pvr21:29.2", "pali": "pātimokkhuddeso paññatto …", "brahmali": "laid down the recitation of the Monastic Code …"}, {"key": "pli-tv-pvr21:29.3", "pali": "pātimokkhaṭṭhapanaṁ paññattaṁ …", "brahmali": "laid down the canceling of the Monastic Code …"}, {"key": "pli-tv-pvr21:29.4", "pali": "pavāraṇā paññattā …", "brahmali": "laid down the invitation ceremony …"}, {"key": "pli-tv-pvr21:29.5", "pali": "pavāraṇāṭhapanaṁ paññattaṁ …", "brahmali": "laid down the canceling of the invitation ceremony …"}, {"key": "pli-tv-pvr21:29.6", "pali": "tajjanīyakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure of condemnation …"}, {"key": "pli-tv-pvr21:29.7", "pali": "niyassakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure of demotion …"}, {"key": "pli-tv-pvr21:29.8", "pali": "pabbājanīyakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure of banishment …"}, {"key": "pli-tv-pvr21:29.9", "pali": "paṭisāraṇīyakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure of reconciliation …"}, {"key": "pli-tv-pvr21:29.10", "pali": "ukkhepanīyakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure of ejection …"}, {"key": "pli-tv-pvr21:29.11", "pali": "parivāsadānaṁ paññattaṁ …", "brahmali": "laid down the giving of probation …"}, {"key": "pli-tv-pvr21:29.12", "pali": "mūlāyapaṭikassanā paññattā …", "brahmali": "laid down the sending back to the beginning …"}, {"key": "pli-tv-pvr21:29.13", "pali": "mānattadānaṁ paññattaṁ …", "brahmali": "laid down the giving of the trial period …"}, {"key": "pli-tv-pvr21:29.14", "pali": "abbhānaṁ paññattaṁ …", "brahmali": "laid down the rehabilitation …"}, {"key": "pli-tv-pvr21:29.15", "pali": "osāraṇīyaṁ paññattaṁ …", "brahmali": "laid down the admittance …"}, {"key": "pli-tv-pvr21:29.16", "pali": "nissāraṇīyaṁ paññattaṁ …", "brahmali": "laid down the sending away …"}, {"key": "pli-tv-pvr21:29.17", "pali": "upasampadaṁ paññattaṁ …", "brahmali": "laid down the full ordination …"}, {"key": "pli-tv-pvr21:29.18", "pali": "apalokanakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure consisting of getting permission …"}, {"key": "pli-tv-pvr21:29.19", "pali": "ñattikammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure consisting of one motion …"}, {"key": "pli-tv-pvr21:29.20", "pali": "ñattidutiyakammaṁ paññattaṁ …", "brahmali": "laid down the legal procedure consisting of one motion and one announcement …"}, {"key": "pli-tv-pvr21:29.21", "pali": "ñatticatutthakammaṁ paññattaṁ …pe….", "brahmali": "laid down the legal procedure consisting of one motion and three announcements …"}]}, {"id": "pli-tv-pvr21/30", "label": "Paññattavaggo niṭṭhito tatiyo.", "rows": [{"key": "pli-tv-pvr21:30.1", "pali": "Paññattavaggo niṭṭhito tatiyo.", "brahmali": "The third subchapter on laying down is finished."}]}, {"id": "pli-tv-pvr21/31", "label": "4. Apaññattepaññattavagga", "rows": [{"key": "pli-tv-pvr21:31.0", "pali": "4.\nApaññattepaññattavagga", "brahmali": "4.\nThe subchapter on “laid down a rule when there was no existing rule”"}, {"key": "pli-tv-pvr21:31.1", "pali": "…pe…", "brahmali": "…"}, {"key": "pli-tv-pvr21:31.2", "pali": "Apaññatte paññattaṁ, paññatte anupaññattaṁ …pe…", "brahmali": "laid down a rule when there was no existing rule, and laid down an addition to an existing rule …"}, {"key": "pli-tv-pvr21:31.3", "pali": "sammukhāvinayo paññatto …pe…", "brahmali": "laid down resolution face-to-face …"}, {"key": "pli-tv-pvr21:31.4", "pali": "sativinayo paññatto …pe…", "brahmali": "laid down resolution by recollection …"}, {"key": "pli-tv-pvr21:31.5", "pali": "amūḷhavinayo paññatto …pe…", "brahmali": "laid down resolution because of past insanity …"}, {"key": "pli-tv-pvr21:31.6", "pali": "paṭiññātakaraṇaṁ paññattaṁ …pe…", "brahmali": "laid down acting according to what has been admitted …"}, {"key": "pli-tv-pvr21:31.7", "pali": "yebhuyyasikā paññattā …pe…", "brahmali": "laid down the majority decision …"}, {"key": "pli-tv-pvr21:31.8", "pali": "tassapāpiyasikā paññattā …pe…", "brahmali": "laid down the further penalty …"}, {"key": "pli-tv-pvr21:31.9", "pali": "tiṇavatthārako paññatto saṅghasuṭṭhutāya, saṅghaphāsutāya—", "brahmali": "laid down the covering over as if with grass for the well-being of the Sangha and for the comfort of the Sangha."}, {"key": "pli-tv-pvr21:31.10", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/32", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:32.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:32.2", "pali": "Dummaṅkūnaṁ puggalānaṁ niggahāya, pesalānaṁ bhikkhūnaṁ phāsuvihārāya—", "brahmali": "for the restraint of bad people and for the ease of good monks."}, {"key": "pli-tv-pvr21:32.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/33", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:33.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:33.2", "pali": "Diṭṭhadhammikānaṁ āsavānaṁ saṁvarāya, samparāyikānaṁ āsavānaṁ paṭighātāya—", "brahmali": "for the restraint of the corruptions relating to the present life\nand for the restraint of the corruptions relating to future lives."}, {"key": "pli-tv-pvr21:33.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/34", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:34.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:34.2", "pali": "Diṭṭhadhammikānaṁ verānaṁ saṁvarāya, samparāyikānaṁ verānaṁ paṭighātāya—", "brahmali": "for the restraint of threats relating to the present life and for avoiding threats relating to future lives."}, {"key": "pli-tv-pvr21:34.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/35", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:35.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:35.2", "pali": "Diṭṭhadhammikānaṁ vajjānaṁ saṁvarāya, samparāyikānaṁ vajjānaṁ paṭighātāya—", "brahmali": "for the restraint of faults relating to the present life and for avoiding faults relating to future lives."}, {"key": "pli-tv-pvr21:35.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/36", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:36.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:36.2", "pali": "Diṭṭhadhammikānaṁ bhayānaṁ saṁvarāya, samparāyikānaṁ bhayānaṁ paṭighātāya—", "brahmali": "for the restraint of dangers relating to the present life and for avoiding dangers relating to future lives."}, {"key": "pli-tv-pvr21:36.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/37", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:37.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:37.2", "pali": "Diṭṭhadhammikānaṁ akusalānaṁ dhammānaṁ saṁvarāya, samparāyikānaṁ akusalānaṁ dhammānaṁ paṭighātāya—", "brahmali": "for the restraint of unwholesome qualities relating to the present\nlife and for avoiding unwholesome qualities relating to future lives."}, {"key": "pli-tv-pvr21:37.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/38", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:38.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:38.2", "pali": "Gihīnaṁ anukampāya, pāpicchānaṁ pakkhupacchedāya—", "brahmali": "out of compassion for householders and for breaking up the factions of those with bad desires."}, {"key": "pli-tv-pvr21:38.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/39", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:39.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:39.2", "pali": "Appasannānaṁ pasādāya, pasannānaṁ bhiyyobhāvāya—", "brahmali": "to give rise to confidence in those without it and to increase the confidence of those who have it."}, {"key": "pli-tv-pvr21:39.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/40", "label": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "rows": [{"key": "pli-tv-pvr21:40.1", "pali": "Dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": "The Buddha laid down the covering over as if with grass for his disciples for two reasons:"}, {"key": "pli-tv-pvr21:40.2", "pali": "Saddhammaṭṭhitiyā, vinayānuggahāya—", "brahmali": "for the longevity of the true Teaching and for supporting the training."}, {"key": "pli-tv-pvr21:40.3", "pali": "ime dve atthavase paṭicca tathāgatena sāvakānaṁ tiṇavatthārako paññatto.", "brahmali": ""}]}, {"id": "pli-tv-pvr21/41", "label": "Apaññatte paññattavaggo niṭṭhito catuttho.", "rows": [{"key": "pli-tv-pvr21:41.1", "pali": "Apaññatte paññattavaggo niṭṭhito catuttho.", "brahmali": "The fourth subchapter on “laid down a rule when there was no existing rule” is finished."}]}, {"id": "pli-tv-pvr21/42", "label": "5. Navasaṅgahavagga", "rows": [{"key": "pli-tv-pvr21:42.0", "pali": "5.\nNavasaṅgahavagga", "brahmali": "5.\nThe subchapter on nine kinds of “being found among”"}, {"key": "pli-tv-pvr21:42.1", "pali": "Navasaṅgahā—", "brahmali": "“There are nine kinds of ‘being found among’:"}, {"key": "pli-tv-pvr21:42.2", "pali": "vatthusaṅgaho, vipattisaṅgaho āpattisaṅgaho, nidānasaṅgaho, puggalasaṅgaho,\nkhandhasaṅgaho, samuṭṭhānasaṅgaho, adhikaraṇasaṅgaho, samathasaṅgahoti.", "brahmali": "being found among the actions that are the bases for offenses, being found among the failures,\nbeing found among the offenses, being found among the origin stories,\nbeing found among persons, being found among the classes, being found among the originations,\nbeing found among the legal issues, and being found among the settling of legal issues."}]}, {"id": "pli-tv-pvr21/43", "label": "Adhikaraṇe samuppanne sace ubho atthapaccatthikā āgacchanti ubhinnampi…", "rows": [{"key": "pli-tv-pvr21:43.1", "pali": "Adhikaraṇe samuppanne sace ubho atthapaccatthikā āgacchanti ubhinnampi vatthu ārocāpetabbaṁ.", "brahmali": "When a legal issue has arisen, if the two opponents come,\nthey should be told to inform about the action that was the basis for the disagreement."}, {"key": "pli-tv-pvr21:43.2", "pali": "Ubhinnampi vatthuṁ ārocāpetvā ubhinnampi paṭiññā sotabbā.", "brahmali": "After hearing the testimony of both,"}, {"key": "pli-tv-pvr21:43.3", "pali": "Ubhinnampi paṭiññaṁ sutvā ubhopi vattabbā—", "brahmali": "they should be told,"}, {"key": "pli-tv-pvr21:43.4", "pali": "“amhākaṁ imasmiṁ adhikaraṇe vūpasamite ubhopi tuṭṭhā bhavissathā”ti.", "brahmali": "‘When we’ve resolved this legal issue, you should both be satisfied.’"}, {"key": "pli-tv-pvr21:43.5", "pali": "Sace āhaṁsu—", "brahmali": "If they say,"}, {"key": "pli-tv-pvr21:43.6", "pali": "“ubhopi tuṭṭhā bhavissāmā”ti, saṅghena taṁ adhikaraṇaṁ sampaṭicchitabbaṁ.", "brahmali": "‘We’ll both be satisfied,’ then the Sangha should take on that legal issue."}, {"key": "pli-tv-pvr21:43.7", "pali": "Sace alajjussannā hoti, parisā ubbāhikāya vūpasametabbaṁ.", "brahmali": "If there are many shameless people in the gathering, then the issue should be resolved by means of a committee."}, {"key": "pli-tv-pvr21:43.8", "pali": "Sace bālussannā hoti,\nparisā vinayadharo pariyesitabbo yena dhammena yena vinayena yena satthusāsanena taṁ adhikaraṇaṁ vūpasammati.", "brahmali": "If there are many ignorant people in the gathering,\nthey should search for an expert on the Monastic Law to resolve that legal issue in accordance with the Teaching,\nthe Monastic Law, and the Teacher’s instruction."}, {"key": "pli-tv-pvr21:43.9", "pali": "Tathā taṁ adhikaraṇaṁ vūpasametabbaṁ.", "brahmali": "That legal issue should be resolved in this way."}]}, {"id": "pli-tv-pvr21/44", "label": "Vatthu jānitabbaṁ, gottaṁ jānitabbaṁ, nāmaṁ jānitabbaṁ, āpatti…", "rows": [{"key": "pli-tv-pvr21:44.1", "pali": "Vatthu jānitabbaṁ, gottaṁ jānitabbaṁ, nāmaṁ jānitabbaṁ, āpatti jānitabbā.", "brahmali": "One should know the basis for an offense, one should know the category,\none should know the name, and one should know the offense."}]}, {"id": "pli-tv-pvr21/45", "label": "Methunadhammoti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:45.1", "pali": "Methunadhammoti vatthu ceva gottañca—", "brahmali": "‘Sexual intercourse’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:45.2", "pali": "pārājikanti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing expulsion’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/46", "label": "Adinnādānanti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:46.1", "pali": "Adinnādānanti vatthu ceva gottañca—", "brahmali": "‘Stealing’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:46.2", "pali": "pārājikanti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing expulsion’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/47", "label": "Manussaviggahoti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:47.1", "pali": "Manussaviggahoti vatthu ceva gottañca—", "brahmali": "‘Human being’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:47.2", "pali": "pārājikanti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing expulsion’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/48", "label": "Uttarimanussadhammoti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:48.1", "pali": "Uttarimanussadhammoti vatthu ceva gottañca—", "brahmali": "‘Superhuman quality’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:48.2", "pali": "pārājikanti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing expulsion’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/49", "label": "Sukkavissaṭṭhīti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:49.1", "pali": "Sukkavissaṭṭhīti vatthu ceva gottañca—", "brahmali": "‘Emission of semen’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:49.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/50", "label": "Kāyasaṁsaggoti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:50.1", "pali": "Kāyasaṁsaggoti vatthu ceva gottañca—", "brahmali": "‘Physical contact’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:50.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/51", "label": "Duṭṭhullavācāti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:51.1", "pali": "Duṭṭhullavācāti vatthu ceva gottañca—", "brahmali": "‘Indecent speech’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:51.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/52", "label": "Attakāmanti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:52.1", "pali": "Attakāmanti vatthu ceva gottañca—", "brahmali": "‘One’s own desires’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:52.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/53", "label": "Sañcarittanti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:53.1", "pali": "Sañcarittanti vatthu ceva gottañca—", "brahmali": "‘Matchmaking’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:53.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/54", "label": "Saññācikāya kuṭiṁ kārāpananti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:54.1", "pali": "Saññācikāya kuṭiṁ kārāpananti vatthu ceva gottañca—", "brahmali": "‘Building a hut by means of begging’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:54.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/55", "label": "Mahallakaṁ vihāraṁ kārāpananti vatthu ceva gottañca—", "rows": [{"key": "pli-tv-pvr21:55.1", "pali": "Mahallakaṁ vihāraṁ kārāpananti vatthu ceva gottañca—", "brahmali": "‘Building a large dwelling’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:55.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/56", "label": "Bhikkhuṁ amūlakena pārājikena dhammena anuddhaṁsananti vatthu ceva…", "rows": [{"key": "pli-tv-pvr21:56.1", "pali": "Bhikkhuṁ amūlakena pārājikena dhammena anuddhaṁsananti vatthu ceva gottañca—", "brahmali": "‘Groundlessly charging a monk with an offense entailing expulsion’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:56.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/57", "label": "Bhikkhuṁ aññabhāgiyassa adhikaraṇassa kiñci desaṁ lesamattaṁ upādāya…", "rows": [{"key": "pli-tv-pvr21:57.1", "pali": "Bhikkhuṁ aññabhāgiyassa adhikaraṇassa kiñci desaṁ lesamattaṁ\nupādāya pārājikena dhammena anuddhaṁsananti vatthu ceva gottañca—", "brahmali": "‘Charging a monk with an offense entailing expulsion,\nusing an unrelated legal issue as a pretext’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:57.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/58", "label": "Saṅghabhedakassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu…", "rows": [{"key": "pli-tv-pvr21:58.1", "pali": "Saṅghabhedakassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu ceva gottañca—", "brahmali": "‘A monk not stopping with pursuing schism in the Sangha when pressed for the third time’ is the basis for an offense,\nas well as a category."}, {"key": "pli-tv-pvr21:58.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/59", "label": "Bhedakānuvattakānaṁ bhikkhūnaṁ yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu…", "rows": [{"key": "pli-tv-pvr21:59.1", "pali": "Bhedakānuvattakānaṁ bhikkhūnaṁ yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu ceva gottañca—", "brahmali": "‘Monks not stopping siding with one who is pursuing schism in the\nSangha when pressed for the third time’ is the basis for an offense,\nas well as a category."}, {"key": "pli-tv-pvr21:59.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/60", "label": "Dubbacassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu…", "rows": [{"key": "pli-tv-pvr21:60.1", "pali": "Dubbacassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu ceva gottañca—", "brahmali": "‘A monk not stopping with being difficult to correct when pressed for the third time’ is the basis for an offense,\nas well as a category."}, {"key": "pli-tv-pvr21:60.2", "pali": "saṅghādisesoti nāmañceva āpatti ca.", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense."}]}, {"id": "pli-tv-pvr21/61", "label": "Kuladūsakassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu…", "rows": [{"key": "pli-tv-pvr21:61.1", "pali": "Kuladūsakassa bhikkhuno yāvatatiyaṁ samanubhāsanāya na paṭinissajjananti vatthu ceva gottañca—", "brahmali": "‘A monk not stopping with being a corrupter of families when pressed for the third time’ is the basis for an offense,\nas well as a category."}, {"key": "pli-tv-pvr21:61.2", "pali": "saṅghādisesoti nāmañceva āpatti ca …pe….", "brahmali": "‘Offense entailing suspension’ is the name, as well as the offense. …"}]}, {"id": "pli-tv-pvr21/62", "label": "Anādariyaṁ paṭicca udake uccāraṁ vā passāvaṁ vā…", "rows": [{"key": "pli-tv-pvr21:62.1", "pali": "Anādariyaṁ paṭicca udake uccāraṁ vā passāvaṁ vā kheḷaṁ vā karaṇanti vatthu ceva gottañca—", "brahmali": "‘Out of disrespect, defecating, urinating, or spitting in water’ is the basis for an offense, as well as a category."}, {"key": "pli-tv-pvr21:62.2", "pali": "dukkaṭanti nāmañceva āpatti cāti.", "brahmali": "‘Offense of wrong conduct’ is the name, as well as the offense.”"}]}, {"id": "pli-tv-pvr21/63", "label": "Navasaṅgahavaggo niṭṭhito pañcamo.", "rows": [{"key": "pli-tv-pvr21:63.1", "pali": "Navasaṅgahavaggo niṭṭhito pañcamo.", "brahmali": "The fifth subchapter on nine kinds of “being found among” is finished."}]}, {"id": "pli-tv-pvr21/64", "label": "Tassuddānaṁ", "rows": [{"key": "pli-tv-pvr21:64.1", "pali": "Tassuddānaṁ", "brahmali": "This is the summary:"}]}, {"id": "pli-tv-pvr21/65", "label": "Apalokanaṁ ñatti ca,", "rows": [{"key": "pli-tv-pvr21:65.1", "pali": "Apalokanaṁ ñatti ca,", "brahmali": "“Getting permission, and motion,"}, {"key": "pli-tv-pvr21:65.2", "pali": "dutiyaṁ catutthena ca;", "brahmali": "One motion and one announcement, and with one motion and three announcements;"}, {"key": "pli-tv-pvr21:65.3", "pali": "Vatthu ñatti anussāvanaṁ,", "brahmali": "Object, motion, announcement,"}, {"key": "pli-tv-pvr21:65.4", "pali": "sīmā parisameva ca.", "brahmali": "Monastery zone, and gathering."}]}, {"id": "pli-tv-pvr21/66", "label": "Sammukhā paṭipucchā ca,", "rows": [{"key": "pli-tv-pvr21:66.1", "pali": "Sammukhā paṭipucchā ca,", "brahmali": "Face-to-face, and questioning,"}, {"key": "pli-tv-pvr21:66.2", "pali": "paṭiññā vinayāraho;", "brahmali": "Admission, resolution, deserving;"}, {"key": "pli-tv-pvr21:66.3", "pali": "Vatthu saṅghapuggalañca,", "brahmali": "Object, Sangha, and person,"}, {"key": "pli-tv-pvr21:66.4", "pali": "ñattiṁ na pacchā ñatti ca.", "brahmali": "Motions, and not the motion afterwards."}]}, {"id": "pli-tv-pvr21/67", "label": "Vatthuṁ saṅghapuggalañca,", "rows": [{"key": "pli-tv-pvr21:67.1", "pali": "Vatthuṁ saṅghapuggalañca,", "brahmali": "Object, Sangha, and person,"}, {"key": "pli-tv-pvr21:67.2", "pali": "sāvanaṁ akālena ca;", "brahmali": "Announcement, and at the wrong time;"}, {"key": "pli-tv-pvr21:67.3", "pali": "Atikhuddakā mahantā ca,", "brahmali": "Too small, and large,"}, {"key": "pli-tv-pvr21:67.4", "pali": "khaṇḍacchāyā nimittakā.", "brahmali": "Incomplete, shadow, without zone markers."}]}, {"id": "pli-tv-pvr21/68", "label": "Bahinadī samudde ca,", "rows": [{"key": "pli-tv-pvr21:68.1", "pali": "Bahinadī samudde ca,", "brahmali": "Outside, river, and in an ocean,"}, {"key": "pli-tv-pvr21:68.2", "pali": "jātassare ca bhindati;", "brahmali": "And in a lake, merges;"}, {"key": "pli-tv-pvr21:68.3", "pali": "Ajjhottharati sīmāya,", "brahmali": "It encloses a zone,"}, {"key": "pli-tv-pvr21:68.4", "pali": "catu pañca ca vaggikā.", "brahmali": "A group of four, and of five."}]}, {"id": "pli-tv-pvr21/69", "label": "Dasa vīsativaggā ca,", "rows": [{"key": "pli-tv-pvr21:69.1", "pali": "Dasa vīsativaggā ca,", "brahmali": "A group of ten, and of twenty,"}, {"key": "pli-tv-pvr21:69.2", "pali": "anāhaṭā ca āhaṭā;", "brahmali": "Not brought and brought;"}, {"key": "pli-tv-pvr21:69.3", "pali": "Kammapattā chandārahā,", "brahmali": "Who should be present, eligible to give their consent,"}, {"key": "pli-tv-pvr21:69.4", "pali": "kammārahā ca puggalā.", "brahmali": "And person deserving of the legal procedure."}]}, {"id": "pli-tv-pvr21/70", "label": "Apalokanaṁ pañcaṭṭhānaṁ,", "rows": [{"key": "pli-tv-pvr21:70.1", "pali": "Apalokanaṁ pañcaṭṭhānaṁ,", "brahmali": "Five situations for getting permission,"}, {"key": "pli-tv-pvr21:70.2", "pali": "ñatti ca navaṭhānikā;", "brahmali": "And nine situations for one motion;"}, {"key": "pli-tv-pvr21:70.3", "pali": "Ñatti dutiyaṁ sattaṭṭhānaṁ,", "brahmali": "Seven situations for one motion and one announcement,"}, {"key": "pli-tv-pvr21:70.4", "pali": "catutthā sattaṭhānikā.", "brahmali": "Seven situations for one motion and three announcements."}]}, {"id": "pli-tv-pvr21/71", "label": "Suṭṭhu phāsu ca dummaṅku,", "rows": [{"key": "pli-tv-pvr21:71.1", "pali": "Suṭṭhu phāsu ca dummaṅku,", "brahmali": "Well-being, and comfort, bad,"}, {"key": "pli-tv-pvr21:71.2", "pali": "pesalā cāpi āsavā;", "brahmali": "And good, corruptions;"}, {"key": "pli-tv-pvr21:71.3", "pali": "Veravajjabhayañceva,", "brahmali": "Threats, faults, and dangers,"}, {"key": "pli-tv-pvr21:71.4", "pali": "akusalaṁ gihīnañca.", "brahmali": "Unwholesome, and for householders."}]}, {"id": "pli-tv-pvr21/72", "label": "Pāpicchā appasannānaṁ,", "rows": [{"key": "pli-tv-pvr21:72.1", "pali": "Pāpicchā appasannānaṁ,", "brahmali": "Those with bad desires, those without confidence,"}, {"key": "pli-tv-pvr21:72.2", "pali": "pasannā dhammaṭṭhapanā;", "brahmali": "Confidence, the longevity of the Teaching;"}, {"key": "pli-tv-pvr21:72.3", "pali": "Vinayānuggahā ceva,", "brahmali": "And supporting the training,"}, {"key": "pli-tv-pvr21:72.4", "pali": "pātimokkhuddesena ca.", "brahmali": "The Monastic Code, and with the recitation."}]}, {"id": "pli-tv-pvr21/73", "label": "Pātimokkhañca ṭhapanā,", "rows": [{"key": "pli-tv-pvr21:73.1", "pali": "Pātimokkhañca ṭhapanā,", "brahmali": "And the canceling of the Monastic Code,"}, {"key": "pli-tv-pvr21:73.2", "pali": "Pavāraṇañca ṭhapanaṁ;", "brahmali": "And the invitation ceremony, its suspension;"}, {"key": "pli-tv-pvr21:73.3", "pali": "Tajjanīyā niyassañca,", "brahmali": "Condemnation, and demotion,"}, {"key": "pli-tv-pvr21:73.4", "pali": "Pabbājanīya paṭisāraṇī.", "brahmali": "Banishment, reconciliation."}]}, {"id": "pli-tv-pvr21/74", "label": "Ukkhepana parivāsaṁ,", "rows": [{"key": "pli-tv-pvr21:74.1", "pali": "Ukkhepana parivāsaṁ,", "brahmali": "Ejection, probation,"}, {"key": "pli-tv-pvr21:74.2", "pali": "mūlamānattaabbhānaṁ;", "brahmali": "Beginning, trial period, rehabilitation;"}, {"key": "pli-tv-pvr21:74.3", "pali": "Osāraṇaṁ nissāraṇaṁ,", "brahmali": "Admittance, sending away,"}, {"key": "pli-tv-pvr21:74.4", "pali": "tatheva upasampadā.", "brahmali": "And so the full ordination."}]}, {"id": "pli-tv-pvr21/75", "label": "Apalokanañatti ca,", "rows": [{"key": "pli-tv-pvr21:75.1", "pali": "Apalokanañatti ca,", "brahmali": "Getting permission, and motion,"}, {"key": "pli-tv-pvr21:75.2", "pali": "dutiyañca catutthakaṁ;", "brahmali": "One motion and one announcement, one motion and three announcements;"}, {"key": "pli-tv-pvr21:75.3", "pali": "Apaññattenupaññattaṁ,", "brahmali": "When there was no existing rule, laid down an addition,"}, {"key": "pli-tv-pvr21:75.4", "pali": "sammukhāvinayo sati.", "brahmali": "Resolution face-to-face, recollection."}]}, {"id": "pli-tv-pvr21/76", "label": "Amūḷhapaṭiyebhuyya,", "rows": [{"key": "pli-tv-pvr21:76.1", "pali": "Amūḷhapaṭiyebhuyya,", "brahmali": "Past insanity, admitted, majority,"}, {"key": "pli-tv-pvr21:76.2", "pali": "pāpiya tiṇavatthārakaṁ;", "brahmali": "Further penalty, covering over as if with grass;"}, {"key": "pli-tv-pvr21:76.3", "pali": "Vatthu vipatti āpatti,", "brahmali": "Basis, failure, offense,"}, {"key": "pli-tv-pvr21:76.4", "pali": "nidānaṁ puggalena ca.", "brahmali": "Origin story, and with person."}]}, {"id": "pli-tv-pvr21/77", "label": "Khandhā ceva samuṭṭhānā,", "rows": [{"key": "pli-tv-pvr21:77.1", "pali": "Khandhā ceva samuṭṭhānā,", "brahmali": "And classes, originations,"}, {"key": "pli-tv-pvr21:77.2", "pali": "adhikaraṇameva ca;", "brahmali": "And legal issue;"}, {"key": "pli-tv-pvr21:77.3", "pali": "Samathā saṅgahā ceva,", "brahmali": "And found among the settling,"}, {"key": "pli-tv-pvr21:77.4", "pali": "nāmaāpattikā tathāti.", "brahmali": "Name, and so offense.”"}]}, {"id": "pli-tv-pvr21/78", "label": "Parivāro niṭṭhito.", "rows": [{"key": "pli-tv-pvr21:78.1", "pali": "Parivāro niṭṭhito.", "brahmali": "The Compendium is finished."}]}, {"id": "pli-tv-pvr21/79", "label": "Parivārapāḷi niṭṭhitā.", "rows": [{"key": "pli-tv-pvr21:79.1", "pali": "Parivārapāḷi niṭṭhitā.", "brahmali": "The canonical text of the Compendium is finished."}]}, {"id": "pli-tv-pvr21/80", "label": "Pariyosānagāthā", "rows": [{"key": "pli-tv-pvr21:80.1", "pali": "Pariyosānagāthā", "brahmali": "Concluding verses:"}]}, {"id": "pli-tv-pvr21/81", "label": "Bubbācariyamaggañca,", "rows": [{"key": "pli-tv-pvr21:81.1", "pali": "Bubbācariyamaggañca,", "brahmali": "“Having asked this and that"}, {"key": "pli-tv-pvr21:81.2", "pali": "pucchitvā ca tahiṁ tahiṁ;", "brahmali": "About the practice of past teachers—"}, {"key": "pli-tv-pvr21:81.3", "pali": "Dīpanāmo mahāpañño,", "brahmali": "Dīpanāma, who had great wisdom,"}, {"key": "pli-tv-pvr21:81.4", "pali": "sutadhāriṁ vicakkhaṇo.", "brahmali": "Superb memory, clarity of sight."}]}, {"id": "pli-tv-pvr21/82", "label": "Imaṁ vitthārasaṅkhepaṁ,", "rows": [{"key": "pli-tv-pvr21:82.1", "pali": "Imaṁ vitthārasaṅkhepaṁ,", "brahmali": "This contraction of the detail,"}, {"key": "pli-tv-pvr21:82.2", "pali": "sajjhāmaggena majjhime;", "brahmali": "With a path for study, in the middle;"}, {"key": "pli-tv-pvr21:82.3", "pali": "Cintayitvā likhāpesi,", "brahmali": "Having thought it out, he had it written down,"}, {"key": "pli-tv-pvr21:82.4", "pali": "sissakānaṁ sukhāvahaṁ.", "brahmali": "Bringing happiness to disciples."}]}, {"id": "pli-tv-pvr21/83", "label": "Parivāranti yaṁ vuttaṁ,", "rows": [{"key": "pli-tv-pvr21:83.1", "pali": "Parivāranti yaṁ vuttaṁ,", "brahmali": "That which is called the ‘Compendium’,"}, {"key": "pli-tv-pvr21:83.2", "pali": "sabbaṁ vatthuṁ salakkhaṇaṁ;", "brahmali": "With all bases for offenses with their characteristics,"}, {"key": "pli-tv-pvr21:83.3", "pali": "Atthaṁ atthena saddhamme,", "brahmali": "Meaning in accord with the meaning in the true Teaching,"}, {"key": "pli-tv-pvr21:83.4", "pali": "dhammaṁ dhammena paññatte.", "brahmali": "Rule in accord with the rule in what is laid down."}]}, {"id": "pli-tv-pvr21/84", "label": "Sāsanaṁ parivāresi,", "rows": [{"key": "pli-tv-pvr21:84.1", "pali": "Sāsanaṁ parivāresi,", "brahmali": "It encompasses the instruction,"}, {"key": "pli-tv-pvr21:84.2", "pali": "jambudīpaṁva sāgaro;", "brahmali": "Like the ocean encompasses India;"}, {"key": "pli-tv-pvr21:84.3", "pali": "Parivāraṁ ajānanto,", "brahmali": "Not knowing the Compendium,"}, {"key": "pli-tv-pvr21:84.4", "pali": "kuto dhammavinicchayaṁ.", "brahmali": "How does one decide on the rules?"}]}, {"id": "pli-tv-pvr21/85", "label": "Vipatti vatthu paññatti,", "rows": [{"key": "pli-tv-pvr21:85.1", "pali": "Vipatti vatthu paññatti,", "brahmali": "How does one decide on failures, bases, rules,"}, {"key": "pli-tv-pvr21:85.2", "pali": "anupaññatti puggalo;", "brahmali": "Additions to the rules, persons;"}, {"key": "pli-tv-pvr21:85.3", "pali": "Ekato ubhato ceva,", "brahmali": "Whether on each side or on both sides,"}, {"key": "pli-tv-pvr21:85.4", "pali": "lokapaṇṇatti vajjato.", "brahmali": "A rule by convention from a moral fault?"}]}, {"id": "pli-tv-pvr21/86", "label": "Yassa jāyati vimati,", "rows": [{"key": "pli-tv-pvr21:86.1", "pali": "Yassa jāyati vimati,", "brahmali": "When anyone gives rise to doubt,"}, {"key": "pli-tv-pvr21:86.2", "pali": "parivārena chijjati;", "brahmali": "It is cut off by the Compendium;"}, {"key": "pli-tv-pvr21:86.3", "pali": "Cakkavatti mahāsene,", "brahmali": "Like a universal monarch in the midst of his great army,"}, {"key": "pli-tv-pvr21:86.4", "pali": "migamajjheva kesari.", "brahmali": "Like a lion in a herd of deer;"}]}, {"id": "pli-tv-pvr21/87", "label": "Ravi raṁsiparikkiṇṇo,", "rows": [{"key": "pli-tv-pvr21:87.1", "pali": "Ravi raṁsiparikkiṇṇo,", "brahmali": "Like the sun surrounded by its rays,"}, {"key": "pli-tv-pvr21:87.2", "pali": "cando tāragaṇe yathā;", "brahmali": "Like the moon in the starry sky;"}, {"key": "pli-tv-pvr21:87.3", "pali": "Brahmā brahmaparisāya,", "brahmali": "Like the Supreme Being in his assembly,"}, {"key": "pli-tv-pvr21:87.4", "pali": "gaṇamajjheva nāyako;", "brahmali": "Like a leader with his retinue—"}, {"key": "pli-tv-pvr21:87.5", "pali": "Evaṁ saddhammavinayo,", "brahmali": "In this way, the true Teaching and the Monastic Law"}, {"key": "pli-tv-pvr21:87.6", "pali": "parivārena sobhatīti.", "brahmali": "Shine through the Compendium.”"}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"brahmali": {"pli-tv-pvr21:2.8": ["For an explanation of the 
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

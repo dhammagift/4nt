@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 73", "rows": [{"key": "mn73:0.1", "pali": "Majjhima Nikāya 73", "sujato": "Middle Discourses 73", "pts": ""}, {"key": "mn73:0.2", "pali": "Mahāvacchasutta", "sujato": "The Longer Discourse With Vacchagotta", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn73:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn73:1.2", "pali": "ekaṁ samayaṁ bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "pts": "At one time the Lord was staying near Rājagaha in the Bamboo Grove at the squirrels' feeding place."}]}, {"id": "2", "label": "Then the wanderer Vacchagotta went up to…", "rows": [{"key": "mn73:2.1", "pali": "Atha kho vacchagotto paribbājako yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavatā saddhiṁ sammodi.", "sujato": "Then the wanderer Vacchagotta went up to the Buddha and exchanged greetings with him.", "pts": "Then the wanderer Vacchagotta approached the Lord;\nhaving approached, he exchanged greetings with the Lord;"}, {"key": "mn73:2.2", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho vacchagotto paribbājako bhagavantaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, he sat down to one side and said to the Buddha,", "pts": "having conversed in a friendly and courteous way, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the wanderer Vacchagotta spoke thus to the Lord:"}]}, {"id": "3", "label": "“For a long time I have had…", "rows": [{"key": "mn73:3.1", "pali": "“dīgharattāhaṁ bhotā gotamena sahakathī.", "sujato": "“For a long time I have had discussions with the worthy Gotama.", "pts": "\"It is a long time since I had a conversation with the good Gotama."}, {"key": "mn73:3.2", "pali": "Sādhu me bhavaṁ gotamo saṅkhittena kusalākusalaṁ desetū”ti.", "sujato": "Please teach me in brief what is skillful and what is unskillful.”", "pts": "It were good if the revered Gotama were to teach me in brief what is skilled and what is unskilled.\""}, {"key": "mn73:3.3", "pali": "“Saṅkhittenapi kho te ahaṁ, vaccha, kusalākusalaṁ deseyyaṁ, vitthārenapi kho te ahaṁ, vaccha, kusalākusalaṁ deseyyaṁ;", "sujato": "“Vaccha, I can teach you what is skillful and what is unskillful in brief or in detail.", "pts": "\"I, Vaccha, could teach you what is skilled and what is unskilled in brief;\nand I, Vaccha, could teach you what is skilled and what is unskilled in full."}, {"key": "mn73:3.4", "pali": "api ca te ahaṁ, vaccha, saṅkhittena kusalākusalaṁ desessāmi.", "sujato": "Still, let me do so in brief.", "pts": "But I, Vaccha, will teach you what is skilled and what is unskilled in brief."}, {"key": "mn73:3.5", "pali": "Taṁ suṇāhi, sādhukaṁ manasi karohi, bhāsissāmī”ti.", "sujato": "Listen and apply your mind well, I will speak.”", "pts": "Listen to it, attend carefully, and I will speak.\""}, {"key": "mn73:3.6", "pali": "“Evaṁ, bho”ti kho vacchagotto paribbājako bhagavato paccassosi.", "sujato": "“Yes, worthy sir,” Vaccha replied.", "pts": "\"Yes, sir,\"the wanderer Vacchagotta answered the Lord in assent."}, {"key": "mn73:3.7", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "4", "label": "“Greed is unskillful, contentment is skillful.", "rows": [{"key": "mn73:4.1", "pali": "“Lobho kho, vaccha, akusalaṁ, alobho kusalaṁ;", "sujato": "“Greed is unskillful, contentment is skillful.", "pts": "\"Greed, Vaccha, is unskill, absence of greed is skill."}, {"key": "mn73:4.2", "pali": "doso kho, vaccha, akusalaṁ, adoso kusalaṁ;", "sujato": "Hate is unskillful, love is skillful.", "pts": "Aversion, Vaccha, is unskill, absence of aversion is skill."}, {"key": "mn73:4.3", "pali": "moho kho, vaccha, akusalaṁ, amoho kusalaṁ.", "sujato": "Delusion is unskillful, understanding is skillful.", "pts": "Confusion, Vaccha, is unskill, absence of confusion is skill."}, {"key": "mn73:4.4", "pali": "Iti kho, vaccha, ime tayo dhammā akusalā, tayo dhammā kusalā.", "sujato": "So there are these three unskillful things and three that are skillful.", "pts": "These are the three things that are unskilled, Vaccha, the three that are skilled."}]}, {"id": "5", "label": "Killing living creatures, stealing, and sexual misconduct;…", "rows": [{"key": "mn73:5.1", "pali": "Pāṇātipāto kho, vaccha, akusalaṁ, pāṇātipātā veramaṇī kusalaṁ;", "sujato": "Killing living creatures, stealing, and sexual misconduct;\nspeech that’s false, backbiting, harsh, or nonsensical;\ncovetousness, ill will, and wrong view:\nthese things are unskillful.", "pts": "Then, Vaccha, onslaught on creatures is unskill, restraint from onslaught on creatures is skill."}, {"key": "mn73:5.2", "pali": "adinnādānaṁ kho, vaccha, akusalaṁ, adinnādānā veramaṇī kusalaṁ;", "sujato": "Refraining from killing living creatures, stealing, and sexual misconduct;\nrefraining from speech that’s false, backbiting, harsh, or nonsensical;\ncontentment, kind-heartedness, and right view:\nthese things are skillful.", "pts": "Taking what has not been given, Vaccha, is unskill, restraint from taking what has not been given is skill."}, {"key": "mn73:5.3", "pali": "kāmesumicchācāro kho, vaccha, akusalaṁ, kāmesumicchācārā veramaṇī kusalaṁ;", "sujato": "", "pts": "Wrong conduct in regard to sense-pleasures, Vaccha, is unskill,\nrestraint from wrong conduct in regard to sense-pleasures is skill."}, {"key": "mn73:5.4", "pali": "musāvādo kho, vaccha, akusalaṁ, musāvādā veramaṇī kusalaṁ;", "sujato": "", "pts": "Lying speech, Vaccha, is unskill, restraint from lying speech is skill."}, {"key": "mn73:5.5", "pali": "pisuṇā vācā kho, vaccha, akusalaṁ, pisuṇāya vācāya veramaṇī kusalaṁ;", "sujato": "", "pts": "Slanderous speech, Vaccha, is unskill, restraint from slanderous speech is skill."}, {"key": "mn73:5.6", "pali": "pharusā vācā kho, vaccha, akusalaṁ, pharusāya vācāya veramaṇī kusalaṁ;", "sujato": "", "pts": "Harsh speech, Vaccha, is unskill, restraint from harsh speech is skill."}, {"key": "mn73:5.7", "pali": "samphappalāpo kho, vaccha, akusalaṁ, samphappalāpā veramaṇī kusalaṁ;", "sujato": "", "pts": "Frivolous chatter, Vaccha, is unskill, restraint from frivolous chatter is skill."}, {"key": "mn73:5.8", "pali": "abhijjhā kho, vaccha, akusalaṁ, anabhijjhā kusalaṁ;", "sujato": "", "pts": "Covetousness, Vaccha, is unskill, absence of covetousness is skill."}, {"key": "mn73:5.9", "pali": "byāpādo kho, vaccha, akusalaṁ, abyāpādo kusalaṁ;", "sujato": "", "pts": "Malevolence, Vaccha, is unskill, absence of malevolence is skill."}, {"key": "mn73:5.10", "pali": "micchādiṭṭhi kho, vaccha, akusalaṁ sammādiṭṭhi kusalaṁ.", "sujato": "", "pts": "Wrong view, Vaccha, is unskill, right view is skill."}, {"key": "mn73:5.11", "pali": "Iti kho, vaccha, ime dasa dhammā akusalā, dasa dhammā kusalā.", "sujato": "So there are these ten unskillful things and ten that are skillful.", "pts": "These are the ten things that are unskilled, Vaccha, and the ten that are skilled."}]}, {"id": "6", "label": "When a mendicant has given up craving…", "rows": [{"key": "mn73:6.1", "pali": "Yato kho, vaccha, bhikkhuno taṇhā pahīnā hoti ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā,\nso hoti bhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro\nanuppattasadattho parikkhīṇabhavasaṁyojano sammadaññāvimutto”ti.", "sujato": "When a mendicant has given up craving so it is cut off at the root, made like a palm stump,\nobliterated, and unable to arise in the future, that mendicant is perfected.\nThey’ve ended the defilements, completed the spiritual journey, done what had to be done, laid down the burden,\nachieved their heart’s goal, utterly ended the fetter of continued existence,\nand are rightly freed through enlightenment.”", "pts": "When craving, Vaccha, has been got rid of by a monk, cut off at the root,\nmade like a palm-tree stump that can come to no further existence in the future, he is a monk who is a perfected one,\ncanker-waned, who has lived the life, done what was to be done, laid down the burden,\nattained his own goal, the fetters of becoming quite destroyed, freed by right profound knowledge.\""}]}, {"id": "7", "label": "“Leaving aside the worthy Gotama,", "rows": [{"key": "mn73:7.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo.", "sujato": "“Leaving aside the worthy Gotama,", "pts": "\"Let be the good Gotama."}, {"key": "mn73:7.2", "pali": "Atthi pana te bhoto gotamassa ekabhikkhupi sāvako yo āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti?", "sujato": "is there even a single monk disciple of the worthy Gotama who has realized\nthe undefiled freedom of heart and freedom by wisdom in this very life,\nand lives having realized it with their own insight due to the ending of defilements?”", "pts": "Has the good Gotama even one monk who is a disciple and who, by the destruction of the cankers,\nhaving realized here and now by his own super-knowledge the freedom\nof mind and the freedom through intuitive wisdom that are cankerless,\nentering on them is abiding in them?\""}, {"key": "mn73:7.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova ye bhikkhū mama sāvakā āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "“There are not just one hundred such monks who are my disciples, Vaccha,\nor two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two hundred, three hundred, four hundred nor five hundred,\nbut far more are those monks, disciples of mine, who, by the destruction of the cankers,\nhaving realized here and now by their own super-knowledge the freedom\nof mind and the freedom through intuitive wisdom that are cankerless,\nentering on them are abiding in them.\""}]}, {"id": "8", "label": "“Leaving aside the worthy Gotama and the…", "rows": [{"key": "mn73:8.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo, tiṭṭhantu bhikkhū.", "sujato": "“Leaving aside the worthy Gotama and the monks,", "pts": "\"Let be the good Gotama, let be the monks."}, {"key": "mn73:8.2", "pali": "Atthi pana bhoto gotamassa ekā bhikkhunīpi sāvikā yā āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti?", "sujato": "is there even a single nun disciple of the worthy Gotama who has realized\nthe undefiled freedom of heart and freedom by wisdom in this very life,\nand lives having realized it with their own insight due to the ending of defilements?”", "pts": "But has the good Gotama even one nun who is a disciple and who, by the destruction of the cankers,\nhaving realized here and now by her own super-knowledge the freedom\nof mind and the freedom through intuitive wisdom that are cankerless,\nentering on them is abiding in them?\""}, {"key": "mn73:8.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova yā bhikkhuniyo mama sāvikā āsavānaṁ khayā anāsavaṁ cetovimuttiṁ\npaññāvimuttiṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "“There are not just one hundred such nuns who are my disciples, Vaccha,\nor two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two, three, four or five hundred,\nbut far more are those nuns, disciples of mine, who, by the destruction of the cankers,\nhaving here and now realized by their own super-knowledge the freedom\nof mind and the freedom through intuitive wisdom that are cankerless,\nentering on them are abiding in them.\""}]}, {"id": "9", "label": "“Leaving aside the worthy Gotama, the monks,…", "rows": [{"key": "mn73:9.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo, tiṭṭhantu bhikkhū, tiṭṭhantu bhikkhuniyo.", "sujato": "“Leaving aside the worthy Gotama, the monks, and the nuns,", "pts": "\"Let be the good Gotama, let be the monks, let be the nuns."}, {"key": "mn73:9.2", "pali": "Atthi pana bhoto gotamassa ekupāsakopi sāvako gihī odātavasano brahmacārī yo pañcannaṁ\norambhāgiyānaṁ saṁyojanānaṁ parikkhayā opapātiko tattha parinibbāyī anāvattidhammo tasmā lokā”ti?", "sujato": "is there even a single layman disciple of Mister Gotama—white-clothed and chaste—who,\nwith the ending of the five lower fetters,\nis reborn spontaneously, to be extinguished there, not liable to return from that world?”", "pts": "But has the good Gotama even one layfollower who is a disciple, a householder clothed in white, a Brahma-farer who,\nby the utter destruction of the five fetters binding to this lower (shore) is of spontaneous uprising,\none who has attained Nibbāna there and is not liable to return from that world?\""}, {"key": "mn73:9.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova ye upāsakā mama sāvakā gihī odātavasanā brahmacārino pañcannaṁ orambhāgiyānaṁ\nsaṁyojanānaṁ parikkhayā opapātikā tattha parinibbāyino anāvattidhammā tasmā lokā”ti.", "sujato": "“There are not just one hundred such chaste laymen who are my disciples,\nVaccha, or two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two, three, four or five hundred,\nbut far more are those layfollowers, disciples of mine, householders clothed in white, Brahma-farers,\nwho by the utter destruction of the five fetters binding to this lower (shore), are of spontaneous uprising,\nthose who have attained Nibbāna there and are not liable to return from that world.\""}]}, {"id": "10", "label": "“Leaving aside Mister Gotama, the monks, the…", "rows": [{"key": "mn73:10.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo, tiṭṭhantu bhikkhū, tiṭṭhantu bhikkhuniyo, tiṭṭhantu upāsakā gihī odātavasanā brahmacārino.", "sujato": "“Leaving aside Mister Gotama, the monks, the nuns, and the chaste laymen,", "pts": "\"Let be the good Gotama, let be the monks, let be the nuns,\nlet be the lay-followers who are householders clothed in white, Brahma-farers."}, {"key": "mn73:10.2", "pali": "Atthi pana bhoto gotamassa ekupāsakopi sāvako gihī odātavasano kāmabhogī sāsanakaro ovādappaṭikaro\nyo tiṇṇavicikiccho vigatakathaṅkatho vesārajjappatto aparappaccayo satthusāsane viharatī”ti?", "sujato": "is there even a single layman disciple of the worthy Gotama—white-clothed,\nenjoying sensual pleasures, following instructions,\nand responding to advice—who has gone beyond doubt, got rid of indecision,\nand lives self-assured and independent of others regarding the Teacher’s instruction?”", "pts": "But has the good Gotama even one layfollower who is a disciple, a householder clothed in white, and who,\n(though) an enjoyer of sense-pleasures, is a doer of the instruction, one who accepts the exhortation,\nwho has crossed over doubt and, perplexity gone,\nfares in the Teacher's instruction, won to conviction, not relying on others?\""}, {"key": "mn73:10.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova ye upāsakā mama sāvakā gihī odātavasanā kāmabhogino sāsanakarā ovādappaṭikarā\ntiṇṇavicikicchā vigatakathaṅkathā vesārajjappattā aparappaccayā satthusāsane viharantī”ti.", "sujato": "“There are not just one hundred such laymen enjoying sensual pleasures who are my disciples,\nVaccha, or two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two, three, four or five hundred,\nbut far more are these layfollowers, disciples of mine, householders clothed in white, and who,\n(though) enjoyers of sense-pleasures are doers of the instruction, those who accept the exhortation,\nwho have crossed over doubt and, perplexity gone,\nfare in the Teacher's instruction, won to conviction, not relying on others.\""}]}, {"id": "11", "label": "“Leaving aside Mister Gotama, the monks, the…", "rows": [{"key": "mn73:11.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo, tiṭṭhantu bhikkhū, tiṭṭhantu bhikkhuniyo,\ntiṭṭhantu upāsakā gihī odātavasanā brahmacārino, tiṭṭhantu upāsakā gihī odātavasanā kāmabhogino.", "sujato": "“Leaving aside Mister Gotama, the monks, the nuns, the chaste laymen, and the laymen enjoying sensual pleasures,", "pts": "\"Let be the good Gotama, let be the monks, let be the nuns,\nlet be the layfollowers who are householders clothed in white,\nBrahma-farers, let be the layfollowers who are householders clothed in white, enjoyers of sense-pleasures."}, {"key": "mn73:11.2", "pali": "Atthi pana bhoto gotamassa ekupāsikāpi sāvikā gihinī odātavasanā brahmacārinī yā pañcannaṁ\norambhāgiyānaṁ saṁyojanānaṁ parikkhayā opapātikā tattha parinibbāyinī anāvattidhammā tasmā lokā”ti?", "sujato": "is there even a single laywoman disciple of Mister Gotama—white-clothed and chaste—who,\nwith the ending of the five lower fetters,\nis reborn spontaneously, to be extinguished there, not liable to return from that world?”", "pts": "But has the good Gotama even one woman layfollower who is a disciple,\na householder clothed in white, a Brahma-farer who,\nby the utter destruction of the five fetters binding to this lower (shore), is of spontaneous uprising,\none who has attained Nibbāna there and is not liable to return from that world?\""}, {"key": "mn73:11.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova yā upāsikā mama sāvikā gihiniyo odātavasanā brahmacāriniyo pañcannaṁ orambhāgiyānaṁ\nsaṁyojanānaṁ parikkhayā opapātikā tattha parinibbāyiniyo anāvattidhammā tasmā lokā”ti.", "sujato": "“There are not just one hundred such chaste laywomen who are my disciples,\nVaccha, or two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two, three, four or five hundred, but many more are those women layfollowers,\ndisciples of mine, householders clothed in white, Brahma-farers who,\nby the utter destruction of the five fetters binding to this lower (shore), are of spontaneous uprising,\nthose who have attained Nibbāna there and are not liable to return from that world.\""}]}, {"id": "12", "label": "“Leaving aside Mister Gotama, the monks, the…", "rows": [{"key": "mn73:12.1", "pali": "“Tiṭṭhatu bhavaṁ gotamo, tiṭṭhantu bhikkhū, tiṭṭhantu bhikkhuniyo, tiṭṭhantu upāsakā gihī odātavasanā brahmacārino,\ntiṭṭhantu upāsakā gihī odātavasanā kāmabhogino, tiṭṭhantu upāsikā gihiniyo odātavasanā brahmacāriniyo.", "sujato": "“Leaving aside Mister Gotama, the monks, the nuns, the chaste laymen,\nthe laymen enjoying sensual pleasures, and the chaste laywomen,", "pts": "\"Let be the good Gotama, let be the monks, let be the nuns,\nlet be the lay-followers who are householders clothed in white, Brahma-farers,\nlet be the layfollowers who are householders clothed in white, enjoyers of sense-pleasures,\nlet be the women layfollowers who are householders clothed in white, Brahma-farers."}, {"key": "mn73:12.2", "pali": "Atthi pana bhoto gotamassa ekupāsikāpi sāvikā gihinī odātavasanā kāmabhoginī sāsanakarā ovādappaṭikarā\nyā tiṇṇavicikicchā vigatakathaṅkathā vesārajjappattā aparappaccayā satthusāsane viharatī”ti?", "sujato": "is there even a single laywoman disciple of the worthy Gotama—white-clothed,\nenjoying sensual pleasures, following instructions,\nand responding to advice—who has gone beyond doubt, got rid of indecision,\nand lives self-assured and independent of others regarding the Teacher’s instruction?”", "pts": "But has the good Gotama even one woman layfollower who is a disciple, a householder clothed in white, and who,\n(though) an enjoyer of sense-pleasures, is a doer of the instruction, one who accepts the exhortation,\nwho has crossed over doubt and, perplexity gone,\nfares in the Teacher's instruction, won to conviction, not relying on others?\""}, {"key": "mn73:12.3", "pali": "“Na kho, vaccha, ekaṁyeva sataṁ na dve satāni na tīṇi satāni na cattāri satāni na pañca satāni,\natha kho bhiyyova yā upāsikā mama sāvikā gihiniyo odātavasanā kāmabhoginiyo sāsanakarā ovādappaṭikarā\ntiṇṇavicikicchā vigatakathaṅkathā vesārajjappattā aparappaccayā satthusāsane viharantī”ti.", "sujato": "“There are not just one hundred such laywomen enjoying sensual pleasures who are my disciples,\nVaccha, or two or three or four or five hundred, but many more than that.”", "pts": "\"Not merely a hundred, Vaccha, nor two, three, four or five hundred,\nbut many more are those women layfollowers, disciples of mine, householders clothed in white, and who,\n(though) enjoyers of sense-pleasures, are doers of the instruction, those who accept the exhortation,\nwho have crossed over doubt and, perplexity gone,\nfare in the Teacher's instruction, won to conviction, not relying on others.\""}]}, {"id": "13", "label": "“If the worthy Gotama was the only…", "rows": [{"key": "mn73:13.1", "pali": "“Sace hi, bho gotama, imaṁ dhammaṁ bhavaṁyeva gotamo ārādhako abhavissa, no ca kho bhikkhū ārādhakā abhavissaṁsu;", "sujato": "“If the worthy Gotama was the only one to succeed in this teaching, not any monks,", "pts": "\"If, good Gotama, the revered Gotama had himself undertaken this dhamma but the monks had not undertaken it,"}, {"key": "mn73:13.2", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "then this spiritual path would be incomplete in that respect.", "pts": "then this Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.3", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako bhikkhū ca ārādhakā;", "sujato": "But because both the worthy Gotama and monks have succeeded in this teaching,", "pts": "But because the revered Gotama has undertaken this dhamma and the monks have undertaken it as well,"}, {"key": "mn73:13.4", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "this spiritual path is complete in that respect.", "pts": "so is this Brahma-faring complete as to this factor."}, {"key": "mn73:13.5", "pali": "Sace hi, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako abhavissa,\nbhikkhū ca ārādhakā abhavissaṁsu, no ca kho bhikkhuniyo ārādhikā abhavissaṁsu;", "sujato": "If the worthy Gotama and the monks were the only ones to succeed in this teaching, not any nuns …", "pts": "If, good Gotama, the revered Gotama had himself undertaken this dhamma and the monks had undertaken it as well,"}, {"key": "mn73:13.6", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "", "pts": "but not the nuns, then this Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.7", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako, bhikkhū ca ārādhakā, bhikkhuniyo ca ārādhikā;", "sujato": "", "pts": "But because the revered Gotama has undertaken this dhamma and the monks and the nuns have undertaken it as well,"}, {"key": "mn73:13.8", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "", "pts": "so is this Brahma-faring complete as to this factor."}, {"key": "mn73:13.9", "pali": "Sace hi, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako abhavissa, bhikkhū ca ārādhakā abhavissaṁsu,\nbhikkhuniyo ca ārādhikā abhavissaṁsu, no ca kho upāsakā gihī odātavasanā brahmacārino ārādhakā abhavissaṁsu;", "sujato": "chaste laymen …", "pts": "If, good Gotama, the revered Gotama had himself undertaken this\ndhamma and the monks and the nuns had undertaken it as well,\nbut not the layfollowers who are householders clothed in white, Brahma-farers,"}, {"key": "mn73:13.10", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "", "pts": "then this Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.11", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako, bhikkhū ca ārādhakā,\nbhikkhuniyo ca ārādhikā, upāsakā ca gihī odātavasanā brahmacārino ārādhakā;", "sujato": "", "pts": "But because the revered Gotama has undertaken this dhamma and the monks\nand the nuns and the layfollowers who are householders clothed in white,"}, {"key": "mn73:13.12", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "", "pts": "BrahmaḤfarers, have undertaken it as well, so is this Brahma-faring complete as to this factor."}, {"key": "mn73:13.13", "pali": "Sace hi, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako abhavissa,\nbhikkhū ca ārādhakā abhavissaṁsu, bhikkhuniyo ca ārādhikā abhavissaṁsu,\nupāsakā ca gihī odātavasanā brahmacārino ārādhakā abhavissaṁsu,\nno ca kho upāsakā gihī odātavasanā kāmabhogino ārādhakā abhavissaṁsu;", "sujato": "laymen enjoying sensual pleasures …", "pts": "If, good Gotama, the revered Gotama had himself undertaken this dhamma and the\nmonks and the nuns and the layfollowers who are householders clothed in white,\nBrahma-farers, had undertaken it as well, but not the layfollowers who are householders clothed in white,"}, {"key": "mn73:13.14", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "", "pts": "enjoyers of sense-pleasures, then this Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.15", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako, bhikkhū ca ārādhakā, bhikkhuniyo ca ārādhikā,\nupāsakā ca gihī odātavasanā brahmacārino ārādhakā, upāsakā ca gihī odātavasanā kāmabhogino ārādhakā;", "sujato": "", "pts": "But because the revered Gotama has undertaken this dhamma,\nand the monks and the nuns and the layfollowers who are householders clothed in white,\nBrahma-farers, and the layfollowers who are householders clothed in white, enjoyers of sense-pleasures,"}, {"key": "mn73:13.16", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "", "pts": "have undertaken it as well, so is this Brahma-faring complete as to this factor."}, {"key": "mn73:13.17", "pali": "Sace hi, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako abhavissa,\nbhikkhū ca ārādhakā abhavissaṁsu, bhikkhuniyo ca ārādhikā abhavissaṁsu,\nupāsakā ca gihī odātavasanā brahmacārino ārādhakā abhavissaṁsu,\nupāsakā ca gihī odātavasanā kāmabhogino ārādhakā abhavissaṁsu,\nno ca kho upāsikā gihiniyo odātavasanā brahmacāriniyo ārādhikā abhavissaṁsu;", "sujato": "chaste laywomen …", "pts": "If, good Gotama, the revered Gotama had himself undertaken this dhamma and the\nmonks and the nuns and the layfollowers who are householders clothed in white,\nBrahma-farers, had undertaken it as well,\nand the layfollowers who are householders clothed in white, enjoyers of sense-pleasures,\nhad undertaken it as well, but not the women lay followers who are householders clothed in white,"}, {"key": "mn73:13.18", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "", "pts": "Brahma-farers, then this Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.19", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako, bhikkhū ca ārādhakā, bhikkhuniyo ca ārādhikā,\nupāsakā ca gihī odātavasanā brahmacārino ārādhakā, upāsakā ca gihī odātavasanā kāmabhogino ārādhakā,\nupāsikā ca gihiniyo odātavasanā brahmacāriniyo ārādhikā;", "sujato": "", "pts": "But because the revered Gotama has undertaken this dhamma,\nand the monks and the nuns and the layfollowers who are householders clothed in white, Brahma-farers,\nand the layfollowers who are householders clothed in white, enjoyers of sense-pleasures,\nand the women layfollowers who are householders clothed in white,"}, {"key": "mn73:13.20", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "", "pts": "Brahma-farers, have undertaken it as well, so is this Brahma-faring complete as to this factor."}, {"key": "mn73:13.21", "pali": "Sace hi, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako abhavissa, bhikkhū ca ārādhakā abhavissaṁsu,\nbhikkhuniyo ca ārādhikā abhavissaṁsu, upāsakā ca gihī odātavasanā brahmacārino ārādhakā abhavissaṁsu,\nupāsakā ca gihī odātavasanā kāmabhogino ārādhakā abhavissaṁsu,\nupāsikā ca gihiniyo odātavasanā brahmacāriniyo ārādhikā abhavissaṁsu,\nno ca kho upāsikā gihiniyo odātavasanā kāmabhoginiyo ārādhikā abhavissaṁsu;", "sujato": "laywomen enjoying sensual pleasures,", "pts": "If, good Gotama, the revered Gotama had himself undertaken this dhamma and the\nmonks and the nuns and the layfollowers who are householders clothed in white,\nBrahma-farers, had undertaken it as well, and the layfollowers who are householders clothed in white,\nenjoyers of sense-pleasures, had undertaken it as well, the women layfollowers who are householders clothed in white,\nBrahma-farers, had undertaken it as well, but not the women layfollowers who are householders clothed in white,"}, {"key": "mn73:13.22", "pali": "evamidaṁ brahmacariyaṁ aparipūraṁ abhavissa tenaṅgena.", "sujato": "then this spiritual path would be incomplete in that respect.", "pts": "enjoyers of sense-pleasures, then the Brahma-faring would have been incomplete as to this factor."}, {"key": "mn73:13.23", "pali": "Yasmā ca kho, bho gotama, imaṁ dhammaṁ bhavañceva gotamo ārādhako, bhikkhū ca ārādhakā,\nbhikkhuniyo ca ārādhikā, upāsakā ca gihī odātavasanā brahmacārino ārādhakā,\nupāsakā ca gihī odātavasanā kāmabhogino ārādhakā, upāsikā ca gihiniyo odātavasanā brahmacāriniyo ārādhikā,\nupāsikā ca gihiniyo odātavasanā kāmabhoginiyo ārādhikā;", "sujato": "But because Mister Gotama, monks, nuns, chaste laymen, laymen enjoying sensual pleasures,\nchaste laywomen, and laywomen enjoying sensual pleasures have all succeeded in this teaching,", "pts": "But because the revered Gotama has undertaken this dhamma,\nand the monks and the nuns and the layfollowers who are householders clothed in white,\nBrahma-farers, and the layfollowers who are householders clothed in white,\nenjoyers of sense-pleasures, and the women layfollowers who are householders clothed in white,\nBrahma-farers, and the women layfollowers who are householders clothed in white,"}, {"key": "mn73:13.24", "pali": "evamidaṁ brahmacariyaṁ paripūraṁ tenaṅgena.", "sujato": "this spiritual path is complete in that respect.", "pts": "enjoyers of sense-pleasures, have undertaken it as well, so is this Brahma-faring complete as to this factor."}]}, {"id": "14", "label": "Just as the Ganges river slants, slopes,…", "rows": [{"key": "mn73:14.1", "pali": "Seyyathāpi, bho gotama, gaṅgā nadī samuddaninnā samuddapoṇā samuddapabbhārā samuddaṁ āhacca tiṭṭhati,\nevamevāyaṁ bhoto gotamassa parisā sagahaṭṭhapabbajitā nibbānaninnā nibbānapoṇā nibbānapabbhārā nibbānaṁ āhacca tiṭṭhati.", "sujato": "Just as the Ganges river slants, slopes, and inclines towards the ocean, and keeps pressing into the ocean,\nin the same way Mister Gotama’s assembly—with both laypeople and renunciates—slants,\nslopes, and inclines towards extinguishment, and keeps pressing upon extinguishment.", "pts": "Good Gotama, as the river Ganges, sliding towards the sea, tending towards the sea,\ninclining towards the sea, stands knocking at the sea, even so this company of the good Gotama,\ncomprising householders and those that have gone forth, sliding towards Nibbāna,\ntending towards Nibbāna, inclining towards Nibbāna, stands knocking at Nibbāna."}]}, {"id": "15", "label": "Excellent, worthy Gotama! …", "rows": [{"key": "mn73:15.1", "pali": "Abhikkantaṁ, bho gotama …pe…", "sujato": "Excellent, worthy Gotama! …", "pts": "It is excellent, good Gotama, excellent, good Gotama."}, {"key": "mn73:15.2", "pali": "esāhaṁ bhavantaṁ gotamaṁ saraṇaṁ gacchāmi dhammañca bhikkhusaṅghañca.", "sujato": "I go for refuge to the worthy Gotama, to the teaching, and to the mendicant Saṅgha.", "pts": "It is as if, good Gotama, one might set upright what had been upset,\nor disclose what had been covered, or might show the way to one that had gone astray,\nor bring an oil-lamp into the darkness so that those with vision might see material\nshapes - even so in many a figure is dhamma made clear by the revered Gotama.\nI am going to the revered Gotama for refuge and to dhamma and to the Order of monks."}, {"key": "mn73:15.3", "pali": "Labheyyāhaṁ bhoto gotamassa santike pabbajjaṁ, labheyyaṁ upasampadan”ti.", "sujato": "May I receive the going forth, the ordination in the worthy Gotama’s presence?”", "pts": "May I receive the going forth in the good Gotama's presence, may I receive ordination.\""}]}, {"id": "16", "label": "“Vaccha, if someone formerly ordained in another…", "rows": [{"key": "mn73:16.1", "pali": "“Yo kho, vaccha, aññatitthiyapubbo imasmiṁ dhammavinaye ākaṅkhati pabbajjaṁ,\nākaṅkhati upasampadaṁ, so cattāro māse parivasati.\nCatunnaṁ māsānaṁ accayena āraddhacittā bhikkhū pabbājenti upasampādenti bhikkhubhāvāya;", "sujato": "“Vaccha, if someone formerly ordained in another sect wishes to take the going forth,\nthe ordination in this teaching and training, they must spend four months on probation.\nWhen four months have passed, if the mendicants are satisfied,\nthey’ll give the going forth, the ordination into monkhood.", "pts": "\"Vaccha, if a former member of another sect wishes for the going forth in this dhamma and discipline,\nwishes for ordination, he undertakes probation for four months;\nat the end of the four months the monks, if they so decide,\nmay let him go forth, may ordain him into the status of a monk;"}, {"key": "mn73:16.2", "pali": "api ca mettha puggalavemattatā viditā”ti.", "sujato": "However, I recognize individual differences in this matter.”", "pts": "but even here differences among individuals are known to me.\""}, {"key": "mn73:16.3", "pali": "“Sace, bhante, aññatitthiyapubbā imasmiṁ dhammavinaye ākaṅkhantā pabbajjaṁ,\nākaṅkhantā upasampadaṁ cattāro māse parivasanti,\ncatunnaṁ māsānaṁ accayena āraddhacittā bhikkhū pabbājenti upasampādenti bhikkhubhāvāya;\nahaṁ cattāri vassāni parivasissāmi.\nCatunnaṁ vassānaṁ accayena āraddhacittā bhikkhū pabbājentu upasampādentu bhikkhubhāvāyā”ti.", "sujato": "“Sir, if four months probation are required in such a case, I’ll spend four years on probation.\nWhen four years have passed, if the mendicants are satisfied,\nlet them give me the going forth, the ordination into monkhood.”", "pts": "\"If, revered sir, former members of other sects, desiring the going forth in this dhamma and discipline,\ndesiring ordination, undertake probation for four months,\nand at the end of the four months the monks, if they so decide, let them go forth,\nordain them into the status of a monk, then will I undertake probation for four years;\nat the end of the four years the monks, if they so decide, may let me go forth, may ordain me into the status of a monk."}, {"key": "mn73:16.4", "pali": "Alattha kho vacchagotto paribbājako bhagavato santike pabbajjaṁ alattha upasampadaṁ.", "sujato": "And the wanderer Vaccha received the going forth, the ordination in the Buddha’s presence.", "pts": "\"But the wanderer Vacchagotta received the going forth in the Lord's presence, he received ordination."}]}, {"id": "17", "label": "Not long after his ordination, a fortnight…", "rows": [{"key": "mn73:17.1", "pali": "Acirūpasampanno kho panāyasmā vacchagotto addhamāsūpasampanno yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā vacchagotto bhagavantaṁ etadavoca:", "sujato": "Not long after his ordination, a fortnight later,\nVenerable Vacchagotta went to the Buddha, bowed, sat down to one side, and said to him,", "pts": "Not long after the venerable Vacchagotta was ordained, half a month after he was ordained, he approached the Lord;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Vacchagotta spoke thus to the Lord:"}, {"key": "mn73:17.2", "pali": "“yāvatakaṁ, bhante, sekhena ñāṇena sekhāya vijjāya pattabbaṁ, anuppattaṁ taṁ mayā;", "sujato": "“Sir, I’ve reached as far as possible with the knowledge and understanding of a trainee.", "pts": "\"Revered sir, I have attained as much as can be attained by a learner's knowledge, a learner's lore."}, {"key": "mn73:17.3", "pali": "uttari ca me bhagavā dhammaṁ desetū”ti.", "sujato": "Please teach me further.”", "pts": "Let the Lord teach me some further dhamma\""}]}, {"id": "18", "label": "“Well then, Vaccha, further develop two things:…", "rows": [{"key": "mn73:18.1", "pali": "“Tena hi tvaṁ, vaccha, dve dhamme uttari bhāvehi—samathañca vipassanañca.", "sujato": "“Well then, Vaccha, further develop two things:\nserenity and discernment.", "pts": "\"Well then, do you, Vaccha, develop two things further:\ncalm and vision."}, {"key": "mn73:18.2", "pali": "Ime kho te, vaccha, dve dhammā uttari bhāvitā—samatho ca vipassanā ca—anekadhātupaṭivedhāya saṁvattissanti.", "sujato": "When you have further developed these two things, they’ll lead to the penetration of many elements.", "pts": "If these two things:\ncalm and vision, are developed further, Vaccha, they will conduce to the penetration of a variety of elements."}]}, {"id": "19", "label": "As far as you want, you will…", "rows": [{"key": "mn73:19.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "As far as you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:19.2", "pali": "‘anekavihitaṁ iddhividhaṁ paccanubhaveyyaṁ—ekopi hutvā bahudhā assaṁ, bahudhāpi hutvā eko assaṁ;\nāvibhāvaṁ, tirobhāvaṁ;\ntirokuṭṭaṁ tiropākāraṁ tiropabbataṁ asajjamāno gaccheyyaṁ, seyyathāpi ākāse;\npathaviyāpi ummujjanimujjaṁ kareyyaṁ, seyyathāpi udake;\nudakepi abhijjamāne gaccheyyaṁ, seyyathāpi pathaviyaṁ;\nākāsepi pallaṅkena kameyyaṁ, seyyathāpi pakkhī sakuṇo;\nimepi candimasūriye evaṁmahiddhike evaṁmahānubhāve pāṇinā parimaseyyaṁ, parimajjeyyaṁ;\nyāva brahmalokāpi kāyena vasaṁ vatteyyan’ti,", "sujato": "‘May I wield the many kinds of psychic power:\nmultiplying myself and becoming one again;\nmaterializing and dematerializing;\ngoing unobstructed through a wall, a rampart, or a mountain as if through space;\ndiving in and out of the earth as if it were water;\nwalking on water as if it were earth;\nflying cross-legged through the sky like a bird;\ntouching and stroking with my hand the sun and moon, so mighty and powerful;\ncontrolling my body as far as the realm of divinity.’", "pts": "'May I experience the various forms of psychic power:\nhaving been one may I be manifold, having been manifold may I be one;\nmanifest or invisible may I go unhindered through a wall, through a rampart, through a mountain as if through air;\nmay I plunge into the earth and shoot up again as if in water;\nmay I walk upon the water without parting it as if on the ground;\nsitting cross-legged, may I travel through the air like a bird on the wing;\nwith my hand may I rub and stroke this moon and sun although they are of such mighty power and majesty;\nand even as far as the Brahma-world may I have power in respect of my person' - you\nwill achieve what may be realized here and there so long as there is the objective."}, {"key": "mn73:19.3", "pali": "tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane.", "sujato": "", "pts": ""}]}, {"id": "20", "label": "Whenever you want, you will be capable…", "rows": [{"key": "mn73:20.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "Whenever you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:20.2", "pali": "‘dibbāya sotadhātuyā visuddhāya atikkantamānusikāya ubho sadde suṇeyyaṁ—dibbe ca mānuse ca,\nye dūre santike cā’ti, tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane.", "sujato": "‘With clairaudience that is purified and superhuman,\nmay I hear both kinds of sounds, human and heavenly, whether near or far.’", "pts": "'May I, with the purified deva-hearing surpassing that of men,\nhear both (kinds of) sounds - deva-like ones and human ones,\nwhether they be far or near' - you will achieve what may be realized here and there, so long as there is the objective."}]}, {"id": "21", "label": "As far as you want, you will…", "rows": [{"key": "mn73:21.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "As far as you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:21.2", "pali": "‘parasattānaṁ parapuggalānaṁ cetasā ceto paricca pajāneyyaṁ—", "sujato": "‘May I understand the minds of other beings and individuals, having encompassed them with my mind.", "pts": "'May I know intuitively by mind the minds of other beings, of other individuals,"}, {"key": "mn73:21.3", "pali": "sarāgaṁ vā cittaṁ sarāgaṁ cittanti pajāneyyaṁ,", "sujato": "May I understand mind with greed as “mind with greed”,", "pts": "so that I may know intuitively of a mind that is full of attachment that it is full of attachment;"}, {"key": "mn73:21.4", "pali": "vītarāgaṁ vā cittaṁ vītarāgaṁ cittanti pajāneyyaṁ;", "sujato": "and mind without greed as “mind without greed”;", "pts": ""}, {"key": "mn73:21.5", "pali": "sadosaṁ vā cittaṁ sadosaṁ cittanti pajāneyyaṁ,", "sujato": "mind with hate as “mind with hate”,", "pts": ""}, {"key": "mn73:21.6", "pali": "vītadosaṁ vā cittaṁ vītadosaṁ cittanti pajāneyyaṁ;", "sujato": "and mind without hate as “mind without hate”;", "pts": ""}, {"key": "mn73:21.7", "pali": "samohaṁ vā cittaṁ samohaṁ cittanti pajāneyyaṁ,", "sujato": "mind with delusion as “mind with delusion”,", "pts": "or of a mind that is without attachment that it is without of attachment so that I\nmay know intuitively of a mind that is full of aversion that it is full of aversion;\nor of a mind that is without aversion that it is without aversion\nso that I may know intuitively of a mind that is full of confusion,\nthat it is full of confusion;"}, {"key": "mn73:21.8", "pali": "vītamohaṁ vā cittaṁ vītamohaṁ cittanti pajāneyyaṁ;", "sujato": "and mind without delusion as “mind without delusion”;", "pts": "or of a mind that is without confusion that it is without confusion or that\nI may know intuitively of a mind that is contracted that it is contracted;"}, {"key": "mn73:21.9", "pali": "saṅkhittaṁ vā cittaṁ saṅkhittaṁ cittanti pajāneyyaṁ,", "sujato": "constricted mind as “constricted mind”,", "pts": "or of a mind that is distracted that it is distracted;"}, {"key": "mn73:21.10", "pali": "vikkhittaṁ vā cittaṁ vikkhittaṁ cittanti pajāneyyaṁ;", "sujato": "and scattered mind as “scattered mind”;", "pts": ""}, {"key": "mn73:21.11", "pali": "mahaggataṁ vā cittaṁ mahaggataṁ cittanti pajāneyyaṁ,", "sujato": "expansive mind as “expansive mind”,", "pts": "or of a mind that has become great that it has become great;"}, {"key": "mn73:21.12", "pali": "amahaggataṁ vā cittaṁ amahaggataṁ cittanti pajāneyyaṁ;", "sujato": "and unexpansive mind as “unexpansive mind”;", "pts": "or of a mind that has not become great that it has not become great,"}, {"key": "mn73:21.13", "pali": "sauttaraṁ vā cittaṁ sauttaraṁ cittanti pajāneyyaṁ,", "sujato": "mind that is not supreme as “mind that is not supreme”,", "pts": "or of a mind with (some other mental state) superior to it that it has (some other mental state) superior to it,"}, {"key": "mn73:21.14", "pali": "anuttaraṁ vā cittaṁ anuttaraṁ cittanti pajāneyyaṁ;", "sujato": "and mind that is supreme as “mind that is supreme”;", "pts": "or of a mind that has no (other mental state) superior to it that it has no (other mental state) superior to it,"}, {"key": "mn73:21.15", "pali": "samāhitaṁ vā cittaṁ samāhitaṁ cittanti pajāneyyaṁ,", "sujato": "mind immersed in samādhi as “mind immersed in samādhi”,", "pts": "or of a mind that is composed that it is composed,"}, {"key": "mn73:21.16", "pali": "asamāhitaṁ vā cittaṁ asamāhitaṁ cittanti pajāneyyaṁ;", "sujato": "and mind not immersed in samādhi as “mind not immersed in samādhi”;", "pts": ""}, {"key": "mn73:21.17", "pali": "vimuttaṁ vā cittaṁ vimuttaṁ cittanti pajāneyyaṁ,", "sujato": "freed mind as “freed mind”,", "pts": "or of a mind that is not composed that it is not composed, or of a mind that is freed that it is freed,"}, {"key": "mn73:21.18", "pali": "avimuttaṁ vā cittaṁ avimuttaṁ cittanti pajāneyyan’ti,", "sujato": "and unfreed mind as “unfreed mind”.’", "pts": "or of a mind that is not freed that it is not freed' - you will achieve what may be realized here and there,"}, {"key": "mn73:21.19", "pali": "tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane.", "sujato": "", "pts": "so long as there is the objective."}]}, {"id": "22", "label": "As far as you want, you will…", "rows": [{"key": "mn73:22.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "As far as you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:22.2", "pali": "‘anekavihitaṁ pubbenivāsaṁ anussareyyaṁ,\nseyyathidaṁ—ekampi jātiṁ dvepi jātiyo tissopi jātiyo catassopi jātiyo pañcapi jātiyo dasapi jātiyo vīsampi\njātiyo tiṁsampi jātiyo cattālīsampi jātiyo paññāsampi jātiyo jātisatampi jātisahassampi jātisatasahassampi;\nanekepi saṁvaṭṭakappe anekepi vivaṭṭakappe anekepi saṁvaṭṭavivaṭṭakappe—amutrāsiṁ\nevaṁnāmo evaṅgotto evaṁvaṇṇo evamāhāro evaṁsukhadukkhappaṭisaṁvedī evamāyupariyanto,\nso tato cuto amutra udapādiṁ;\ntatrāpāsiṁ evaṁnāmo evaṅgotto evaṁvaṇṇo evamāhāro evaṁsukhadukkhappaṭisaṁvedī evamāyupariyanto,\nso tato cuto idhūpapannoti;\niti sākāraṁ sauddesaṁ anekavihitaṁ pubbenivāsaṁ anussareyyan’ti,", "sujato": "‘May I recollect many kinds of past lives.\nThat is:\none, two, three, four, five, ten, twenty, thirty, forty, fifty, a hundred, a thousand, a hundred thousand rebirths;\nmany eons of the world contracting, many eons of the world expanding, many eons of the world contracting and expanding.\nMay I remember:\n“There, I was named this, my clan was that, I looked like this, and that was my food.\nThis was how I felt pleasure and pain, and that was how my life ended.\nWhen I passed away from that place I was reborn somewhere else.\nThere, too, I was named this, my clan was that, I looked like this, and that was my food.\nThis was how I felt pleasure and pain, and that was how my life ended.\nWhen I passed away from that place I was reborn here.”\nMay I recollect my many past lives, with features and details.’", "pts": "'May I recollect (my) manifold former habitations, that is to say one birth, two births,\nthree births, four births, five births, ten births, twenty births, thirty births, forty births,\nfifty births, a hundred births, a thousand births, a hundred thousand births,\nand many an eon of integration and many an eon of disintegration and many an eon of integration-disintegration:\n'Such a one was I by name, having such and such a clan, such and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I came to be in another state where I was such a one by name, having such and such a clan,\nsuch and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I arose here.'"}, {"key": "mn73:22.3", "pali": "tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane.", "sujato": "", "pts": "Thus I recollect (my) divers former habitations in all their modes\nand detail' - you will achieve what may be realized here and there,\nso long as there is the objective."}]}, {"id": "23", "label": "Whenever you want, you will be capable…", "rows": [{"key": "mn73:23.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "Whenever you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:23.2", "pali": "‘dibbena cakkhunā visuddhena atikkantamānusakena satte passeyyaṁ cavamāne upapajjamāne\nhīne paṇīte suvaṇṇe dubbaṇṇe sugate duggate yathākammūpage satte pajāneyyaṁ—ime\nvata bhonto sattā kāyaduccaritena samannāgatā vacīduccaritena samannāgatā\nmanoduccaritena samannāgatā ariyānaṁ upavādakā micchādiṭṭhikā micchādiṭṭhikammasamādānā,\nte kāyassa bhedā paraṁ maraṇā apāyaṁ duggatiṁ vinipātaṁ nirayaṁ upapannā;\nime vā pana bhonto sattā kāyasucaritena samannāgatā vacīsucaritena samannāgatā\nmanosucaritena samannāgatā ariyānaṁ anupavādakā sammādiṭṭhikā sammādiṭṭhikammasamādānā,\nte kāyassa bhedā paraṁ maraṇā sugatiṁ saggaṁ lokaṁ upapannāti;\niti dibbena cakkhunā visuddhena atikkantamānusakena satte passeyyaṁ cavamāne upapajjamāne\nhīne paṇīte suvaṇṇe dubbaṇṇe sugate duggate yathākammūpage satte pajāneyyan’ti,", "sujato": "‘With clairvoyance that is purified and superhuman,\nmay I see sentient beings passing away and being reborn—inferior and superior,\nbeautiful and ugly, in a good place or a bad place—and understand how sentient beings pass on according to their deeds:\n“These dear beings did bad things by way of body, speech, and mind.\nThey denounced the noble ones;\nthey had wrong view;\nand they chose to act out of that wrong view.\nWhen their body breaks up, after death, they’re reborn in a place of loss, a bad place, the underworld, hell.\nThese dear beings, however, did good things by way of body, speech, and mind.\nThey never denounced the noble ones;\nthey had right view;\nand they chose to act out of that right view.\nWhen their body breaks up, after death, they’re reborn in a good place, a heavenly realm.”\nAnd so, with clairvoyance that is purified and superhuman,\nmay I see sentient beings passing away and being reborn—inferior and superior,\nbeautiful and ugly, in a good place or a bad place.\nAnd may I understand how sentient beings pass on according to their deeds.’", "pts": "'With the purified deva-vision surpassing that of men, may I behold beings as they pass hence or come to be - mean,\nexcellent, comely, ugly, in a good bourn, in a bad bourn according to the consequences of deeds;\nmay I comprehend:\nIndeed these worthy beings were possessed of wrong conduct in body,\nspeech and thought, they were scoffers at the ariyans, holding a wrong view,\nincurring deeds consequent on a wrong view - these, at the breaking up of the body after dying,\nhave arisen in a sorrowful state, a bad bourn, the abyss, Niraya Hell.\nBut these worthy beings who were possessed of right conduct in body,\nspeech and thought, who were not scoffers at the ariyans, holding a right view,\nincurring deeds consequent on a right view - these at the breaking up of the body after dying,\nhave arisen in a good bourn, a heaven world.\nThus with the purified deva-vision surpassing that of men may I behold beings as they pass hence,\nas they come to be, may I comprehend that they are mean,\nexcellent, comely, ugly, in a good bourn,\nin a bad bourn according to the consequences of deeds' - you will achieve what may be realized here and there,"}, {"key": "mn73:23.3", "pali": "tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane.", "sujato": "", "pts": "so long as there is the objective."}]}, {"id": "24", "label": "As far as you want, you will…", "rows": [{"key": "mn73:24.1", "pali": "So tvaṁ, vaccha, yāvadeva ākaṅkhissasi:", "sujato": "As far as you want, you will be capable of realizing these things, since each and every one is within range:", "pts": "If you, Vaccha, should wish like this:"}, {"key": "mn73:24.2", "pali": "‘āsavānaṁ khayā anāsavaṁ cetovimuttiṁ paññāvimuttiṁ diṭṭheva\ndhamme sayaṁ abhiññā sacchikatvā upasampajja vihareyyan’ti,", "sujato": "‘May I realize the undefiled freedom of heart and freedom by wisdom in this very life,\nand live having realized it with my own insight due to the ending of defilements.’”", "pts": "'By the destruction of the cankers,\nhaving realized here and now by my own super-knowledge the freedom of\nmind and the freedom through intuitive wisdom that are cankerless,\nentering thereon, may I abide therein' - you will achieve what may be realized here and there,"}, {"key": "mn73:24.3", "pali": "tatra tatreva sakkhibhabbataṁ pāpuṇissasi, sati satiāyatane”ti.", "sujato": "", "pts": "so long as there is the objective.\""}]}, {"id": "25", "label": "And then Venerable Vacchagotta approved and agreed…", "rows": [{"key": "mn73:25.1", "pali": "Atha kho āyasmā vacchagotto bhagavato bhāsitaṁ abhinanditvā anumoditvā\nuṭṭhāyāsanā bhagavantaṁ abhivādetvā padakkhiṇaṁ katvā pakkāmi.", "sujato": "And then Venerable Vacchagotta approved and agreed with what the Buddha said.\nHe got up from his seat, bowed, and respectfully circled the Buddha, keeping him on his right, before leaving.", "pts": "Then the venerable Vacchagotta, having rejoiced in what the Lord had said, having given thanks,\nrising from his seat, having greeted the Lord, departed keeping his right side towards him."}]}, {"id": "26", "label": "Then Vacchagotta, living alone, withdrawn, diligent, keen,…", "rows": [{"key": "mn73:26.1", "pali": "Atha kho āyasmā vacchagotto eko vūpakaṭṭho appamatto ātāpī pahitatto viharanto\nnacirasseva—yassatthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti,\ntadanuttaraṁ—brahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja vihāsi.", "sujato": "Then Vacchagotta, living alone, withdrawn, diligent, keen, and resolute,\nsoon realized the supreme end of the spiritual path in this very life.\nHe lived having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.", "pts": "Then the venerable Vacchagotta,\nhaving soon realized here and now through his own super-knowledge that incomparable goal of the\nBrahma-faring for the sake of which young men of family rightly go forth from home into homelessness,\nentering on it, abided in it."}, {"key": "mn73:26.2", "pali": "“Khīṇā jāti, vusitaṁ brahmacariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyā”ti abbhaññāsi.", "sujato": "He understood:\n“Rebirth is ended;\nthe spiritual journey has been completed;\nwhat had to be done has been done;\nthere is nothing further for this place.”", "pts": "And he understood:\nDestroyed is birth, brought to a close is the Brahma-faring,\ndone is what was to be done, there is no more of being such or so."}, {"key": "mn73:26.3", "pali": "Aññataro kho panāyasmā vacchagotto arahataṁ ahosi.", "sujato": "And Venerable Vacchagotta became one of the perfected.", "pts": "And the venerable Vacchagotta became one of the perfected ones."}]}, {"id": "27", "label": "Now at that time several mendicants were…", "rows": [{"key": "mn73:27.1", "pali": "Tena kho pana samayena sambahulā bhikkhū bhagavantaṁ dassanāya gacchanti.", "sujato": "Now at that time several mendicants were going to see the Buddha.", "pts": "Now at that time a number of monks were going to see the Lord."}, {"key": "mn73:27.2", "pali": "Addasā kho āyasmā vacchagotto te bhikkhū dūratova āgacchante.", "sujato": "Vacchagotta saw them coming off in the distance,", "pts": "The venerable Vacchagotta saw these monks coming in the distance;"}, {"key": "mn73:27.3", "pali": "Disvāna yena te bhikkhū tenupasaṅkami;\nupasaṅkamitvā te bhikkhū etadavoca:", "sujato": "went up to them, and said,", "pts": "having seen them, he approached these monks;\nhaving approached, he spoke thus to these monks:"}, {"key": "mn73:27.4", "pali": "“handa kahaṁ pana tumhe āyasmanto gacchathā”ti?", "sujato": "“Hello venerables, where are you going?”", "pts": "\"But now, where are you venerable ones going?\""}, {"key": "mn73:27.5", "pali": "“Bhagavantaṁ kho mayaṁ, āvuso, dassanāya gacchāmā”ti.", "sujato": "“Reverend, we are going to see the Buddha.”", "pts": "\"We are going to see the Lord, your reverence.\""}, {"key": "mn73:27.6", "pali": "“Tenahāyasmanto mama vacanena bhagavato pāde sirasā vandatha, evañca vadetha:", "sujato": "“Well then, reverends, in my name please bow with your head at the Buddha’s feet and say:", "pts": "\"Well then, in my name let the venerable ones salute the Lord's feet with their heads, saying,\n'Revered sir, the monk Vacchagotta salutes the Lord's feet with his head,' and then say:"}, {"key": "mn73:27.7", "pali": "‘vacchagotto, bhante, bhikkhu bhagavato pāde sirasā vandati, evañca vadeti—", "sujato": "‘Sir, the mendicant Vacchagotta bows with his head to your feet and says,", "pts": "'The Lord is waited on by me, the Well-farer is waited on by me.'\""}, {"key": "mn73:27.8", "pali": "pariciṇṇo me bhagavā, pariciṇṇo me sugato’”ti.", "sujato": "“I have served the Blessed One!\nI have served the Holy One!”’”", "pts": ""}]}, {"id": "28", "label": "“Yes, reverend,” they replied.", "rows": [{"key": "mn73:28.1", "pali": "“Evamāvuso”ti kho te bhikkhū āyasmato vacchagottassa paccassosuṁ.", "sujato": "“Yes, reverend,” they replied.", "pts": "\"Yes, your reverence,\" these monks answered the venerable Vacchagotta in assent."}, {"key": "mn73:28.2", "pali": "Atha kho te bhikkhū yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho te bhikkhū bhagavantaṁ etadavocuṁ:", "sujato": "Then those mendicants went up to the Buddha, bowed, sat down to one side, and said to him,", "pts": "Then these monks approached the lord;\nhaving approached, having greeted the Lord, they sat down at a respectful distance.\nAs they were sitting down at a respectful distance these monks spoke thus to the Lord:"}, {"key": "mn73:28.3", "pali": "“āyasmā, bhante, vacchagotto bhagavato pāde sirasā vandati, evañca vadeti:", "sujato": "“Sir, the mendicant Vacchagotta bows with his head to your feet and says:", "pts": "\"Revered sir, the venerable Vacchagotta salutes the Lord's feet with his head and speaks thus:"}, {"key": "mn73:28.4", "pali": "‘pariciṇṇo me bhagavā, pariciṇṇo me sugato’”ti.", "sujato": "‘I have served the Blessed One!\nI have served the Holy One!’”", "pts": "'The Lord is waited on by me, the Well-farer is waited on by me.'\""}, {"key": "mn73:28.5", "pali": "“Pubbeva me, bhikkhave, vacchagotto bhikkhu cetasā ceto paricca vidito:", "sujato": "“I’ve already encompassed Vacchagotta’s mind and understood that", "pts": "\"Monks, by a reasoning of mind I already knew the mind of the monk Vacchagotta:"}, {"key": "mn73:28.6", "pali": "‘tevijjo vacchagotto bhikkhu mahiddhiko mahānubhāvo’ti.", "sujato": "he has the three knowledges, and is very mighty and powerful.", "pts": "of threefold knowledge is the monk Vacchagotta, of great psychic power, of great majesty."}, {"key": "mn73:28.7", "pali": "Devatāpi me etamatthaṁ ārocesuṁ:", "sujato": "And deities also told me about this.”", "pts": "And devatās also told me this matter:' Of threefold knowledge is the monk Vaeehagotta,\nrevered sir, he is of great psychic power, of great majesty.'\""}, {"key": "mn73:28.8", "pali": "‘tevijjo, bhante, vacchagotto bhikkhu mahiddhiko mahānubhāvo’”ti.", "sujato": "", "pts": ""}, {"key": "mn73:28.9", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn73:28.10", "pali": "Attamanā te bhikkhū bhagavato bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said."}, {"key": "mn73:28.11", "pali": "Mahāvacchasuttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato": "", "pts": "Greater Discourse to Vacchagotta"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn73:1.1": ["The final episode in the Vacchagotta
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

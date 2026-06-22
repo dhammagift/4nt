@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 61", "rows": [{"key": "mn61:0.1", "pali": "Majjhima Nikāya 61", "sujato": "Middle Discourses 61", "thanissaro": "", "pts": ""}, {"key": "mn61:0.2", "pali": "Ambalaṭṭhikarāhulovādasutta", "sujato": "Advice to Rāhula at Ambalaṭṭhika", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn61:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn61:1.2", "pali": "ekaṁ samayaṁ bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "thanissaro": "on one occasion the Blessed One was staying near Rājagaha, in the Bamboo Forest, the Squirrels’ Sanctuary.", "pts": "At one time the Lord was staying near Rājagaha in the Bamboo Grove at the squirrels' feeding place."}]}, {"id": "2", "label": "Now at that time Venerable Rāhula was…", "rows": [{"key": "mn61:2.1", "pali": "Tena kho pana samayena āyasmā rāhulo ambalaṭṭhikāyaṁ viharati.", "sujato": "Now at that time Venerable Rāhula was staying at Ambalaṭṭhikā.", "thanissaro": "At that time Ven. Rāhula was staying at the Mango Stone.", "pts": "At that time the venerable Rāhula was staying at Ambalaṭṭhikā."}, {"key": "mn61:2.2", "pali": "Atha kho bhagavā sāyanhasamayaṁ paṭisallānā vuṭṭhito yena ambalaṭṭhikā yenāyasmā rāhulo tenupasaṅkami.", "sujato": "Then in the late afternoon, the Buddha came out of retreat and went to Ambalaṭṭhika to see Venerable Rāhula.", "thanissaro": "Then the Blessed One, emerging from his seclusion in the evening,\nwent to where Ven. Rāhula was staying at the Mango Stone.", "pts": "Then the Lord, emerging from solitary meditation towards evening, approached Ambalaṭṭhikā. and the venerable Rāhula."}, {"key": "mn61:2.3", "pali": "Addasā kho āyasmā rāhulo bhagavantaṁ dūratova āgacchantaṁ.", "sujato": "Rāhula saw the Buddha coming off in the distance.", "thanissaro": "Ven. Rāhula saw him coming from afar and, on seeing him, set out a seat & water for washing the feet.", "pts": "Then the venerable Rāhula saw the Lord coming in the distance;"}, {"key": "mn61:2.4", "pali": "Disvāna āsanaṁ paññāpesi, udakañca pādānaṁ.", "sujato": "He spread out a seat and placed water for washing the feet.", "thanissaro": "", "pts": "seeing him, he made ready a seat and water for (washing) the feet."}, {"key": "mn61:2.5", "pali": "Nisīdi bhagavā paññatte āsane.", "sujato": "The Buddha sat on the seat spread out,", "thanissaro": "The Blessed One sat down on the seat set out and, having sat down, washed his feet.", "pts": "The Lord sat down on the seat made ready;"}, {"key": "mn61:2.6", "pali": "Nisajja pāde pakkhālesi.", "sujato": "and washed his feet.", "thanissaro": "", "pts": "as he was sitting down he bathed his feet."}, {"key": "mn61:2.7", "pali": "Āyasmāpi kho rāhulo bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.", "sujato": "Rāhula bowed to the Buddha and sat down to one side.", "thanissaro": "Ven. Rāhula, bowing down to the Blessed One, sat to one side.", "pts": "And the venerable Rāhula, having greeted the Lord, sat down at a respectful distance."}]}, {"id": "3", "label": "Then the Buddha, leaving a little water…", "rows": [{"key": "mn61:3.1", "pali": "Atha kho bhagavā parittaṁ udakāvasesaṁ udakādhāne ṭhapetvā āyasmantaṁ rāhulaṁ āmantesi:", "sujato": "Then the Buddha, leaving a little water in the pot, addressed Rāhula,", "thanissaro": "Then the Blessed One, having left a little bit of the remaining water in the water dipper, said to Ven. Rāhula,", "pts": "Then the Lord, having put a little quantity of water that was left over into a water-vessel,\naddressed the venerable Rāhula, saying:"}, {"key": "mn61:3.2", "pali": "“passasi no tvaṁ, rāhula, imaṁ parittaṁ udakāvasesaṁ udakādhāne ṭhapitan”ti?", "sujato": "“Rāhula, do you see this little bit of water left in the pot?”", "thanissaro": "“Rāhula, do you see this little bit of remaining water left in the water dipper?”", "pts": "\"Do you, Rāhula, see this little quantity of water that is left over and that is put into the water-vessel?\""}, {"key": "mn61:3.3", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”", "thanissaro": "“Yes sir.”", "pts": "\"Yes, revered sir.\""}, {"key": "mn61:3.4", "pali": "“Evaṁ parittakaṁ kho, rāhula, tesaṁ sāmaññaṁ yesaṁ natthi sampajānamusāvāde lajjā”ti.", "sujato": "“That’s how little of the ascetic’s nature is left in those who are not ashamed to tell a deliberate lie.”", "thanissaro": "“That’s how little of a contemplative there is in anyone who feels no shame at telling a deliberate lie.”", "pts": "\"Even so, Rāhula, little is the recluseship of those who have no shame at intentional lying.\""}]}, {"id": "4", "label": "Then the Buddha, discarding what little water…", "rows": [{"key": "mn61:4.1", "pali": "Atha kho bhagavā parittaṁ udakāvasesaṁ chaḍḍetvā āyasmantaṁ rāhulaṁ āmantesi:", "sujato": "Then the Buddha, discarding what little water was left in the pot, said to Rāhula,", "thanissaro": "Having tossed away the little bit of remaining water, the Blessed One said to Ven. Rāhula,", "pts": "Then the Lord, having thrown away that little quantity of water, addressed the venerable Rāhula, saying:"}, {"key": "mn61:4.2", "pali": "“passasi no tvaṁ, rāhula, parittaṁ udakāvasesaṁ chaḍḍitan”ti?", "sujato": "“Do you see this little bit of water that was discarded?”", "thanissaro": "“Rāhula, do you see how this little bit of remaining water is tossed away?”", "pts": "\"Do you, Rāhula, see this little quantity of water that has been thrown away?\""}, {"key": "mn61:4.3", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”", "thanissaro": "“Yes, sir.”", "pts": "\"Yes, revered sir.\""}, {"key": "mn61:4.4", "pali": "“Evaṁ chaḍḍitaṁ kho, rāhula, tesaṁ sāmaññaṁ yesaṁ natthi sampajānamusāvāde lajjā”ti.", "sujato": "“That’s how the ascetic’s nature is discarded in those who are not ashamed to tell a deliberate lie.”", "thanissaro": "“Rāhula, whatever there is of a contemplative in anyone who feels no\nshame at telling a deliberate lie is tossed away just like that.”", "pts": "\"Even so, Rāhula, thrown away is the recluseship of those who have no shame at intentional lying.\""}]}, {"id": "5", "label": "Then the Buddha, turning the pot upside…", "rows": [{"key": "mn61:5.1", "pali": "Atha kho bhagavā taṁ udakādhānaṁ nikkujjitvā āyasmantaṁ rāhulaṁ āmantesi:", "sujato": "Then the Buddha, turning the pot upside down, said to Rāhula,", "thanissaro": "Having turned the water dipper upside down, the Blessed One said to Ven. Rāhula,", "pts": "Then the Lord, having overturned that water-vessel, addressed the venerable Rāhula, saying:"}, {"key": "mn61:5.2", "pali": "“passasi no tvaṁ, rāhula, imaṁ udakādhānaṁ nikkujjitan”ti?", "sujato": "“Do you see how this pot is turned upside down?”", "thanissaro": "“Rāhula, do you see how this water dipper is turned upside down?”", "pts": "\"Do you, Rāhula, see this water-vessel that has been overturned?\""}, {"key": "mn61:5.3", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”", "thanissaro": "“Yes, sir.”", "pts": "\"Yes, revered sir.\""}, {"key": "mn61:5.4", "pali": "“Evaṁ nikkujjitaṁ kho, rāhula, tesaṁ sāmaññaṁ yesaṁ natthi sampajānamusāvāde lajjā”ti.", "sujato": "“That’s how the ascetic’s nature is turned upside down in those who are not ashamed to tell a deliberate lie.”", "thanissaro": "“Rāhula, whatever there is of a contemplative in anyone who feels no\nshame at telling a deliberate lie is turned upside down just like that.”", "pts": "\"Even so, Rāhula, overturned is the recluseship of those who have no shame at intentional lying.\""}]}, {"id": "6", "label": "Then the Buddha, turning the pot right…", "rows": [{"key": "mn61:6.1", "pali": "Atha kho bhagavā taṁ udakādhānaṁ ukkujjitvā āyasmantaṁ rāhulaṁ āmantesi:", "sujato": "Then the Buddha, turning the pot right side up, said to Rāhula,", "thanissaro": "Having turned the water dipper right-side up, the Blessed One said to Ven. Rāhula,", "pts": "Then the Lord, having turned upright that water-vessel, addressed the venerable Rāhula, saying:"}, {"key": "mn61:6.2", "pali": "“passasi no tvaṁ, rāhula, imaṁ udakādhānaṁ rittaṁ tucchan”ti?", "sujato": "“Do you see how this pot is vacant and hollow?”", "thanissaro": "“Rāhula, do you see how empty & hollow this water dipper is?”", "pts": "\"Do you, Rāhula, see this water-vessel that is empty, void?\""}, {"key": "mn61:6.3", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”", "thanissaro": "“Yes, sir.”", "pts": "\"Yes, revered sir.\""}, {"key": "mn61:6.4", "pali": "“Evaṁ rittaṁ tucchaṁ kho, rāhula, tesaṁ sāmaññaṁ yesaṁ natthi sampajānamusāvāde lajjāti.", "sujato": "“That’s how vacant and hollow the ascetic’s nature is in those who are not ashamed to tell a deliberate lie.", "thanissaro": "“Rāhula, whatever there is of a contemplative in anyone who feels no\nshame at telling a deliberate lie is empty & hollow just like that.", "pts": "\"Even so, Rāhula, void and empty is the recluseship of those who have no shame at intentional lying."}]}, {"id": "7", "label": "Suppose there was a royal bull elephant…", "rows": [{"key": "mn61:7.1", "pali": "Seyyathāpi, rāhula, rañño nāgo īsādanto urūḷhavā abhijāto saṅgāmāvacaro saṅgāmagato purimehipi pādehi kammaṁ karoti,\npacchimehipi pādehi kammaṁ karoti,\npurimenapi kāyena kammaṁ karoti, pacchimenapi kāyena kammaṁ karoti, sīsenapi kammaṁ karoti,\nkaṇṇehipi kammaṁ karoti, dantehipi kammaṁ karoti, naṅguṭṭhenapi kammaṁ karoti;\nrakkhateva soṇḍaṁ.", "sujato": "Suppose there was a royal bull elephant with tusks like draft-poles,\nable to draw a heavy load, pedigree and battle-hardened.\nIn battle it uses its fore-feet and hind-feet, its fore-quarters and hind-quarters,\nits head, ears, tusks, and tail, but it still protects its trunk.", "thanissaro": "“Rāhula, it’s like a royal elephant:\nimmense, pedigreed, accustomed to battles, its tusks like chariot poles.\nHaving gone into battle, it uses its forefeet & hindfeet, its forequarters & hindquarters,\nits head & ears & tusks & tail, but will simply hold back its trunk.", "pts": "Rāhula, it is like a king's bull-elephant whose tusks are as long as a plough-pole,\nmassive, finely bred, whose home is the battle-field, and who, when going forth to battle,\nuses his forelegs, uses his hindlegs, uses the forepart of his body, uses the hindpart of his body,\nuses his head, uses his ears, uses his tusks and uses his tail, protecting only his trunk."}, {"key": "mn61:7.2", "pali": "Tattha hatthārohassa evaṁ hoti:", "sujato": "So its rider thinks:", "thanissaro": "The elephant trainer notices that and thinks,", "pts": "Thereupon it occurs to the mahout:"}, {"key": "mn61:7.3", "pali": "‘ayaṁ kho rañño nāgo īsādanto urūḷhavā abhijāto saṅgāmāvacaro saṅgāmagato purimehipi pādehi kammaṁ karoti,\npacchimehipi pādehi kammaṁ karoti …pe… naṅguṭṭhenapi kammaṁ karoti;\nrakkhateva soṇḍaṁ.", "sujato": "‘This royal bull elephant still protects its trunk.", "thanissaro": "", "pts": "'This king's bull-elephant whose tusks are as long as a plough-pole massive, finely bred,\nwhose home is the battle-field, and who, when going forth to battle, uses his forelegs,\nuses his hindlegs, uses the forepart of his body, uses the hindpart of his body,\nuses his head, uses his ears, uses his tusks and uses his tail, protects only his trunk."}, {"key": "mn61:7.4", "pali": "Apariccattaṁ kho rañño nāgassa jīvitan’ti.", "sujato": "It has not yet given its life.’", "thanissaro": "‘This royal elephant has not given up its life to the king.’", "pts": "This king's bull-elephant has not thrown away his life.'"}, {"key": "mn61:7.5", "pali": "Yato kho, rāhula, rañño nāgo īsādanto urūḷhavā abhijāto saṅgāmāvacaro saṅgāmagato purimehipi pādehi kammaṁ karoti,\npacchimehipi pādehi kammaṁ karoti …pe… naṅguṭṭhenapi kammaṁ karoti,\nsoṇḍāyapi kammaṁ karoti, tattha hatthārohassa evaṁ hoti:", "sujato": "But when that royal bull elephant … in battle uses its fore-feet and hind-feet,\nits fore-quarters and hind-quarters, its head, ears, tusks, and tail, and its trunk, its rider thinks:", "thanissaro": "But when the royal elephant… having gone into battle, uses its forefeet & hindfeet,\nits forequarters & hindquarters, its head & ears & tusks & tail & his trunk, the trainer notices that and thinks,", "pts": "But when, Rāhula, the king's bull-elephant whose tusks are as long as a plough-pole massive,\nfinely bred, whose home is the battle-field, and who, when going forth to battle, uses his forelegs,\nuses his hindlegs, uses the forepart of his body, uses the hindpart of his body, uses his head,\nuses his ears, uses his tusks and uses his tail, and uses his trunk, it thereupon occurs to the mahout:"}, {"key": "mn61:7.6", "pali": "‘ayaṁ kho rañño nāgo īsādanto urūḷhavā abhijāto saṅgāmāvacaro saṅgāmagato purimehipi pādehi kammaṁ karoti,\npacchimehipi pādehi kammaṁ karoti, purimenapi kāyena kammaṁ karoti,\npacchimenapi kāyena kammaṁ karoti, sīsenapi kammaṁ karoti, kaṇṇehipi kammaṁ karoti,\ndantehipi kammaṁ karoti, naṅguṭṭhenapi kammaṁ karoti, soṇḍāyapi kammaṁ karoti.", "sujato": "‘This royal bull elephant … in battle uses its fore-feet and hind-feet,\nits fore-quarters and hind-quarters, its head, ears, tusks, and tail, and its trunk.", "thanissaro": "", "pts": "'This king's bull-elephant whose tusks are as long as a plough-pole massive, finely bred,\nwhose home is the battle-field, and who, when going forth to battle, uses his forelegs,\nuses his hindlegs, uses the forepart of his body, uses the hindpart of his body,\nuses his head, uses his ears, uses his tusks and uses his tail, and uses his trunk."}, {"key": "mn61:7.7", "pali": "Pariccattaṁ kho rañño nāgassa jīvitaṁ.", "sujato": "It has given its life.", "thanissaro": "‘This royal elephant has given up its life to the king.", "pts": ""}, {"key": "mn61:7.8", "pali": "Natthi dāni kiñci rañño nāgassa akaraṇīyan’ti.", "sujato": "Now there is nothing that royal bull elephant would not do.’", "thanissaro": "There is nothing it will not do.’", "pts": "This king's bull-elephant has thrown away his life, there is nothing to be done now for the king's bull-elephant.'"}, {"key": "mn61:7.9", "pali": "Evameva kho, rāhula, yassa kassaci sampajānamusāvāde natthi lajjā, nāhaṁ tassa kiñci pāpaṁ akaraṇīyanti vadāmi.", "sujato": "In the same way, when someone is not ashamed to tell a deliberate lie, there is no bad deed they would not do, I say.", "thanissaro": "“In the same way, Rāhula, when anyone feels no shame in telling a deliberate lie,\nthere is no evil, I tell you, he will not do.", "pts": "Even so, Rāhula, of anyone for whom there is no shame at intentional lying,\nof him I say that there is no evil he cannot do."}, {"key": "mn61:7.10", "pali": "Tasmātiha te, rāhula,\n‘hassāpi na musā bhaṇissāmī’ti—", "sujato": "So you should train like this:\n‘I will not tell a lie, even for a joke.’", "thanissaro": "Thus, Rāhula, you should train yourself,\n‘I will not tell a deliberate lie even in jest.’", "pts": "Wherefore, for you, Rāhula,\n'I will not speak a lie, even for fun' -"}, {"key": "mn61:7.11", "pali": "evañhi te, rāhula, sikkhitabbaṁ.", "sujato": "", "thanissaro": "", "pts": "this is how you must train yourself, Rāhula."}]}, {"id": "8", "label": "What do you think, Rāhula?", "rows": [{"key": "mn61:8.1", "pali": "Taṁ kiṁ maññasi, rāhula,", "sujato": "What do you think, Rāhula?", "thanissaro": "“What do you think, Rāhula?", "pts": "\"What do you think about this, Rāhula?"}, {"key": "mn61:8.2", "pali": "kimatthiyo ādāso”ti?", "sujato": "What is the purpose of a mirror?”", "thanissaro": "What is a mirror for?”", "pts": "What is the purpose of a mirror?\""}, {"key": "mn61:8.3", "pali": "“Paccavekkhaṇattho, bhante”ti.", "sujato": "“It’s for checking your reflection, sir.”", "thanissaro": "“For reflection, sir.”", "pts": "\"Its purpose is reflection, revered sir.\""}, {"key": "mn61:8.4", "pali": "“Evameva kho, rāhula, paccavekkhitvā paccavekkhitvā kāyena kammaṁ kattabbaṁ,\npaccavekkhitvā paccavekkhitvā vācāya kammaṁ kattabbaṁ, paccavekkhitvā paccavekkhitvā manasā kammaṁ kattabbaṁ.", "sujato": "“In the same way, deeds of body, speech, and mind should be done only after repeated checking.", "thanissaro": "“In the same way, Rāhula, bodily actions, verbal actions, & mental actions are to be done with repeated reflection.", "pts": "\"Even so, Rāhula, a deed is to be done with the body (only) after repeated reflection;\na deed is to be done with speech (only) after repeated reflection a\ndeed is to be done with the mind (only) after repeated reflection."}]}, {"id": "9", "label": "When you want to act with the…", "rows": [{"key": "mn61:9.1", "pali": "Yadeva tvaṁ, rāhula, kāyena kammaṁ kattukāmo ahosi, tadeva te kāyakammaṁ paccavekkhitabbaṁ:", "sujato": "When you want to act with the body, you should check on that same deed:", "thanissaro": "“Whenever you want to do a bodily action, you should reflect on it:", "pts": "If you, Rāhula, are desirous of doing a deed with the body, you should reflect on that deed of your body, thus:"}, {"key": "mn61:9.2", "pali": "‘yannu kho ahaṁ idaṁ kāyena kammaṁ kattukāmo idaṁ me kāyakammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "‘Does this act with the body that I want to do lead to hurting myself, hurting others, or hurting both?", "thanissaro": "‘This bodily action I want to do—would it lead to self-affliction, to the affliction of others, or to both?", "pts": "'That deed which I am desirous of doing with the body is a deed of my body that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of body is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:9.3", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "Is it unskillful, with suffering as its outcome and result?’", "thanissaro": "Would it be an unskillful bodily action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:9.4", "pali": "Sace tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "If, while checking in this way, you know:", "thanissaro": "If, on reflection, you know that it would lead to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, reflecting thus, should find:"}, {"key": "mn61:9.5", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ kattukāmo idaṁ me kāyakammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "‘This act with the body that I want to do leads to hurting myself, hurting others, or hurting both.", "thanissaro": "it would be an unskillful bodily action with painful consequences, painful results,", "pts": "'That deed which I am desirous of doing with the body is a deed of my body that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of body is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:9.6", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ te, rāhula, kāyena kammaṁ sasakkaṁ na karaṇīyaṁ.", "sujato": "It’s unskillful, with suffering as its outcome and result.’\nTo the best of your ability, Rāhula, you should not do such a deed.", "thanissaro": "then any bodily action of that sort is absolutely unfit for you to do.", "pts": "- a deed of body like this, Rāhula, is certainly not to be done by you. ■"}, {"key": "mn61:9.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "But if, while checking in this way, you know:", "thanissaro": "But if on reflection you know that it would not cause affliction…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:9.8", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ kattukāmo idaṁ me kāyakammaṁ nevattabyābādhāyapi saṁvatteyya,\nna parabyābādhāyapi saṁvatteyya, na ubhayabyābādhāyapi saṁvatteyya—", "sujato": "‘This act with the body that I want to do doesn’t lead to hurting myself, hurting others, or hurting both.", "thanissaro": "it would be a skillful bodily action with pleasant consequences,", "pts": "'That deed which I am desirous of doing with the body is a deed of my body that would\nconduce neither to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of body is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:9.9", "pali": "kusalaṁ idaṁ kāyakammaṁ sukhudrayaṁ sukhavipākan’ti, evarūpaṁ te, rāhula, kāyena kammaṁ karaṇīyaṁ.", "sujato": "It’s skillful, with happiness as its outcome and result.’\nThen, Rāhula, you should do such a deed.", "thanissaro": "pleasant results, then any bodily action of that sort is fit for you to do.", "pts": "- a deed of body like this, Rāhula, may be done by you. ■"}]}, {"id": "10", "label": "While you are acting with the body,…", "rows": [{"key": "mn61:10.1", "pali": "Karontenapi te, rāhula, kāyena kammaṁ tadeva te kāyakammaṁ paccavekkhitabbaṁ:", "sujato": "While you are acting with the body, you should check on that same act:", "thanissaro": "“While you are doing a bodily action, you should reflect on it:", "pts": "While you, Rāhula, are doing this deed with the body, you should reflect thus on this self-same deed of body:"}, {"key": "mn61:10.2", "pali": "‘yannu kho ahaṁ idaṁ kāyena kammaṁ karomi idaṁ me kāyakammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘Does this act with the body that I am doing lead to hurting myself, hurting others, or hurting both?", "thanissaro": "‘This bodily action I am doing—is it leading to self-affliction, to the affliction of others, or to both?", "pts": "'Is this deed that I am doing with the body a deed of my body that is conducing\nto the harm of self and to the harm of others and to the harm of both?\nIs this deed of body unskilled, its yield anguish, its result anguish?'"}, {"key": "mn61:10.3", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "Is it unskillful, with suffering as its outcome and result?’", "thanissaro": "Is it an unskillful bodily action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:10.4", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "If, while checking in this way, you know:", "thanissaro": "If, on reflection, you know that it is leading to self-affliction, to affliction of others, or both…", "pts": "If you, Rāhula, while reflecting thus should find:"}, {"key": "mn61:10.5", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ karomi idaṁ me kāyakammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act with the body that I am doing leads to hurting myself, hurting others, or hurting both.", "thanissaro": "", "pts": "'This deed that I am doing with the body is a deed of my body that is conducing\nto the harm of self and to the harm of others and to the harm of both;\nthis deed of body is unskilled, its yield is anguish, its result is anguish'"}, {"key": "mn61:10.6", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti, paṭisaṁhareyyāsi tvaṁ, rāhula, evarūpaṁ kāyakammaṁ.", "sujato": "It’s unskillful, with suffering as its outcome and result.’\nThen, Rāhula, you should desist from such a deed.", "thanissaro": "you should give it up.", "pts": "-you, Rāhula, should avoid a deed of body like this. ■"}, {"key": "mn61:10.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "But if, while checking in this way, you know:", "thanissaro": "But if on reflection you know that it is not…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:10.8", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ karomi idaṁ me kāyakammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act with the body that I am doing doesn’t lead to hurting myself, hurting others, or hurting both.", "thanissaro": "", "pts": "'This deed that I am doing with the body is a deed of my body that is not\nconducing to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of body is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:10.9", "pali": "kusalaṁ idaṁ kāyakammaṁ sukhudrayaṁ sukhavipākan’ti, anupadajjeyyāsi tvaṁ, rāhula, evarūpaṁ kāyakammaṁ.", "sujato": "It’s skillful, with happiness as its outcome and result.’\nThen, Rāhula, you should continue doing such a deed.", "thanissaro": "you may continue with it.", "pts": "-you, Rāhula, could repeat a deed of body like this. ■"}]}, {"id": "11", "label": "After you have acted with the body,…", "rows": [{"key": "mn61:11.1", "pali": "Katvāpi te, rāhula, kāyena kammaṁ tadeva te kāyakammaṁ paccavekkhitabbaṁ:", "sujato": "After you have acted with the body, you should check on that same act:", "thanissaro": "“Having done a bodily action, you should reflect on it:", "pts": "And when you, Rāhula, have done a deed with the body you should reflect on this self-same deed of body thus:"}, {"key": "mn61:11.2", "pali": "‘yannu kho ahaṁ idaṁ kāyena kammaṁ akāsiṁ idaṁ me kāyakammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘Does this act with the body that I have done lead to hurting myself, hurting others, or hurting both?", "thanissaro": "‘This bodily action I have done—did it lead to self-affliction, to the affliction of others, or to both?", "pts": "'Was this deed that I did with the body a deed of my body that conduced\nto the harm of self and to the harm of others and to the harm of both?\nWas this an unskilled deed of body, its yield anguish, its result anguish?"}, {"key": "mn61:11.3", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "Is it unskillful, with suffering as its outcome and result?’", "thanissaro": "Was it an unskillful bodily action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:11.4", "pali": "Sace kho tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "If, while checking in this way, you know:", "thanissaro": "If, on reflection, you know that it led to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:11.5", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ akāsiṁ, idaṁ me kāyakammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act with the body that I have done leads to hurting myself, hurting others, or hurting both.", "thanissaro": "", "pts": "'This deed that I did with the body was a deed of my body that conduced\nto the harm of sel and to the harm of others and to the harm of both;\nthis deed of body was unskilled, its yield anguish, its result anguish'"}, {"key": "mn61:11.6", "pali": "akusalaṁ idaṁ kāyakammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ te, rāhula,\nkāyakammaṁ satthari vā viññūsu vā sabrahmacārīsu desetabbaṁ, vivaritabbaṁ, uttānīkātabbaṁ;", "sujato": "It’s unskillful, with suffering as its outcome and result.’\nThen, Rāhula, you should confess, reveal, and clarify such a deed to the Teacher or a sensible spiritual companion.", "thanissaro": "it was an unskillful bodily action with painful consequences, painful results, then you should confess it,\nreveal it, lay it open to the Teacher or to an observant companion in the holy life.", "pts": "-such a deed of your body, Rāhula, should be confessed, disclosed,\ndeclared to the Teacher or to intelligent Brahma-farers so that,"}, {"key": "mn61:11.7", "pali": "desetvā vivaritvā uttānīkatvā āyatiṁ saṁvaraṁ āpajjitabbaṁ.", "sujato": "And having revealed it you should restrain yourself in future.", "thanissaro": "Having confessed it… you should exercise restraint in the future.", "pts": "confessed, disclosed and declared, it would induce restraint in the future."}, {"key": "mn61:11.8", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "But if, while checking in this way, you know:", "thanissaro": "But if on reflection you know that it did not lead to affliction…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:11.9", "pali": "‘yaṁ kho ahaṁ idaṁ kāyena kammaṁ akāsiṁ idaṁ me kāyakammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act with the body that I have done doesn’t lead to hurting myself, hurting others, or hurting both.", "thanissaro": "it was a skillful bodily action with pleasant consequences, pleasant results,", "pts": "'This deed that I did with the body was a deed of my body that conduced\nneither to the harm of self nor to the harm of others nor to the harm of both;\nit was a skilled deed of body, its yield happy, its result happy'"}, {"key": "mn61:11.10", "pali": "kusalaṁ idaṁ kāyakammaṁ sukhudrayaṁ sukhavipākan’ti, teneva tvaṁ,\nrāhula, pītipāmojjena vihareyyāsi ahorattānusikkhī kusalesu dhammesu.", "sujato": "It’s skillful, with happiness as its outcome and result.’\nThen, Rāhula, you should live in rapture and joy because of this, training day and night in skillful qualities.", "thanissaro": "then you should stay mentally refreshed & joyful, training day & night in skillful qualities.", "pts": "- because of it you, Rāhula, may abide in zest and rapture training yourself day and night in states that are skilled."}]}, {"id": "12", "label": "When you want to act with speech,…", "rows": [{"key": "mn61:12.1", "pali": "“Yadeva tvaṁ, rāhula, vācāya kammaṁ kattukāmo ahosi, tadeva te vacīkammaṁ paccavekkhitabbaṁ:", "sujato": "When you want to act with speech, you should check on that same deed:", "thanissaro": "“Whenever you want to do a verbal action, you should reflect on it:", "pts": "If you, Rāhula, are desirous of doing a deed with the speech, you should reflect on that deed of your speech, thus:"}, {"key": "mn61:12.2", "pali": "‘yannu kho ahaṁ idaṁ vācāya kammaṁ kattukāmo idaṁ me vacīkammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "‘Does this act of speech that I want to do lead to hurting myself, hurting others, or hurting both? …’ …", "thanissaro": "‘This verbal action I want to do—would it lead to self-affliction, to the affliction of others, or to both?", "pts": "'That deed which I am desirous of doing with the speech is a deed of my speech that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of speech is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:12.3", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Would it be an unskillful verbal action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:12.4", "pali": "Sace tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "If, on reflection, you know that it would lead to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, reflecting thus, should find:"}, {"key": "mn61:12.5", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ kattukāmo idaṁ me vacīkammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "", "thanissaro": "it would be an unskillful verbal action with painful consequences, painful results,", "pts": "'That deed which I am desirous of doing with the speech is a deed of my speech that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of speech is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:12.6", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ te, rāhula, vācāya kammaṁ sasakkaṁ na karaṇīyaṁ.", "sujato": "", "thanissaro": "then any verbal action of that sort is absolutely unfit for you to do.", "pts": "- a deed of speech like this, Rāhula, is certainly not to be done by you. ■"}, {"key": "mn61:12.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "But if on reflection you know that it would not cause affliction…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:12.8", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ kattukāmo idaṁ me vacīkammaṁ nevattabyābādhāyapi saṁvatteyya,\nna parabyābādhāyapi saṁvatteyya—", "sujato": "", "thanissaro": "it would be a skillful verbal action with pleasant consequences,", "pts": "'That deed which I am desirous of doing with the speech is a deed of my speech that would\nconduce neither to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of speech is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:12.9", "pali": "kusalaṁ idaṁ vacīkammaṁ sukhudrayaṁ sukhavipākan’ti, evarūpaṁ te, rāhula, vācāya kammaṁ karaṇīyaṁ.", "sujato": "", "thanissaro": "pleasant results, then any verbal action of that sort is fit for you to do.", "pts": "- a deed of speech like this, Rāhula, may be done by you. ■"}]}, {"id": "13", "label": "Karontenapi te, rāhula, vācāya kammaṁ tadeva te…", "rows": [{"key": "mn61:13.1", "pali": "Karontenapi te, rāhula, vācāya kammaṁ tadeva te vacīkammaṁ paccavekkhitabbaṁ:", "sujato": "", "thanissaro": "“While you are doing a verbal action, you should reflect on it:", "pts": "While you, Rāhula, are doing this deed with the speech, you should reflect thus on this self-same deed of speech:"}, {"key": "mn61:13.2", "pali": "‘yannu kho ahaṁ idaṁ vācāya kammaṁ karomi idaṁ me vacīkammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "‘This verbal action I am doing—is it leading to self-affliction, to the affliction of others, or to both?", "pts": "'Is this deed that I am doing with the speech a deed of my speech that is\nconducing to the harm of self and to the harm of others and to the harm of both?\nIs this deed of speech unskilled, its yield anguish, its result anguish?'"}, {"key": "mn61:13.3", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Is it an unskillful verbal action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:13.4", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "If, on reflection, you know that it is leading to self-affliction, to affliction of others, or both…", "pts": "If you, Rāhula, while reflecting thus should find:"}, {"key": "mn61:13.5", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ karomi idaṁ me vacīkammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "", "pts": "'This deed that I am doing with the speech is a deed of my speech that is\nconducing to the harm of self and to the harm of others and to the harm of both;\nthis deed of speech is unskilled, its yield is anguish, its result is anguish'"}, {"key": "mn61:13.6", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti, paṭisaṁhareyyāsi tvaṁ, rāhula, evarūpaṁ vacīkammaṁ.", "sujato": "", "thanissaro": "you should give it up.", "pts": "-you, Rāhula, should avoid a deed of speech like this. ■"}, {"key": "mn61:13.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "But if on reflection you know that it is not…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:13.8", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ karomi idaṁ me vacīkammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "", "pts": "'This deed that I am doing with the speech is a deed of my speech that is not\nconducing to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of speech is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:13.9", "pali": "kusalaṁ idaṁ vacīkammaṁ sukhudrayaṁ sukhavipākan’ti, anupadajjeyyāsi tvaṁ, rāhula, evarūpaṁ vacīkammaṁ.", "sujato": "", "thanissaro": "you may continue with it.", "pts": "-you, Rāhula, could repeat a deed of speech like this. ■"}]}, {"id": "14", "label": "Katvāpi te, rāhula, vācāya kammaṁ tadeva te…", "rows": [{"key": "mn61:14.1", "pali": "Katvāpi te, rāhula, vācāya kammaṁ tadeva te vacīkammaṁ paccavekkhitabbaṁ:", "sujato": "", "thanissaro": "“Having done a verbal action, you should reflect on it:", "pts": "And when you, Rāhula, have done a deed with the speech you should reflect on this self-same deed of speech thus:"}, {"key": "mn61:14.2", "pali": "‘yannu kho ahaṁ idaṁ vācāya kammaṁ akāsiṁ idaṁ me vacīkammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "‘This verbal action I have done—did it lead to self-affliction, to the affliction of others, or to both?", "pts": "'Was this deed that I did with the speech a deed of my speech that conduced\nto the harm of self and to the harm of others and to the harm of both?\nWas this an unskilled deed of speech, its yield anguish, its result anguish?"}, {"key": "mn61:14.3", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Was it an unskillful verbal action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:14.4", "pali": "Sace kho tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "If, while checking in this way, you know:", "thanissaro": "If, on reflection, you know that it led to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:14.5", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ akāsiṁ idaṁ me vacīkammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act of speech that I have done leads to hurting myself, hurting others, or hurting both.", "thanissaro": "it was an unskillful verbal action with painful consequences, painful results, then you should confess it,", "pts": "'This deed that I did with the speech was a deed of my speech that conduced\nto the harm of sel and to the harm of others and to the harm of both;\nthis deed of speech was unskilled, its yield anguish, its result anguish'"}, {"key": "mn61:14.6", "pali": "akusalaṁ idaṁ vacīkammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ te, rāhula,\nvacīkammaṁ satthari vā viññūsu vā sabrahmacārīsu desetabbaṁ, vivaritabbaṁ, uttānīkattabbaṁ;", "sujato": "It’s unskillful, with suffering as its outcome and result.’\nThen, Rāhula, you should confess, reveal, and clarify such a deed to the Teacher or a sensible spiritual companion.", "thanissaro": "reveal it, lay it open to the Teacher or to an observant companion in the holy life.", "pts": "-such a deed of your speech, Rāhula, should be confessed, disclosed,\ndeclared to the Teacher or to intelligent Brahma-farers so that,"}, {"key": "mn61:14.7", "pali": "desetvā vivaritvā uttānīkatvā āyatiṁ saṁvaraṁ āpajjitabbaṁ.", "sujato": "And having revealed it you should restrain yourself in future.", "thanissaro": "Having confessed it… you should exercise restraint in the future.", "pts": "confessed, disclosed and declared, it would induce restraint in the future."}, {"key": "mn61:14.8", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "But if, while checking in this way, you know:", "thanissaro": "But if on reflection you know that it did not lead to affliction…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:14.9", "pali": "‘yaṁ kho ahaṁ idaṁ vācāya kammaṁ akāsiṁ idaṁ me vacīkammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act of speech that I have done doesn’t lead to hurting myself, hurting others, or hurting both.", "thanissaro": "it was a skillful verbal action with pleasant consequences, pleasant results,", "pts": "'This deed that I did with the speech was a deed of my speech that conduced\nneither to the harm of self nor to the harm of others nor to the harm of both;\nit was a skilled deed of speech, its yield happy, its result happy'"}, {"key": "mn61:14.10", "pali": "kusalaṁ idaṁ vacīkammaṁ sukhudrayaṁ sukhavipākan’ti, teneva tvaṁ,\nrāhula, pītipāmojjena vihareyyāsi ahorattānusikkhī kusalesu dhammesu.", "sujato": "It’s skillful, with happiness as its outcome and result.’\nThen, Rāhula, you should live in rapture and joy because of this, training day and night in skillful qualities.", "thanissaro": "then you should stay mentally refreshed & joyful, training day & night in skillful qualities.", "pts": "- because of it you, Rāhula, may abide in zest and rapture training yourself day and night in states that are skilled."}]}, {"id": "15", "label": "When you want to act with the…", "rows": [{"key": "mn61:15.1", "pali": "Yadeva tvaṁ, rāhula, manasā kammaṁ kattukāmo ahosi, tadeva te manokammaṁ paccavekkhitabbaṁ:", "sujato": "When you want to act with the mind, you should check on that same deed:", "thanissaro": "“Whenever you want to do a mental action, you should reflect on it:", "pts": "If you, Rāhula, are desirous of doing a deed with the mind, you should reflect on that deed of your mind, thus:"}, {"key": "mn61:15.2", "pali": "‘yannu kho ahaṁ idaṁ manasā kammaṁ kattukāmo idaṁ me manokammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "‘Does this act of mind that I want to do lead to hurting myself, hurting others, or hurting both? …’ …", "thanissaro": "‘This mental action I want to do—would it lead to self-affliction, to the affliction of others, or to both?", "pts": "'That deed which I am desirous of doing with the mind is a deed of my mind that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of mind is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:15.3", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Would it be an unskillful mental action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:15.4", "pali": "Sace tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "If, on reflection, you know that it would lead to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, reflecting thus, should find:"}, {"key": "mn61:15.5", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ kattukāmo idaṁ me manokammaṁ attabyābādhāyapi saṁvatteyya,\nparabyābādhāyapi saṁvatteyya, ubhayabyābādhāyapi saṁvatteyya—", "sujato": "", "thanissaro": "it would be an unskillful mental action with painful consequences, painful results,", "pts": "'That deed which I am desirous of doing with the mind is a deed of my mind that might conduce to the\nharm of self and that might conduce to the harm of others and that might conduce to the harm of both;\nthis deed of mind is unskilled, its yield is anguish, its result is anguish.'"}, {"key": "mn61:15.6", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ te, rāhula, manasā kammaṁ sasakkaṁ na karaṇīyaṁ.", "sujato": "", "thanissaro": "then any mental action of that sort is absolutely unfit for you to do.", "pts": "- a deed of mind like this, Rāhula, is certainly not to be done by you. ■"}, {"key": "mn61:15.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "But if on reflection you know that it would not cause affliction…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:15.8", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ kattukāmo idaṁ me manokammaṁ nevattabyābādhāyapi saṁvatteyya,\nna parabyābādhāyapi saṁvatteyya, na ubhayabyābādhāyapi saṁvatteyya—", "sujato": "", "thanissaro": "it would be a skillful mental action with pleasant consequences,", "pts": "'That deed which I am desirous of doing with the mind is a deed of my mind that would\nconduce neither to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of mind is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:15.9", "pali": "kusalaṁ idaṁ manokammaṁ sukhudrayaṁ sukhavipākan’ti, evarūpaṁ te, rāhula, manasā kammaṁ karaṇīyaṁ.", "sujato": "", "thanissaro": "pleasant results, then any mental action of that sort is fit for you to do.", "pts": "- a deed of mind like this, Rāhula, may be done by you. ■"}]}, {"id": "16", "label": "Karontenapi te, rāhula, manasā kammaṁ tadeva te…", "rows": [{"key": "mn61:16.1", "pali": "Karontenapi te, rāhula, manasā kammaṁ tadeva te manokammaṁ paccavekkhitabbaṁ:", "sujato": "", "thanissaro": "“While you are doing a mental action, you should reflect on it:", "pts": "While you, Rāhula, are doing this deed with the mind, you should reflect thus on this self-same deed of mind:"}, {"key": "mn61:16.2", "pali": "‘yannu kho ahaṁ idaṁ manasā kammaṁ karomi idaṁ me manokammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "‘This mental action I am doing—is it leading to self-affliction, to the affliction of others, or to both?", "pts": "'Is this deed that I am doing with the mind a deed of my mind that is conducing\nto the harm of self and to the harm of others and to the harm of both?\nIs this deed of mind unskilled, its yield anguish, its result anguish?'"}, {"key": "mn61:16.3", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Is it an unskillful mental action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:16.4", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "If, on reflection, you know that it is leading to self-affliction, to affliction of others, or both…", "pts": "If you, Rāhula, while reflecting thus should find:"}, {"key": "mn61:16.5", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ karomi idaṁ me manokammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "", "pts": "'This deed that I am doing with the mind is a deed of my mind that is conducing\nto the harm of self and to the harm of others and to the harm of both;\nthis deed of mind is unskilled, its yield is anguish, its result is anguish'"}, {"key": "mn61:16.6", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti, paṭisaṁhareyyāsi tvaṁ, rāhula, evarūpaṁ manokammaṁ.", "sujato": "", "thanissaro": "you should give it up.", "pts": "-you, Rāhula, should avoid a deed of mind like this. ■"}, {"key": "mn61:16.7", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "", "thanissaro": "But if on reflection you know that it is not…", "pts": "But if you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:16.8", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ karomi idaṁ me manokammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "", "pts": "'This deed that I am doing with the mind is a deed of my mind that is not\nconducing to the harm of self nor to the harm of others nor to the harm of both;\nthis deed of mind is skilled, its yield is happy, its result is happy'"}, {"key": "mn61:16.9", "pali": "kusalaṁ idaṁ manokammaṁ sukhudrayaṁ sukhavipākan’ti, anupadajjeyyāsi tvaṁ, rāhula, evarūpaṁ manokammaṁ.", "sujato": "", "thanissaro": "you may continue with it.", "pts": "-you, Rāhula, could repeat a deed of mind like this. ■"}]}, {"id": "17", "label": "Katvāpi te, rāhula, manasā kammaṁ tadeva te…", "rows": [{"key": "mn61:17.1", "pali": "Katvāpi te, rāhula, manasā kammaṁ tadeva te manokammaṁ paccavekkhitabbaṁ:", "sujato": "", "thanissaro": "“Having done a mental action, you should reflect on it:", "pts": "And when you, Rāhula, have done a deed with the mind you should reflect on this self-same deed of mind thus:"}, {"key": "mn61:17.2", "pali": "‘yannu kho ahaṁ idaṁ manasā kammaṁ akāsiṁ idaṁ me manokammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "", "thanissaro": "‘This mental action I have done—did it lead to self-affliction, to the affliction of others, or to both?", "pts": "'Was this deed that I did with the mind a deed of my mind that conduced\nto the harm of self and to the harm of others and to the harm of both?\nWas this an unskilled deed of mind, its yield anguish, its result anguish?"}, {"key": "mn61:17.3", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti?", "sujato": "", "thanissaro": "Was it an unskillful mental action, with painful consequences, painful results?’", "pts": ""}, {"key": "mn61:17.4", "pali": "Sace kho tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "If, while checking in this way, you know:", "thanissaro": "If, on reflection, you know that it led to self-affliction, to the affliction of others, or to both;", "pts": "If you, Rāhula, while reflecting thus, should find:"}, {"key": "mn61:17.5", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ akāsiṁ idaṁ me manokammaṁ attabyābādhāyapi saṁvattati,\nparabyābādhāyapi saṁvattati, ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act of mind that I have done leads to hurting myself, hurting others, or hurting both.", "thanissaro": "it was an unskillful mental action with painful consequences,", "pts": "'This deed that I did with the mind was a deed of my mind that conduced\nto the harm of sel and to the harm of others and to the harm of both;\nthis deed of mind was unskilled, its yield anguish, its result anguish'"}, {"key": "mn61:17.6", "pali": "akusalaṁ idaṁ manokammaṁ dukkhudrayaṁ dukkhavipākan’ti, evarūpaṁ pana te,\nrāhula, manokammaṁ aṭṭīyitabbaṁ harāyitabbaṁ jigucchitabbaṁ;", "sujato": "It’s unskillful, with suffering as its outcome and result.’\nThen, Rāhula, you should be horrified, repelled, and disgusted by that deed.", "thanissaro": "painful results, then you should feel distressed, ashamed, & disgusted with it.", "pts": ""}, {"key": "mn61:17.7", "pali": "aṭṭīyitvā harāyitvā jigucchitvā āyatiṁ saṁvaraṁ āpajjitabbaṁ.", "sujato": "And being repelled, you should restrain yourself in future.", "thanissaro": "Feeling distressed… you should exercise restraint in the future.", "pts": ""}, {"key": "mn61:17.8", "pali": "Sace pana tvaṁ, rāhula, paccavekkhamāno evaṁ jāneyyāsi:", "sujato": "But if, while checking in this way, you know:", "thanissaro": "But if on reflection you know that it did not lead to affliction…", "pts": ""}, {"key": "mn61:17.9", "pali": "‘yaṁ kho ahaṁ idaṁ manasā kammaṁ akāsiṁ idaṁ me manokammaṁ nevattabyābādhāyapi saṁvattati,\nna parabyābādhāyapi saṁvattati, na ubhayabyābādhāyapi saṁvattati—", "sujato": "‘This act with the mind that I have done doesn’t lead to hurting myself, hurting others, or hurting both.", "thanissaro": "it was a skillful mental action with pleasant consequences, pleasant results,", "pts": ""}, {"key": "mn61:17.10", "pali": "kusalaṁ idaṁ manokammaṁ sukhudrayaṁ sukhavipākan’ti, teneva tvaṁ,\nrāhula, pītipāmojjena vihareyyāsi ahorattānusikkhī kusalesu dhammesu.", "sujato": "It’s skillful, with happiness as its outcome and result.’\nThen, Rāhula, you should live in rapture and joy because of this, training day and night in skillful qualities.", "thanissaro": "then you should stay mentally refreshed & joyful, training day & night in skillful qualities.", "pts": ""}]}, {"id": "18", "label": "All the ascetics and brahmins of the…", "rows": [{"key": "mn61:18.1", "pali": "Ye hi keci, rāhula, atītamaddhānaṁ samaṇā vā brāhmaṇā vā kāyakammaṁ parisodhesuṁ,\nvacīkammaṁ parisodhesuṁ, manokammaṁ parisodhesuṁ,\nsabbe te evamevaṁ paccavekkhitvā paccavekkhitvā kāyakammaṁ parisodhesuṁ,\npaccavekkhitvā paccavekkhitvā vacīkammaṁ parisodhesuṁ, paccavekkhitvā paccavekkhitvā manokammaṁ parisodhesuṁ.", "sujato": "All the ascetics and brahmins of the past, future, and present who purify their physical,\nverbal, and mental actions do so after repeatedly checking.", "thanissaro": "“Rāhula, all those contemplatives & brahmans in the course of\nthe past who purified their bodily actions, verbal actions,\n& mental actions, did it through repeated reflection on their bodily actions,\nverbal actions, & mental actions in just this way.", "pts": ""}, {"key": "mn61:18.2", "pali": "Yepi hi keci, rāhula, anāgatamaddhānaṁ samaṇā vā brāhmaṇā vā kāyakammaṁ parisodhessanti,\nvacīkammaṁ parisodhessanti, manokammaṁ parisodhessanti,\nsabbe te evamevaṁ paccavekkhitvā paccavekkhitvā kāyakammaṁ parisodhessanti,\npaccavekkhitvā paccavekkhitvā vacīkammaṁ parisodhessanti, paccavekkhitvā paccavekkhitvā manokammaṁ parisodhessan”ti.", "sujato": "", "thanissaro": "“All those contemplatives & brahmans in the course of the future who will purify their bodily actions, verbal actions,\n& mental actions, will do it through repeated reflection on their bodily actions,\nverbal actions, & mental actions in just this way.", "pts": ""}, {"key": "mn61:18.3", "pali": "Yepi hi keci, rāhula, etarahi samaṇā vā brāhmaṇā vā kāyakammaṁ parisodhenti,\nvacīkammaṁ parisodhenti, manokammaṁ parisodhenti,\nsabbe te evamevaṁ paccavekkhitvā paccavekkhitvā kāyakammaṁ parisodhenti,\npaccavekkhitvā paccavekkhitvā vacīkammaṁ parisodhenti, paccavekkhitvā paccavekkhitvā manokammaṁ parisodhenti.", "sujato": "", "thanissaro": "“All those contemplatives & brahmans at present who purify their bodily actions, verbal actions, & mental actions,\ndo it through repeated reflection on their bodily actions, verbal actions, & mental actions in just this way.", "pts": ""}, {"key": "mn61:18.4", "pali": "Tasmātiha, rāhula,\n‘paccavekkhitvā paccavekkhitvā kāyakammaṁ parisodhessāmi, paccavekkhitvā paccavekkhitvā vacīkammaṁ parisodhessāmi,\npaccavekkhitvā paccavekkhitvā manokammaṁ parisodhessāmī’ti—", "sujato": "So Rāhula, you should train yourself like this:\n‘I will purify my physical, verbal, and mental actions after repeatedly checking.’”", "thanissaro": "“Thus, Rāhula, you should train yourself:\n‘I will purify my bodily actions through repeated reflection.\nI will purify my verbal actions through repeated reflection.\nI will purify my mental actions through repeated reflection.’", "pts": ""}, {"key": "mn61:18.5", "pali": "evañhi te, rāhula, sikkhitabban”ti.", "sujato": "", "thanissaro": "That’s how you should train yourself.”", "pts": ""}, {"key": "mn61:18.6", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "thanissaro": "That is what the Blessed One said.", "pts": ""}, {"key": "mn61:18.7", "pali": "Attamano āyasmā rāhulo bhagavato bhāsitaṁ abhinandīti.", "sujato": "Satisfied, Venerable Rāhula approved what the Buddha said.", "thanissaro": "Gratified, Ven. Rāhula delighted in the Blessed One’s words.", "pts": ""}, {"key": "mn61:18.8", "pali": "Ambalaṭṭhikarāhulovādasuttaṁ niṭṭhitaṁ paṭhamaṁ.", "sujato": "", "thanissaro": "", "pts": ""}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn61:1.1": ["The Buddha teaches his son Rāhula t
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

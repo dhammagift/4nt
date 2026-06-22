@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 139", "rows": [{"key": "mn139:0.1", "pali": "Majjhima Nikāya 139", "sujato": "Middle Discourses 139", "pts": ""}, {"key": "mn139:0.2", "pali": "Araṇavibhaṅgasutta", "sujato": "The Analysis of No Strife", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn139:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "pts": "Thus have I heard:"}, {"key": "mn139:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthi in the Jeta Grove in Anāthapiṇḍika's monastery."}, {"key": "mn139:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:"}, {"key": "mn139:1.4", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”", "pts": "\"Monks.\""}, {"key": "mn139:1.5", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied.", "pts": "\"Revered One,\" these monks answered the Lord in assent."}, {"key": "mn139:1.6", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "2", "label": "“Mendicants, I shall teach you the analysis…", "rows": [{"key": "mn139:2.1", "pali": "“araṇavibhaṅgaṁ vo, bhikkhave, desessāmi.", "sujato": "“Mendicants, I shall teach you the analysis of no strife.", "pts": "\"I will teach you, monks, the analysis of the undefiled."}, {"key": "mn139:2.2", "pali": "Taṁ suṇātha, sādhukaṁ manasi karotha, bhāsissāmī”ti.", "sujato": "Listen and apply your mind well, I will speak.”", "pts": "Listen carefully to it, pay attention and I will speak.\""}, {"key": "mn139:2.3", "pali": "“Evaṁ, bhante”ti kho te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Yes, sir,” they replied.", "pts": "\"Yes, revered sir,\" these monks answered the Lord in assent."}, {"key": "mn139:2.4", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "3", "label": "“Don’t indulge in sensual pleasure, which is…", "rows": [{"key": "mn139:3.1", "pali": "“Na kāmasukhamanuyuñjeyya hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nna ca attakilamathānuyogamanuyuñjeyya dukkhaṁ anariyaṁ anatthasaṁhitaṁ.", "sujato": "“Don’t indulge in sensual pleasure, which is low, crude, ordinary, ignoble, and pointless.\nAnd don’t indulge in self-mortification, which is painful, ignoble, and pointless.", "pts": "\"You should not be intent on the happiness of sense-pleasures which is low,\nof the villager, of the average person, unAriyan, not connected with the goal;\nnor should you be intent on the practice of self-mortification which is sorrowful,\nunAriyan, not connected with the goal."}, {"key": "mn139:3.2", "pali": "Ete kho, bhikkhave, ubho ante anupagamma majjhimā paṭipadā tathāgatena abhisambuddhā,\ncakkhukaraṇī ñāṇakaraṇī upasamāya abhiññāya sambodhāya nibbānāya saṁvattati.", "sujato": "Avoiding these two extremes, the Realized One understood the middle way of practice,\nwhich gives vision and knowledge, and leads to peace, direct knowledge, awakening, and extinguishment.", "pts": "Not approaching either of these two dead-ends, there is the Middle Course awakened to by the Tathāgata,\nmaking for vision, making for knowledge, and conducing to calm, superknowledge, self-awakening and Nibbāna."}, {"key": "mn139:3.3", "pali": "Ussādanañca jaññā, apasādanañca jaññā;", "sujato": "Know what it means to flatter and to rebuke.", "pts": "One should know approval and one should know disapproval, and having known approval,"}, {"key": "mn139:3.4", "pali": "ussādanañca ñatvā apasādanañca ñatvā nevussādeyya, na apasādeyya, dhammameva deseyya.", "sujato": "Knowing these, avoid them, and just teach Dhamma.", "pts": "having known disapproval, one should neither approve nor disapprove — one should simply teach Dhamma."}, {"key": "mn139:3.5", "pali": "Sukhavinicchayaṁ jaññā;", "sujato": "Know how to evaluate different kinds of pleasure.", "pts": "One should know how to judge what happiness is;"}, {"key": "mn139:3.6", "pali": "sukhavinicchayaṁ ñatvā ajjhattaṁ sukhamanuyuñjeyya.", "sujato": "Knowing this, pursue inner pleasure.", "pts": "having known how to judge what happiness is, one should be intent on inward happiness."}, {"key": "mn139:3.7", "pali": "Rahovādaṁ na bhāseyya, sammukhā na khīṇaṁ bhaṇe.", "sujato": "Don’t talk behind people’s backs, and don’t speak sharply in their presence.", "pts": "One should not utter a secret speech;\nface-to-face (with a man) one should not tell (him) a vexatious thing."}, {"key": "mn139:3.8", "pali": "Ataramānova bhāseyya, no taramāno.", "sujato": "Don’t speak hurriedly.", "pts": "One should speak quite slowly, not hurriedly."}, {"key": "mn139:3.9", "pali": "Janapadaniruttiṁ nābhiniveseyya, samaññaṁ nātidhāveyyāti—", "sujato": "Don’t insist on popular definitions and don’t overstep normal labels.", "pts": "One should not affect the dialect of the countryside, one should not deviate from recognised parlance."}, {"key": "mn139:3.10", "pali": "ayamuddeso araṇavibhaṅgassa.", "sujato": "This is the summary recital for the analysis of no strife.", "pts": "This is the exposition of the analysis of the undefiled."}]}, {"id": "4", "label": "‘Don’t indulge in sensual pleasure, which is…", "rows": [{"key": "mn139:4.1", "pali": "‘Na kāmasukhamanuyuñjeyya hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nna ca attakilamathānuyogamanuyuñjeyya dukkhaṁ anariyaṁ anatthasaṁhitan’ti—", "sujato": "‘Don’t indulge in sensual pleasure, which is low, crude, ordinary, ignoble, and pointless.\nAnd don’t indulge in self-mortification, which is painful, ignoble, and pointless.’", "pts": "When it is said,\n'You should not be intent on the happiness of sense-pleasures which is low,\nof the villager, of the average person, unAriyan, not connected with the goal;\nnor should you be intent on the practice of self-mortification which is sorrowful, unAriyan,\nnot connected with the goal nor should you be intent on the practice of self-mortification which is sorrowful,\nunAriyan, not connected with the goal, in reference to what is it said?"}, {"key": "mn139:4.2", "pali": "iti kho panetaṁ vuttaṁ;\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}, {"key": "mn139:4.3", "pali": "Yo kāmapaṭisandhisukhino somanassānuyogo hīno gammo pothujjaniko anariyo anatthasaṁhito,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;\nmicchāpaṭipadā.", "sujato": "Indulging in the happiness of the pleasure linked to sensuality is low, crude, ordinary, ignoble, and pointless.\nIt is a principle beset by pain, harm, stress, and fever, and it is the wrong way.", "pts": "Whatever is happiness in association with sense-pleasures and intentness on a joy that is low, of the villager,\nof the average man, unAriyan, not connected with the goal —\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:4.4", "pali": "Yo kāmapaṭisandhisukhino somanassānuyogaṁ ananuyogo hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;\nsammāpaṭipadā.", "sujato": "Breaking off such indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "But whatever is happiness in association with sense-pleasures but not intentness on a joy that is low, of the villager,\nof the average man, unAriyan, not connected with the goal — this is a thing without anguish, annoyance, trouble or fret;\nit is the right course."}, {"key": "mn139:4.5", "pali": "Yo attakilamathānuyogo dukkho anariyo anatthasaṁhito, sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;\nmicchāpaṭipadā.", "sujato": "Indulging in self-mortification is painful, ignoble, and pointless.\nIt is a principle beset by pain, harm, stress, and fever, and it is the wrong way.", "pts": "Whatever is intentness on self-mortification which is sorrowful, unAriyan,\nnot connected with the goal — this is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:4.6", "pali": "Yo attakilamathānuyogaṁ ananuyogo dukkhaṁ anariyaṁ anatthasaṁhitaṁ, adukkho eso dhammo anupaghāto anupāyāso apariḷāho;\nsammāpaṭipadā.", "sujato": "Breaking off such indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "But whatever is non-intentness on self-mortification which is sorrowful, unAriyan,\nnot connected with the goal — this is a thing without anguish, annoyance, trouble or fret;\nit is the right course."}, {"key": "mn139:4.7", "pali": "‘Na kāmasukhamanuyuñjeyya hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nna ca attakilamathānuyogaṁ anuyuñjeyya dukkhaṁ anariyaṁ anatthasaṁhitan’ti—", "sujato": "‘Don’t indulge in sensual pleasure, which is low, crude, ordinary, ignoble, and pointless.\nAnd don’t indulge in self-mortification, which is painful, ignoble, and pointless.’", "pts": "When it is said,\n'You should not be intent on the happiness of sense-pleasures which is low,\nof the villager, of the average person, unAriyan, not connected with the goal;\nnor should you be intent on the practice of self-mortification which is sorrowful, unAriyan,\nnot connected with the goal nor should you be intent on the practice of self-mortification which is sorrowful,\nunAriyan, not connected with the goal, it is said in reference to this."}, {"key": "mn139:4.8", "pali": "iti yaṁ taṁ vuttaṁ idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": ""}]}, {"id": "5", "label": "‘Avoiding these two extremes, the Realized One…", "rows": [{"key": "mn139:5.1", "pali": "‘Ete kho ubho ante anupagamma majjhimā paṭipadā tathāgatena abhisambuddhā,\ncakkhukaraṇī ñāṇakaraṇī upasamāya abhiññāya sambodhāya nibbānāya saṁvattatī’ti—", "sujato": "‘Avoiding these two extremes, the Realized One understood the middle way of practice,\nwhich gives vision and knowledge, and leads to peace, direct knowledge, awakening, and extinguishment.’", "pts": "When it is said,\n'Not approaching either of these two dead-ends,\nthere is the Middle Course awakened to by the Tathigata, making for vision,\nmaking for knowledge, that conduces to calm, superknowledge,\nself-awakening and nibbana,' in reference to what is it said?"}, {"key": "mn139:5.2", "pali": "iti kho panetaṁ vuttaṁ.\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}, {"key": "mn139:5.3", "pali": "Ayameva ariyo aṭṭhaṅgiko maggo, seyyathidaṁ—", "sujato": "It is simply this noble eightfold path, that is:", "pts": "It is the Ariyan Eightfold Way itself, that is to say:"}, {"key": "mn139:5.4", "pali": "sammādiṭṭhi, sammāsaṅkappo, sammāvācā, sammākammanto, sammāājīvo, sammāvāyāmo, sammāsati, sammāsamādhi.", "sujato": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right immersion.", "pts": "right view, right aspiration, right speech, right action,\nright mode of livelihood, right endeavour, right mindfulness, right concentration."}, {"key": "mn139:5.5", "pali": "‘Ete kho ubho ante anupagamma majjhimā paṭipadā tathāgatena abhisambuddhā,\ncakkhukaraṇī ñāṇakaraṇī upasamāya abhiññāya sambodhāya nibbānāya saṁvattatī’ti—", "sujato": "‘Avoiding these two extremes, the Realized One understood the middle way of practice,\nwhich gives vision and knowledge, and leads to peace, direct knowledge, awakening, and extinguishment.’", "pts": "When it is said,\n'Not approaching either of these two dead-ends, there is the Middle Course making for vision, making for knowledge,\nand conducing to calm, superknowledge, self-awakening and Nibbāna.' it is said in reference to this."}, {"key": "mn139:5.6", "pali": "iti yaṁ taṁ vuttaṁ, idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": ""}]}, {"id": "6", "label": "‘Know what it means to flatter and…", "rows": [{"key": "mn139:6.1", "pali": "‘Ussādanañca jaññā, apasādanañca jaññā;", "sujato": "‘Know what it means to flatter and to rebuke.", "pts": "When it is said,\n'One should know approval and one should know disapproval, and having known approval, having known disapproval,\none should neither approve nor disapprove — one should simply teach dhamma,' in reference to what is it said?"}, {"key": "mn139:6.2", "pali": "ussādanañca ñatvā apasādanañca ñatvā nevussādeyya, na apasādeyya, dhammameva deseyyā’ti—", "sujato": "Knowing these, avoid them, and just teach Dhamma.’", "pts": ""}, {"key": "mn139:6.3", "pali": "iti kho panetaṁ vuttaṁ.\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}]}, {"id": "7", "label": "And how is there flattering and rebuking…", "rows": [{"key": "mn139:7.1", "pali": "Kathañca, bhikkhave, ussādanā ca hoti apasādanā ca, no ca dhammadesanā?", "sujato": "And how is there flattering and rebuking without teaching Dhamma?", "pts": "And what, monks, is approval and what is disapproval but not the teaching of dhamma?"}, {"key": "mn139:7.2", "pali": "‘Ye kāmapaṭisandhisukhino somanassānuyogaṁ anuyuttā hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "‘All those who indulge in the happiness of the pleasure linked to sensuality—low, crude, ordinary,\nignoble, and pointless—are beset by pain, harm, stress, and fever, and they are practicing the wrong way.’", "pts": "He disapproves of some (people) here, saying:\n'All those who find happiness in association with sense pleasures and are intent on a joy that is low,\nof the villager, of the average man, unAriyan, not connected with the goal, have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:7.3", "pali": "iti vadaṁ ittheke apasādeti.", "sujato": "In speaking like this, one rebukes some here.", "pts": ""}, {"key": "mn139:7.4", "pali": "‘Ye kāmapaṭisandhisukhino somanassānuyogaṁ ananuyuttā hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "‘All those who have broken off indulging in the happiness of the pleasure linked to sensuality are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He approves of some (people) here, saying:\n'All those who find happiness in association with sense-pleasures\nbut are not intent on a joy that is low of the villager,\nof the average man, unAriyan, not connected with the goal, are without anguish, annoyance, trouble or fret;\nthey are faring along rightly.'"}, {"key": "mn139:7.5", "pali": "iti vadaṁ ittheke ussādeti.", "sujato": "In speaking like this, one flatters some here.", "pts": ""}, {"key": "mn139:7.6", "pali": "‘Ye attakilamathānuyogaṁ anuyuttā dukkhaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "‘All those who indulge in self-mortification—painful, ignoble, and pointless—are beset by pain,\nharm, stress, and fever, and they are practicing the wrong way.’", "pts": "He disapproves of some (people) here, saying:\n'All those who are intent on the practice of self-mortification, which is sorrowful,\nunariyan, not connected with the goal, have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:7.7", "pali": "iti vadaṁ ittheke apasādeti.", "sujato": "In speaking like this, one rebukes some here.", "pts": ""}, {"key": "mn139:7.8", "pali": "‘Ye attakilamathānuyogaṁ ananuyuttā dukkhaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "‘All those who have broken off indulging in self-mortification are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He approves of some (people) here, saying:\n'All those who are not intent on the practice of self-mortification, which is sorrowful,\nunAriyan, not connected with the goal, are without anguish, annoyance, trouble or fret;\nthey are faring along rightly.'"}, {"key": "mn139:7.9", "pali": "iti vadaṁ ittheke ussādeti.", "sujato": "In speaking like this, one flatters some here.", "pts": ""}, {"key": "mn139:7.10", "pali": "‘Yesaṁ kesañci bhavasaṁyojanaṁ appahīnaṁ, sabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "‘All those who have not given up the fetter of continued existence are beset by pain,\nharm, stress, and fever, and they are practicing the wrong way.’", "pts": "He disapproves of some (people) here, saying:\n'All those in whom the fetter of becoming is not got rid of have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:7.11", "pali": "iti vadaṁ ittheke apasādeti.", "sujato": "In speaking like this, one rebukes some here.", "pts": ""}, {"key": "mn139:7.12", "pali": "‘Yesaṁ kesañci bhavasaṁyojanaṁ pahīnaṁ, sabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "‘All those who have given up the fetter of continued existence are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He approves of some (people) here, saying:\n'All those in whom the fetter of becoming is got rid of are without anguish, annoyance, trouble or fret;\nthey are faring along rightly.'"}, {"key": "mn139:7.13", "pali": "iti vadaṁ ittheke ussādeti.", "sujato": "In speaking like this, one flatters some here.", "pts": ""}, {"key": "mn139:7.14", "pali": "Evaṁ kho, bhikkhave, ussādanā ca hoti apasādanā ca, no ca dhammadesanā.", "sujato": "That’s how there is flattering and rebuking without teaching Dhamma.", "pts": "This, monks, is what is approval and disapproval but not the teaching of Dhamma."}]}, {"id": "8", "label": "And how is there neither flattering nor…", "rows": [{"key": "mn139:8.1", "pali": "Kathañca, bhikkhave, nevussādanā hoti na apasādanā, dhammadesanā ca?", "sujato": "And how is there neither flattering nor rebuking, and just teaching Dhamma?", "pts": "And what, monks, is neither approval nor disapproval, but the teaching of dhamma?"}, {"key": "mn139:8.2", "pali": "‘Ye kāmapaṭisandhisukhino somanassānuyogaṁ anuyuttā hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who indulge in the happiness of the pleasure linked to sensuality—low, crude, ordinary,\nignoble, and pointless—are beset by pain, harm, stress, and fever, and they are practicing the wrong way.’", "pts": "He does not speak thus:\n'All those who find happiness in association with sense-pleasures and are intent on a joy that is low,\nof the villager, of the average man, unAriyan, not connected with the goal, have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:8.3", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.4", "pali": "‘Anuyogo ca kho sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "‘The indulgence is a principle beset by pain, harm, stress, and fever, and it is the wrong way.’", "pts": "'Intentness is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course.'"}, {"key": "mn139:8.5", "pali": "micchāpaṭipadā’ti—", "sujato": "", "pts": ""}, {"key": "mn139:8.6", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.7", "pali": "‘Ye kāmapaṭisandhisukhino somanassānuyogaṁ ananuyuttā hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who have broken off indulging in the happiness of the pleasure linked to sensuality are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He does not speak thus:\n'All those who find happiness in association with sense-pleasures\nbut are not intent on a joy that is low, of the villager,\nof the average man, unAriyan, not connected with the goal, are without anguish, annoyance, trouble or fret;\nthey are faring along rightly.'"}, {"key": "mn139:8.8", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.9", "pali": "‘Ananuyogo ca kho adukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "‘Breaking off the indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.’", "pts": "'Non-intentness is a thing that is without anguish, annoyance, trouble or fret;\nit is the right course.'"}, {"key": "mn139:8.10", "pali": "sammāpaṭipadā’ti—", "sujato": "", "pts": ""}, {"key": "mn139:8.11", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.12", "pali": "‘Ye attakilamathānuyogaṁ anuyuttā dukkhaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who indulge in self-mortification—painful, ignoble, and pointless—are beset by pain,\nharm, stress, and fever, and they are practicing the wrong way.’", "pts": "He does not speak thus:\n'All those who are intent on the practice of self-mortification which is sorrowful,\nunAriyan, not connected with the goal, have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:8.13", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.14", "pali": "‘Anuyogo ca kho sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "‘The indulgence is a principle beset by pain, harm, stress, and fever, and it is the wrong way.’", "pts": "'Intentness is a thing that has anguish annoyance, trouble and fret;\nit is a wrong course.'"}, {"key": "mn139:8.15", "pali": "micchāpaṭipadā’ti—", "sujato": "", "pts": ""}, {"key": "mn139:8.16", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.17", "pali": "‘Ye attakilamathānuyogaṁ ananuyuttā dukkhaṁ anariyaṁ anatthasaṁhitaṁ,\nsabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who have broken off indulging in self-mortification are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He does not speak thus:\n'All those who are not intent on the practice of self-mortification, which is sorrowful,\nunAriyan, not connected with the goal, are without anguish, annoyance, trouble and fret;\nthey are faring along rightly.'"}, {"key": "mn139:8.18", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.19", "pali": "‘Ananuyogo ca kho adukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "‘Breaking off the indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.’", "pts": "'Non-intentness is a thing that is without anguish annoyance, trouble and fret;\nit is the right course.'"}, {"key": "mn139:8.20", "pali": "sammāpaṭipadā’ti—", "sujato": "", "pts": ""}, {"key": "mn139:8.21", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.22", "pali": "‘Yesaṁ kesañci bhavasaṁyojanaṁ appahīnaṁ, sabbe te sadukkhā saupaghātā saupāyāsā sapariḷāhā micchāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who have not given up the fetter of continued existence are beset by pain,\nharm, stress, and fever, and they are practicing the wrong way.’", "pts": "He does not speak thus:\n'All those in whom the fetter of becoming is not got rid of have anguish, annoyance, trouble and fret;\nthey are faring along wrongly.'"}, {"key": "mn139:8.23", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.24", "pali": "‘Bhavasaṁyojane ca kho appahīne bhavopi appahīno hotī’ti—", "sujato": "‘When the fetter of continued existence is not given up, continued existence is also not given up.’", "pts": "'While the fetter of becoming is not got rid of, becoming is not got rid of.'"}, {"key": "mn139:8.25", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.26", "pali": "‘Yesaṁ kesañci bhavasaṁyojanaṁ pahīnaṁ, sabbe te adukkhā anupaghātā anupāyāsā apariḷāhā sammāpaṭipannā’ti—", "sujato": "You don’t say:\n‘All those who have given up the fetter of continued existence are free of pain,\nharm, stress, and fever, and they are practicing the right way.’", "pts": "He does not speak thus:\n'All those in whom the fetter of becoming is got rid of are without anguish annoyance, trouble and fret;\nthey are faring along rightly.'"}, {"key": "mn139:8.27", "pali": "na evamāha.", "sujato": "Rather, by saying this you just teach Dhamma:", "pts": "He simply teaches dhamma, saying:"}, {"key": "mn139:8.28", "pali": "‘Bhavasaṁyojane ca kho pahīne bhavopi pahīno hotī’ti—", "sujato": "‘When the fetter of continued existence is given up, continued existence is also given up.’", "pts": "'If the fetter of becoming is got rid of, becoming is got rid of.'"}, {"key": "mn139:8.29", "pali": "iti vadaṁ dhammameva deseti.", "sujato": "", "pts": ""}, {"key": "mn139:8.30", "pali": "Evaṁ kho, bhikkhave, nevussādanā hoti na apasādanā, dhammadesanā ca.", "sujato": "That’s how there is neither flattering nor rebuking, and just teaching Dhamma.", "pts": "This, monks, is what is neither approval nor disapproval, but the teaching of dhamma."}, {"key": "mn139:8.31", "pali": "‘Ussādanañca jaññā, apasādanañca jaññā;", "sujato": "‘Know what it means to flatter and to rebuke.", "pts": "When it is said:\n'One should know approval and one should know disapproval, and having known approval, having known disapproval,"}, {"key": "mn139:8.32", "pali": "ussādanañca ñatvā apasādanañca ñatvā nevussādeyya, na apasādeyya, dhammameva deseyyā’ti—", "sujato": "Knowing these, avoid them, and just teach Dhamma.’", "pts": ""}, {"key": "mn139:8.33", "pali": "iti yaṁ taṁ vuttaṁ idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": "one should neither approve nor disapprove one should simply teach dhamma,' it is said in reference to this."}]}, {"id": "9", "label": "‘Know how to evaluate different kinds of…", "rows": [{"key": "mn139:9.1", "pali": "‘Sukhavinicchayaṁ jaññā;", "sujato": "‘Know how to evaluate different kinds of pleasure.", "pts": "When it is said:\n'One should know how to judge what happiness is;\nhaving known how to judge what happiness is, one should be intent on inward happiness,' in reference to what is it said?"}, {"key": "mn139:9.2", "pali": "sukhavinicchayaṁ ñatvā ajjhattaṁ sukhamanuyuñjeyyā’ti—", "sujato": "Knowing this, pursue inner pleasure.’", "pts": ""}, {"key": "mn139:9.3", "pali": "iti kho panetaṁ vuttaṁ.\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}, {"key": "mn139:9.4", "pali": "Pañcime, bhikkhave, kāmaguṇā.", "sujato": "There are these five kinds of sensual stimulation.", "pts": "These five, monks, are the strands of sense-pleasures."}, {"key": "mn139:9.5", "pali": "Katame pañca?", "sujato": "What five?", "pts": "What five?"}, {"key": "mn139:9.6", "pali": "Cakkhuviññeyyā rūpā iṭṭhā kantā manāpā piyarūpā kāmūpasaṁhitā rajanīyā,", "sujato": "Sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Material shapes cognisable by the eye agreeable, pleasant, liked, enticing, connected with, sensual pleasure, alluring."}, {"key": "mn139:9.7", "pali": "sotaviññeyyā saddā …", "sujato": "Sounds known by the ear …", "pts": "Sounds cognisable by the ear agreeable, pleasant, liked, enticing, connected with, sensual pleasure, alluring"}, {"key": "mn139:9.8", "pali": "ghānaviññeyyā gandhā …", "sujato": "Smells known by the nose …", "pts": "Smells cognisable by the nose agreeable, pleasant, liked, enticing, connected with, sensual pleasure, alluring"}, {"key": "mn139:9.9", "pali": "jivhāviññeyyā rasā …", "sujato": "Tastes known by the tongue …", "pts": "Tastes cognisable by the tongue agreeable, pleasant, liked, enticing, connected with, sensual pleasure, alluring"}, {"key": "mn139:9.10", "pali": "kāyaviññeyyā phoṭṭhabbā iṭṭhā kantā manāpā piyarūpā kāmūpasaṁhitā rajanīyā—", "sujato": "Touches known by the body, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Touches cognisable by the body, agreeable, pleasant, liked, enticing, connected with, sensual pleasure, alluring."}, {"key": "mn139:9.11", "pali": "ime kho, bhikkhave, pañca kāmaguṇā.", "sujato": "These are the five kinds of sensual stimulation.", "pts": "These, monks, are the five strands of sense-pleasures."}, {"key": "mn139:9.12", "pali": "Yaṁ kho, bhikkhave, ime pañca kāmaguṇe paṭicca uppajjati sukhaṁ somanassaṁ\nidaṁ vuccati kāmasukhaṁ mīḷhasukhaṁ puthujjanasukhaṁ anariyasukhaṁ.", "sujato": "The pleasure and happiness that arise from these five kinds of sensual stimulation is called sensual pleasure—a filthy,\ncommon, ignoble pleasure.", "pts": "Whatever happiness or joy, monks,\narises in consequence of these five strands of sense-pleasures is said to be a happiness of sense-pleasures,\na vile happiness, the happiness of an average person, an unAriyan happiness."}, {"key": "mn139:9.13", "pali": "‘Na āsevitabbaṁ, na bhāvetabbaṁ, na bahulīkātabbaṁ, bhāyitabbaṁ etassa sukhassā’ti—vadāmi.", "sujato": "Such pleasure should not be cultivated or developed, but should be feared, I say.", "pts": "I say of this happiness that it is not to be pursued, developed or made much of — it is to be feared."}, {"key": "mn139:9.14", "pali": "Idha, bhikkhave, bhikkhu vivicceva kāmehi vivicca akusalehi dhammehi savitakkaṁ\nsavicāraṁ vivekajaṁ pītisukhaṁ paṭhamaṁ jhānaṁ upasampajja viharati.", "sujato": "Now, take a mendicant who, quite secluded from sensual pleasures, secluded from unskillful qualities,\nenters and remains in the first absorption, which has the rapture and bliss born of seclusion,\nwhile placing the mind and keeping it connected.", "pts": "As to this, monks, a monk, aloof from pleasures of the senses, aloof from unskilled states of mind,\nenters on and abides in the first meditation which is accompanied by initial thought and discursive thought,\nis born of aloofness, and is rapturous and joyful."}, {"key": "mn139:9.15", "pali": "Vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso ekodibhāvaṁ avitakkaṁ\navicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja viharati.", "sujato": "As the placing of the mind and keeping it connected are stilled, they enter and remain in the second absorption …", "pts": "And again, your reverences, a monk, by allaying initial thought and discursive thought,\nwith the mind subjectively tranquillised and fixed on one point,\nenters into and abides in the second meditation which is devoid of initial thought and discursive thought,\nis born of concentration, and is rapturous and joyful."}, {"key": "mn139:9.16", "pali": "Pītiyā ca virāgā upekkhako ca viharati …pe… tatiyaṁ jhānaṁ …pe…", "sujato": "third absorption …", "pts": "And again, your reverences, a monk, by the fading out of rapture abides with equanimity,\nmindful and clearly conscious and experiences in his person that joy of which the Ariyans say:\n'Joyful lives he who has equanimity and is mindful,' entering into the third meditation, he abides in it."}, {"key": "mn139:9.17", "pali": "catutthaṁ jhānaṁ upasampajja viharati.", "sujato": "fourth absorption.", "pts": "And again, your reverences, a monk, by getting rid of joy,\nby getting rid of anguish, by the going down of his former pleasures and sorrows,\nentering into abides in the fourth meditation which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness."}, {"key": "mn139:9.18", "pali": "Idaṁ vuccati nekkhammasukhaṁ pavivekasukhaṁ upasamasukhaṁ sambodhisukhaṁ.", "sujato": "This is called the pleasure of renunciation, the pleasure of seclusion,\nthe pleasure of peace, the pleasure of awakening.", "pts": "This is said to be the happiness of renunciation, the happiness of aloofness,\nthe happiness of tranquillity, the happiness of self-awakening."}, {"key": "mn139:9.19", "pali": "‘Āsevitabbaṁ, bhāvetabbaṁ, bahulīkātabbaṁ, na bhāyitabbaṁ etassa sukhassā’ti—vadāmi.", "sujato": "Such pleasure should be cultivated and developed, and should not be feared, I say.", "pts": "I say of this happiness that it is to be pursued, developed and made much of — it is not to be feared."}, {"key": "mn139:9.20", "pali": "‘Sukhavinicchayaṁ jaññā;", "sujato": "‘Know how to evaluate different kinds of pleasure.", "pts": "When it is said:\n'One should know how to judge what happiness is;"}, {"key": "mn139:9.21", "pali": "sukhavinicchayaṁ ñatvā ajjhattaṁ sukhamanuyuñjeyyā’ti—", "sujato": "Knowing this, pursue inner pleasure.’", "pts": ""}, {"key": "mn139:9.22", "pali": "iti yaṁ taṁ vuttaṁ idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": "having known how to judge what happiness is, one should be intent on inward happiness,' it is said in reference to this."}]}, {"id": "10", "label": "‘Don’t talk behind people’s backs, and don’t…", "rows": [{"key": "mn139:10.1", "pali": "‘Rahovādaṁ na bhāseyya, sammukhā na khīṇaṁ bhaṇe’ti—", "sujato": "‘Don’t talk behind people’s backs, and don’t speak sharply in their presence.’", "pts": "When it is said:\n'One should not utter a secret speech;\nface-to-face (with a man) one should not tell (him) a vexatious thing,' in reference to what is it said?"}, {"key": "mn139:10.2", "pali": "iti kho panetaṁ vuttaṁ.", "sujato": "That’s what I said,", "pts": ""}, {"key": "mn139:10.3", "pali": "Kiñcetaṁ paṭicca vuttaṁ?", "sujato": "but why did I say it?", "pts": ""}, {"key": "mn139:10.4", "pali": "Tatra, bhikkhave, yaṁ jaññā rahovādaṁ abhūtaṁ atacchaṁ anatthasaṁhitaṁ sasakkaṁ taṁ rahovādaṁ na bhāseyya.", "sujato": "When you know that what you say behind someone’s back is untrue, false,\nand pointless, then to the best of your ability you should not speak.", "pts": "As to this, monks, knowing a secret speech is not fact, untrue,\nnot connected with the goal, one should not, if possible, utter that secret speech;"}, {"key": "mn139:10.5", "pali": "Yampi jaññā rahovādaṁ bhūtaṁ tacchaṁ anatthasaṁhitaṁ tassapi sikkheyya avacanāya.", "sujato": "When you know that what you say behind someone’s back is true and correct,\nbut pointless, then you should train yourself not to speak.", "pts": "and if, knowing that secret speech is fact, true,\nbut not connected with the goal, he should train himself not to speak it."}, {"key": "mn139:10.6", "pali": "Yañca kho jaññā rahovādaṁ bhūtaṁ tacchaṁ atthasaṁhitaṁ tatra kālaññū assa tassa rahovādassa vacanāya.", "sujato": "When you know that what you say behind someone’s back is true,\ncorrect, and beneficial, then you should know the right time to speak.", "pts": "But if one knows that secret speech is fact, true, and connected with the goal,\nthen he will know the right time to speak that secret speech to that (other person)."}, {"key": "mn139:10.7", "pali": "Tatra, bhikkhave, yaṁ jaññā sammukhā khīṇavādaṁ abhūtaṁ atacchaṁ\nanatthasaṁhitaṁ sasakkaṁ taṁ sammukhā khīṇavādaṁ na bhāseyya.", "sujato": "When you know that your sharp words in someone’s presence are untrue, false,\nand pointless, then to the best of your ability you should not speak.", "pts": "As to this, monks, knowing a vexatious speech (made) face-to-face (with a man) is not fact, untrue,\nnot connected with the goal, one should not, if possible, utter that vexatious speech face-to-face (with a man);"}, {"key": "mn139:10.8", "pali": "Yampi jaññā sammukhā khīṇavādaṁ bhūtaṁ tacchaṁ anatthasaṁhitaṁ tassapi sikkheyya avacanāya.", "sujato": "When you know that your sharp words in someone’s presence are true and correct,\nbut pointless, then you should train yourself not to speak.", "pts": "and if, knowing that vexatious speech (made) face-to-face (with a man) is fact,\ntrue, hut not connected with the goal, he should train himself not to speak it."}, {"key": "mn139:10.9", "pali": "Yañca kho jaññā sammukhā khīṇavādaṁ bhūtaṁ tacchaṁ atthasaṁhitaṁ\ntatra kālaññū assa tassa sammukhā khīṇavādassa vacanāya.", "sujato": "When you know that your sharp words in someone’s presence are true,\ncorrect, and beneficial, then you should know the right time to speak.", "pts": "But if one knows that vexatious speech (made) face-to-face (with a man) is fact, true, and connected with the goal,\nthen he will know the right time to speak that vexatious speech face-to-face with that (other person)."}, {"key": "mn139:10.10", "pali": "‘Rahovādaṁ na bhāseyya, sammukhā na khīṇaṁ bhaṇe’ti—", "sujato": "‘Don’t talk behind people’s backs, and don’t speak sharply in their presence.’", "pts": "'When it is said:\n'One should not utter a secret speech;\nface-to-face (with a man) one should not tell (him) a vexatious thing,' it is said in reference to this."}, {"key": "mn139:10.11", "pali": "iti yaṁ taṁ vuttaṁ, idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": ""}]}, {"id": "11", "label": "‘Don’t speak hurriedly.’", "rows": [{"key": "mn139:11.1", "pali": "‘Ataramānova bhāseyya no taramāno’ti—", "sujato": "‘Don’t speak hurriedly.’", "pts": "When it is said:\n'One should speak quite slowly, not hurriedly,' in reference to what is it said?"}, {"key": "mn139:11.2", "pali": "iti kho panetaṁ vuttaṁ.\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}, {"key": "mn139:11.3", "pali": "Tatra, bhikkhave, taramānassa bhāsato kāyopi kilamati, cittampi upahaññati,\nsaropi upahaññati, kaṇṭhopi āturīyati, avisaṭṭhampi hoti aviññeyyaṁ taramānassa bhāsitaṁ.", "sujato": "When speaking hurriedly, your body gets tired, your mind gets stressed, your voice gets stressed,\nyour throat gets sore, and your words become unclear and hard to understand.", "pts": "As to this, monks, if one speak hurriedly the body tires and\nthought suffers and the sound suffers and the throat is affected;\nthe speech of one in a hurry is not clear or comprehensible."}, {"key": "mn139:11.4", "pali": "Tatra, bhikkhave, ataramānassa bhāsato kāyopi na kilamati, cittampi na upahaññati,\nsaropi na upahaññati, kaṇṭhopi na āturīyati, visaṭṭhampi hoti viññeyyaṁ ataramānassa bhāsitaṁ.", "sujato": "When not speaking hurriedly, your body doesn’t get tired, your mind doesn’t get stressed,\nyour voice doesn’t get stressed, your throat doesn’t get sore, and your words are clear and easy to understand.", "pts": "As to this, monks, if one speak slowly the body does not tire and thought\ndoes not suffer and the sound does not suffer and the throat is not affected;\nthe speech of one not in a hurry is clear and comprehensible."}, {"key": "mn139:11.5", "pali": "‘Ataramānova bhāseyya, no taramāno’ti—", "sujato": "‘Don’t speak hurriedly.’", "pts": "When it is said:\n'One should speak quite slowly, not hurriedly,' it is said in reference to this."}, {"key": "mn139:11.6", "pali": "iti yaṁ taṁ vuttaṁ, idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": ""}]}, {"id": "12", "label": "‘Don’t insist on popular definitions and don’t…", "rows": [{"key": "mn139:12.1", "pali": "‘Janapadaniruttiṁ nābhiniveseyya, samaññaṁ nātidhāveyyā’ti—", "sujato": "‘Don’t insist on popular definitions and don’t overstep normal labels.’", "pts": "When it is said:\n'One should not affect the dialect of the countryside,\none should not deviate from recognised parlance,' in reference to what is it said?"}, {"key": "mn139:12.2", "pali": "iti kho panetaṁ vuttaṁ.\nKiñcetaṁ paṭicca vuttaṁ?", "sujato": "That’s what I said, but why did I say it?", "pts": ""}, {"key": "mn139:12.3", "pali": "Kathañca, bhikkhave, janapadaniruttiyā ca abhiniveso hoti samaññāya ca atisāro?", "sujato": "And how do you insist on popular definitions and overstep normal labels?", "pts": "And what, monks, is affectation of the dialect of the countryside and what is departure from recognised parlance?"}, {"key": "mn139:12.4", "pali": "Idha, bhikkhave, tadevekaccesu janapadesu ‘pātī’ti sañjānanti,\n‘pattan’ti sañjānanti,\n‘vittan’ti sañjānanti,\n‘sarāvan’ti sañjānanti ‘dhāropan’ti sañjānanti,\n‘poṇan’ti sañjānanti,\n‘pisīlavan’ti sañjānanti.", "sujato": "It’s when among different populations they label the same thing as a ‘cup’,\na ‘bowl’, a ‘jar’, a ‘scoop’, a ‘vessel’, a ‘dish’, or a ‘plate’.", "pts": "In this case, monks, in different districts they know (the different words):\nPāti ...\nPatta ...\nVittha ...\nSarāva ...\nDhāropa ...\nPoṇa ...\nPisīla."}, {"key": "mn139:12.5", "pali": "Iti yathā yathā naṁ tesu tesu janapadesu sañjānanti tathā tathā thāmasā parāmāsā abhinivissa voharati:", "sujato": "And however it is known among those various populations,\nyou speak accordingly, obstinately sticking to that and insisting:", "pts": "Thus as they know the word as this or that in these various districts so does a person,\nobstinately clinging to it and adhering to it, explain:"}, {"key": "mn139:12.6", "pali": "‘idameva saccaṁ, moghamaññan’ti.", "sujato": "‘This is the only truth, anything else is futile.’", "pts": "'This indeed is the truth, all else is falsehood.'"}, {"key": "mn139:12.7", "pali": "Evaṁ kho, bhikkhave, janapadaniruttiyā ca abhiniveso hoti samaññāya ca atisāro.", "sujato": "That’s how you insist on popular definitions and overstep normal labels.", "pts": "Thus, monks, is affectation of the dialect of the countryside and departure from recognised parlance."}, {"key": "mn139:12.8", "pali": "Kathañca, bhikkhave, janapadaniruttiyā ca anabhiniveso hoti samaññāya ca anatisāro?", "sujato": "And how do you not insist on popular definitions and overstep normal labels?", "pts": "And what, monks, is non-affectation of the dialect of the countryside and nondeparture from recognised parlance?"}, {"key": "mn139:12.9", "pali": "Idha, bhikkhave, tadevekaccesu janapadesu ‘pātī’ti sañjānanti,\n‘pattan’ti sañjānanti,\n‘vittan’ti sañjānanti,\n‘sarāvan’ti sañjānanti,\n‘dhāropan’ti sañjānanti,\n‘poṇan’ti sañjānanti,\n‘pisīlavan’ti sañjānanti.", "sujato": "It’s when among different populations they label the same thing as a ‘cup’,\na ‘bowl’, a ‘jar’, a ‘scoop’, a ‘vessel’, a ‘dish’, or a ‘plate’.", "pts": "In this case, monks, in different districts they know (the different words):\nPāti ...\nPatta ...\nVittha ...\nSarāva ...\nDhāropa ...\nPoṇa ...\nPisīla, yet although they know the word as this or that in these\nvarious districts a person does not cling to it but explains:"}, {"key": "mn139:12.10", "pali": "Iti yathā yathā naṁ tesu tesu janapadesu sañjānanti ‘idaṁ kira me\nāyasmanto sandhāya voharantī’ti tathā tathā voharati aparāmasaṁ.", "sujato": "And however it is known among those various populations, you speak accordingly, thinking:\n‘It seems that the venerables are referring to this.’", "pts": "'These venerable ones definitely express it thus.'"}, {"key": "mn139:12.11", "pali": "Evaṁ kho, bhikkhave, janapadaniruttiyā ca anabhiniveso hoti, samaññāya ca anatisāro.", "sujato": "That’s how you don’t insist on popular definitions and don’t overstep normal labels.", "pts": "Thus, monks, is non-affectation of the dialect of the countryside and non-departure from recognised parlance."}, {"key": "mn139:12.12", "pali": "‘Janapadaniruttiṁ nābhiniveseyya samaññaṁ nātidhāveyyā’ti—", "sujato": "‘Don’t insist on popular definitions and don’t overstep normal labels.’", "pts": "When it is said:\n'One should not affect the dialect of the countryside,\none should not deviate from recognised parlance,' it is said in reference to this."}, {"key": "mn139:12.13", "pali": "iti yaṁ taṁ vuttaṁ, idametaṁ paṭicca vuttaṁ.", "sujato": "That’s what I said, and this is why I said it.", "pts": ""}]}, {"id": "13", "label": "Now, mendicants, indulging in the happiness of…", "rows": [{"key": "mn139:13.1", "pali": "Tatra, bhikkhave, yo kāmapaṭisandhisukhino somanassānuyogo hīno gammo pothujjaniko anariyo anatthasaṁhito,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Now, mendicants, indulging in the happiness of the pleasure linked to sensuality is low,\ncrude, ordinary, ignoble, and pointless.\nIt is a principle beset by pain, harm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, whatever is happiness in association with sense-pleasures and intentness on a joy that is low,\nof the villager, of the average man, not connected with the goal,\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.2", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.3", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.4", "pali": "Tatra, bhikkhave, yo kāmapaṭisandhisukhino somanassānuyogaṁ\nananuyogo hīnaṁ gammaṁ pothujjanikaṁ anariyaṁ anatthasaṁhitaṁ,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Breaking off such indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, whatever is happiness in association with\nsense-pleasures but non-intentness on a joy that is low, of the villager,\nof the average man, unAriyan, not connected with the goal, this is a thing without anguish, annoyance, trouble and fret;\nfret;"}, {"key": "mn139:13.5", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.6", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "it is a right course."}, {"key": "mn139:13.7", "pali": "Tatra, bhikkhave, yo attakilamathānuyogo dukkho anariyo anatthasaṁhito,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Indulging in self-mortification is painful, ignoble, and pointless.\nIt is a principle beset by pain, harm, stress, and fever, and it is the wrong way.", "pts": "Therefore this thing is undefiled.\nWherefore, monks, whatever is intentness on self-mortification which is sorrowful, unAriyan,\nnot connected with the goal, this is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.8", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.9", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.10", "pali": "Tatra, bhikkhave, yo attakilamathānuyogaṁ ananuyogo dukkhaṁ anariyaṁ anatthasaṁhitaṁ,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Breaking off such indulgence is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, whatever is non-intentness on the practice of self-mortification which is sorrowful,\nunAriyan, not connected with the goal, this is a thing without anguish, annoyance, trouble and fret;\nfret;"}, {"key": "mn139:13.11", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.12", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "it is the right course."}, {"key": "mn139:13.13", "pali": "Tatra, bhikkhave, yāyaṁ majjhimā paṭipadā tathāgatena abhisambuddhā,\ncakkhukaraṇī ñāṇakaraṇī upasamāya abhiññāya sambodhāya nibbānāya saṁvattati,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "The middle way of practice that was understood by the Realized One gives vision and knowledge,\nand leads to peace, direct knowledge, awakening, and extinguishment.\nIt is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "Therefore this thing is undefiled.\nWherefore, monks, that Middle Course awakened to by the Tathāgata, making for vision, making for knowledge,\nand conducive to calm, super-knowledge, self-awakening and nibbana,\nthis is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.14", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.15", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.16", "pali": "Tatra, bhikkhave, yāyaṁ ussādanā ca apasādanā ca no ca dhammadesanā,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Flattering and rebuking without teaching Dhamma is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, whatever is approval and disapproval and not the teaching of dhamma,\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.17", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.18", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.19", "pali": "Tatra, bhikkhave, yāyaṁ nevussādanā ca na apasādanā ca dhammadesanā ca,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Neither flattering nor rebuking, and just teaching Dhamma is a principle free of pain,\nharm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, whatever is neither approval nor disapproval but is the teaching of dhamma,\nthis is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.20", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.21", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.22", "pali": "Tatra, bhikkhave, yamidaṁ kāmasukhaṁ mīḷhasukhaṁ pothujjanasukhaṁ anariyasukhaṁ,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Sensual pleasure—a filthy, common, ignoble pleasure—is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that happiness in sense-pleasures, a vile happiness, the happiness of an average person,\nan unAriyan happiness, this is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.23", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.24", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.25", "pali": "Tatra, bhikkhave, yamidaṁ nekkhammasukhaṁ pavivekasukhaṁ upasamasukhaṁ sambodhisukhaṁ,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "The pleasure of renunciation, the pleasure of seclusion, the pleasure of peace,\nthe pleasure of awakening is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, that happiness in renunciation, the happiness of aloofness, the happiness of tranquillity,\nthe happiness of self-awakening, this is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.26", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.27", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.28", "pali": "Tatra, bhikkhave, yvāyaṁ rahovādo abhūto ataccho anatthasaṁhito, sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Saying untrue, false, and pointless things behind someone’s back is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that secret speech that is not fact, untrue, not connected with the goal,\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.29", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.30", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.31", "pali": "Tatra, bhikkhave, yvāyaṁ rahovādo bhūto taccho anatthasaṁhito, sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Saying true and correct, but pointless things behind someone’s back is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that secret speech that is fact, true, but not connected with the goal,\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.32", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.33", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.34", "pali": "Tatra, bhikkhave, yvāyaṁ rahovādo bhūto taccho atthasaṁhito, adukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Saying true, correct, and beneficial things behind someone’s back is a principle free of pain,\nharm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, that secret speech that is fact, true, and connected with the goal,\nthis is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.35", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.36", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.37", "pali": "Tatra, bhikkhave, yvāyaṁ sammukhā khīṇavādo abhūto ataccho anatthasaṁhito,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Saying untrue, false, and pointless things in someone’s presence is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that vexatious speech (made) face-to-face (with a man) that is not fact, untrue,\nnot connected with the goal, this is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.38", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.39", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.40", "pali": "Tatra, bhikkhave, yvāyaṁ sammukhā khīṇavādo bhūto taccho anatthasaṁhito,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Saying true and correct, but pointless things in someone’s presence is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that vexatious speech (made) face-to-face (with a man) that is fact, true,\nbut not connected with the goal, this too is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.41", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.42", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.43", "pali": "Tatra, bhikkhave, yvāyaṁ sammukhā khīṇavādo bhūto taccho atthasaṁhito,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Saying true, correct, and beneficial things in someone’s presence is a principle free of pain,\nharm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, that vexatious speech (made) face-to-face (with a man) that is fact, true,\nand connected with the goal, this is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.44", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.45", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.46", "pali": "Tatra, bhikkhave, yamidaṁ taramānassa bhāsitaṁ, sadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Speaking hurriedly is a principle beset by pain, harm, stress, and fever, and it is the wrong way.", "pts": "Wherefore, monks, that which is spoken by one in a hurry, this is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.47", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.48", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.49", "pali": "Tatra, bhikkhave, yamidaṁ ataramānassa bhāsitaṁ, adukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Speaking unhurriedly is a principle free of pain, harm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, that which is spoken by one not in a hurry,\nthis is a thing without anguish, annoyance, trouble and fret;\nit is the right course."}, {"key": "mn139:13.50", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.51", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}, {"key": "mn139:13.52", "pali": "Tatra, bhikkhave, yvāyaṁ janapadaniruttiyā ca abhiniveso samaññāya ca atisāro,\nsadukkho eso dhammo saupaghāto saupāyāso sapariḷāho;", "sujato": "Insisting on popular definitions and overriding common usage is a principle beset by pain,\nharm, stress, and fever, and it is the wrong way.", "pts": "Wheretore, monks, affectation of the dialect of the countryside and departure from recognised parlance,\nthis is a thing that has anguish, annoyance, trouble and fret;\nit is a wrong course."}, {"key": "mn139:13.53", "pali": "micchāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.54", "pali": "Tasmā eso dhammo saraṇo.", "sujato": "That’s why this is a principle beset by strife.", "pts": "Therefore this thing is defiled."}, {"key": "mn139:13.55", "pali": "Tatra, bhikkhave, yvāyaṁ janapadaniruttiyā ca anabhiniveso samaññāya ca anatisāro,\nadukkho eso dhammo anupaghāto anupāyāso apariḷāho;", "sujato": "Not insisting on popular definitions and not overriding common usage is a principle free of pain,\nharm, stress, and fever, and it is the right way.", "pts": "Wherefore, monks, non-affectation of the dialect of the countryside and non-departure from recognised parlance,\nthis is a thing without anguish, annoyance, trouble or fret;\nit is the right course."}, {"key": "mn139:13.56", "pali": "sammāpaṭipadā.", "sujato": "", "pts": ""}, {"key": "mn139:13.57", "pali": "Tasmā eso dhammo araṇo.", "sujato": "That’s why this is a principle free of strife.", "pts": "Therefore this thing is undefiled."}]}, {"id": "14", "label": "So you should train like this: ‘We…", "rows": [{"key": "mn139:14.1", "pali": "Tasmātiha, bhikkhave,\n‘saraṇañca dhammaṁ jānissāma, araṇañca dhammaṁ jānissāma;", "sujato": "So you should train like this:\n‘We shall know the principles beset by strife and the principles free of strife.", "pts": "Wherefore, monks, this is how you must train yourselves:\n'I will know the defiled thing and I will know the undefiled thing,\nand knowing the defiled thing and knowing the undefiled thing, I will fare along the undefiled course.'"}, {"key": "mn139:14.2", "pali": "saraṇañca dhammaṁ ñatvā araṇañca dhammaṁ ñatvā araṇapaṭipadaṁ paṭipajjissāmā’ti evañhi vo, bhikkhave, sikkhitabbaṁ.", "sujato": "Knowing this, we will practice the way free of strife.’", "pts": "Thus, monks, must you train yourselves."}, {"key": "mn139:14.3", "pali": "Subhūti ca pana, bhikkhave, kulaputto araṇapaṭipadaṁ paṭipanno”ti.", "sujato": "And, mendicants, the gentleman Subhūti practices the way free of strife.”", "pts": "But Subhūti, monks, the young man of family, is (already?) faring along the undefiled course.\""}, {"key": "mn139:14.4", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn139:14.5", "pali": "Attamanā te bhikkhū bhagavato bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said."}, {"key": "mn139:14.6", "pali": "Araṇavibhaṅgasuttaṁ niṭṭhitaṁ navamaṁ.", "sujato": "", "pts": "Discourse on the Analysis of the Undefiled"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn139:2.1": ["Rig Vedic <i>raṇa</i> usually mea
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

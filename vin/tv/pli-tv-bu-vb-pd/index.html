@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "pli-tv-bu-vb-pd1", "label": "Paṭhamapāṭidesanīya — 1. The training rule on receiving a nun’s food", "children": [{"id": "pli-tv-bu-vb-pd1/0", "label": "Theravāda Vinaya", "rows": [{"key": "pli-tv-bu-vb-pd1:0.1", "pali": "Theravāda Vinaya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bu-vb-pd1:0.2", "pali": "Mahāvibhaṅga", "brahmali": "The Great Analysis"}, {"key": "pli-tv-bu-vb-pd1:0.3", "pali": "Pāṭidesanīyakaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bu-vb-pd1:0.4", "pali": "1.\nPaṭhamapāṭidesanīyasikkhāpada", "brahmali": "1.\nThe training rule on receiving a nun’s food"}, {"key": "pli-tv-bu-vb-pd1:0.5", "pali": "Ime kho panāyasmanto cattāro pāṭidesanīyā dhammā uddesaṁ āgacchanti.", "brahmali": "Venerables, these four rules on acknowledgment come up for recitation."}]}, {"id": "pli-tv-bu-vb-pd1/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jetavane…", "rows": [{"key": "pli-tv-bu-vb-pd1:1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "brahmali": "At one time when the Buddha was staying at Sāvatthī in Anāthapiṇḍika’s Monastery,"}, {"key": "pli-tv-bu-vb-pd1:1.2", "pali": "Tena kho pana samayena aññatarā bhikkhunī sāvatthiyaṁ piṇḍāya\ncaritvā paṭikkamanakāle aññataraṁ bhikkhuṁ passitvā etadavoca—", "brahmali": "a certain nun was returning from almsround in Sāvatthī.\nShe saw a monk and said to him,"}, {"key": "pli-tv-bu-vb-pd1:1.3", "pali": "“handāyya, bhikkhaṁ paṭiggaṇhā”ti.", "brahmali": "“Here, venerable, please take some almsfood.”"}, {"key": "pli-tv-bu-vb-pd1:1.4", "pali": "“Suṭṭhu, bhaginī”ti sabbeva aggahesi.", "brahmali": "Saying,\n“Alright, sister,” he took everything."}, {"key": "pli-tv-bu-vb-pd1:1.5", "pali": "Sā upakaṭṭhe kāle nāsakkhi piṇḍāya carituṁ, chinnabhattā ahosi.", "brahmali": "But because the time for eating was coming to an end, she was not able to go for alms, and she missed her meal."}, {"key": "pli-tv-bu-vb-pd1:1.6", "pali": "Atha kho sā bhikkhunī dutiyampi divasaṁ …pe…", "brahmali": "The next day"}, {"key": "pli-tv-bu-vb-pd1:1.7", "pali": "tatiyampi divasaṁ sāvatthiyaṁ piṇḍāya caritvā paṭikkamanakāle taṁ bhikkhuṁ passitvā etadavoca—", "brahmali": "and the following day the same thing happened again."}, {"key": "pli-tv-bu-vb-pd1:1.8", "pali": "“handāyya, bhikkhaṁ paṭiggaṇhā”ti.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd1:1.9", "pali": "“Suṭṭhu, bhaginī”ti sabbeva aggahesi.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd1:1.10", "pali": "Sā upakaṭṭhe kāle nāsakkhi piṇḍāya carituṁ, chinnabhattā ahosi.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd1:1.11", "pali": "Atha kho sā bhikkhunī catutthe divase rathikāya pavedhentī gacchati.", "brahmali": "On the fourth day that nun was walking along a street, trembling."}, {"key": "pli-tv-bu-vb-pd1:1.12", "pali": "Seṭṭhi gahapati rathena paṭipathaṁ āgacchanto taṁ bhikkhuniṁ etadavoca—", "brahmali": "A wealthy merchant coming by carriage in the opposite direction saw her and shouted out,"}, {"key": "pli-tv-bu-vb-pd1:1.13", "pali": "“apehāyye”ti.", "brahmali": "“Watch out, venerable!”"}, {"key": "pli-tv-bu-vb-pd1:1.14", "pali": "Sā vokkamantī tattheva paripati.", "brahmali": "As she stepped aside, she collapsed right there."}, {"key": "pli-tv-bu-vb-pd1:1.15", "pali": "Seṭṭhi gahapati taṁ bhikkhuniṁ khamāpesi—", "brahmali": "The merchant asked her for forgiveness:"}, {"key": "pli-tv-bu-vb-pd1:1.16", "pali": "“khamāhāyye, mayāsi pātitā”ti.", "brahmali": "“Forgive me, venerable, since you fell because of me.”"}, {"key": "pli-tv-bu-vb-pd1:1.17", "pali": "“Nāhaṁ, gahapati, tayā pātitā.", "brahmali": "“I didn’t fall because of you,"}, {"key": "pli-tv-bu-vb-pd1:1.18", "pali": "Api ca ahameva dubbalā”ti.", "brahmali": "but because I’m weak.”"}, {"key": "pli-tv-bu-vb-pd1:1.19", "pali": "“Kissa pana tvaṁ, ayye, dubbalā”ti?", "brahmali": "“But why are you so weak?”"}, {"key": "pli-tv-bu-vb-pd1:1.20", "pali": "Atha kho sā bhikkhunī seṭṭhissa gahapatissa etamatthaṁ ārocesi.", "brahmali": "The nun told him what had happened."}, {"key": "pli-tv-bu-vb-pd1:1.21", "pali": "Seṭṭhi gahapati taṁ bhikkhuniṁ gharaṁ netvā bhojetvā ujjhāyati khiyyati vipāceti—", "brahmali": "He then brought her to his house and gave her a meal.\nAfterwards he complained and criticized the monks,"}, {"key": "pli-tv-bu-vb-pd1:1.22", "pali": "“kathañhi nāma bhadantā bhikkhuniyā hatthato āmisaṁ paṭiggahessanti.", "brahmali": "“How can the venerables receive food directly from a nun?"}, {"key": "pli-tv-bu-vb-pd1:1.23", "pali": "Kicchalābho mātugāmo”ti.", "brahmali": "It’s difficult for women to get material support.”"}, {"key": "pli-tv-bu-vb-pd1:1.24", "pali": "Assosuṁ kho bhikkhū tassa seṭṭhissa gahapatissa ujjhāyantassa khiyyantassa vipācentassa.", "brahmali": "The monks heard the complaints of that merchant,"}, {"key": "pli-tv-bu-vb-pd1:1.25", "pali": "Ye te bhikkhū appicchā …pe… te ujjhāyanti khiyyanti vipācenti—", "brahmali": "and the monks of few desires complained and criticized that monk,"}, {"key": "pli-tv-bu-vb-pd1:1.26", "pali": "“kathañhi nāma bhikkhu bhikkhuniyā hatthato āmisaṁ paṭiggahessatī”ti …pe…", "brahmali": "“How could a monk receive food directly from a nun?” …"}, {"key": "pli-tv-bu-vb-pd1:1.27", "pali": "“saccaṁ kira tvaṁ, bhikkhu, bhikkhuniyā hatthato āmisaṁ paṭiggahesī”ti?", "brahmali": "“Is it true, monk, that you did this?”"}, {"key": "pli-tv-bu-vb-pd1:1.28", "pali": "“Saccaṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”"}, {"key": "pli-tv-bu-vb-pd1:1.29", "pali": "“Ñātikā te, bhikkhu, aññātikā”ti?", "brahmali": "“Is she a relative of yours?”"}, {"key": "pli-tv-bu-vb-pd1:1.30", "pali": "“Aññātikā, bhagavā”ti.", "brahmali": "“No, sir.”"}, {"key": "pli-tv-bu-vb-pd1:1.31", "pali": "“Aññātako, moghapurisa, aññātikāya na jānāti patirūpaṁ vā appatirūpaṁ vā santaṁ vā asantaṁ vā.", "brahmali": "“Foolish man, a man and a woman who are unrelated don’t know what’s appropriate and inappropriate,\nwhat’s good and bad, in dealing with each other."}, {"key": "pli-tv-bu-vb-pd1:1.32", "pali": "Kathañhi nāma tvaṁ, moghapurisa, aññātikāya bhikkhuniyā hatthato āmisaṁ paṭiggahessasi.", "brahmali": "And still you did this."}, {"key": "pli-tv-bu-vb-pd1:1.33", "pali": "Netaṁ, moghapurisa, appasannānaṁ vā pasādāya …pe…", "brahmali": "This will affect people’s confidence …” …"}, {"key": "pli-tv-bu-vb-pd1:1.34", "pali": "evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "“And, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd1:1.35.1", "pali": "“Yo pana bhikkhu aññātikāya bhikkhuniyā antaragharaṁ paviṭṭhāya hatthato\nkhādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘If a monk receives fresh or cooked food directly from an unrelated nun who has entered an inhabited area,\nand then eats it, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd1:1.36", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ, taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}]}, {"id": "pli-tv-bu-vb-pd1/2", "label": "Yo panāti", "rows": [{"key": "pli-tv-bu-vb-pd1:2.1.1", "pali": "Yo panāti", "brahmali": "A:"}, {"key": "pli-tv-bu-vb-pd1:2.1.2", "pali": "yo yādiso …pe…", "brahmali": "whoever …"}, {"key": "pli-tv-bu-vb-pd1:2.1.3", "pali": "bhikkhūti", "brahmali": "Monk:"}, {"key": "pli-tv-bu-vb-pd1:2.1.4", "pali": "…pe… ayaṁ imasmiṁ atthe adhippeto bhikkhūti.", "brahmali": "…\nThe monk who has been given the full ordination by a unanimous Sangha through a legal procedure consisting of one\nmotion and three announcements that is irreversible and fit to stand—this sort of monk is meant in this case."}, {"key": "pli-tv-bu-vb-pd1:2.1.5", "pali": "Aññātikā nāma", "brahmali": "Unrelated:"}, {"key": "pli-tv-bu-vb-pd1:2.1.6", "pali": "mātito vā pitito vā yāva sattamā pitāmahayugā asambaddhā.", "brahmali": "anyone who is not a descendant of one’s male ancestors going back eight generations,\neither on the mother’s side or on the father’s side."}, {"key": "pli-tv-bu-vb-pd1:2.1.7", "pali": "Bhikkhunī nāma", "brahmali": "A nun:"}, {"key": "pli-tv-bu-vb-pd1:2.1.8", "pali": "ubhatosaṅghe upasampannā.", "brahmali": "she has been given the full ordination by both Sanghas."}, {"key": "pli-tv-bu-vb-pd1:2.1.9", "pali": "Antaragharaṁ nāma", "brahmali": "An inhabited area:"}, {"key": "pli-tv-bu-vb-pd1:2.1.10", "pali": "rathikā byūhaṁ siṅghāṭakaṁ gharaṁ.", "brahmali": "a street, a cul-de-sac, an intersection, a house."}, {"key": "pli-tv-bu-vb-pd1:2.1.11", "pali": "Khādanīyaṁ nāma", "brahmali": "Fresh food:"}, {"key": "pli-tv-bu-vb-pd1:2.1.12", "pali": "pañca bhojanāni yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ ṭhapetvā avasesaṁ khādanīyaṁ nāma.", "brahmali": "apart from the five cooked foods, the post-midday tonics, the seven-day tonics,\nand the lifetime tonics, the rest is called “fresh food”."}, {"key": "pli-tv-bu-vb-pd1:2.1.13", "pali": "Bhojanīyaṁ nāma", "brahmali": "Cooked food:"}, {"key": "pli-tv-bu-vb-pd1:2.1.14", "pali": "pañca bhojanāni—odano, kummāso, sattu, maccho, maṁsaṁ.", "brahmali": "there are five kinds of cooked food:\ncooked grain, porridge, flour products, fish, and meat."}, {"key": "pli-tv-bu-vb-pd1:2.1.15", "pali": "“Khādissāmi bhuñjissāmī”ti paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If he receives the food with the intention of eating it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.1.16", "pali": "Ajjhohāre ajjhohāre āpatti pāṭidesanīyassa.", "brahmali": "For every mouthful swallowed, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd1:2.2.1", "pali": "Aññātikāya aññātikasaññī antaragharaṁ paviṭṭhāya hatthato khādanīyaṁ\nvā bhojanīyaṁ vā sahatthā paṭiggahetvā khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If she is unrelated and he perceives her as such,\nand he receives fresh or cooked food directly from her when she has entered an inhabited area,\nand then eats it, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd1:2.2.2", "pali": "Aññātikāya vematiko antaragharaṁ paviṭṭhāya hatthato khādanīyaṁ\nvā bhojanīyaṁ vā sahatthā paṭiggahetvā khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If she is unrelated, but he is unsure of it,\nand he receives fresh or cooked food directly from her when she has entered an inhabited area,\nand then eats it, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd1:2.2.3", "pali": "Aññātikāya ñātikasaññī antaragharaṁ paviṭṭhāya hatthato khādanīyaṁ\nvā bhojanīyaṁ vā sahatthā paṭiggahetvā khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If she is unrelated, but he perceives her as related,\nand he receives fresh or cooked food directly from her when she has entered an inhabited area,\nand then eats it, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd1:2.2.4", "pali": "Yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ āhāratthāya paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If he receives post-midday tonics, seven-day tonics,\nor lifetime tonics for the purpose of food, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.5", "pali": "Ajjhohāre ajjhohāre āpatti dukkaṭassa.", "brahmali": "For every mouthful swallowed, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.6", "pali": "Ekatoupasampannāya hatthato khādanīyaṁ vā bhojanīyaṁ vā—", "brahmali": "If he receives fresh or cooked food, with the intention of eating it,\ndirectly from a nun who is fully ordained only on one side,"}, {"key": "pli-tv-bu-vb-pd1:2.2.7", "pali": "“khādissāmi bhuñjissāmī”ti paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.8", "pali": "Ajjhohāre ajjhohāre āpatti dukkaṭassa.", "brahmali": "For every mouthful swallowed, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.9", "pali": "Ñātikāya aññātikasaññī, āpatti dukkaṭassa.", "brahmali": "If she is related, but he perceives her as unrelated, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.10", "pali": "Ñātikāya vematiko, āpatti dukkaṭassa.", "brahmali": "If she is related, but he is unsure of it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd1:2.2.11", "pali": "Ñātikāya ñātikasaññī, anāpatti.", "brahmali": "If she is related, and he perceives her as such, there is no offense."}, {"key": "pli-tv-bu-vb-pd1:2.3.1", "pali": "Anāpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bu-vb-pd1:2.3.2", "pali": "ñātikāya,", "brahmali": "if she is related;"}, {"key": "pli-tv-bu-vb-pd1:2.3.3", "pali": "dāpeti na deti,", "brahmali": "if she gets someone else to give it and does not give it herself;"}, {"key": "pli-tv-bu-vb-pd1:2.3.4", "pali": "upanikkhipitvā deti,", "brahmali": "if she gives by placing it near;"}, {"key": "pli-tv-bu-vb-pd1:2.3.5", "pali": "antarārāme,", "brahmali": "if it is inside a monastery;"}, {"key": "pli-tv-bu-vb-pd1:2.3.6", "pali": "bhikkhunupassaye,", "brahmali": "if it is at a nunnery;"}, {"key": "pli-tv-bu-vb-pd1:2.3.7", "pali": "titthiyaseyyāya,", "brahmali": "if it is at the dwelling place of the monastics of another religion;"}, {"key": "pli-tv-bu-vb-pd1:2.3.8", "pali": "paṭikkamane,", "brahmali": "if it is on returning to the monastery;"}, {"key": "pli-tv-bu-vb-pd1:2.3.9", "pali": "gāmato nīharitvā deti,", "brahmali": "if she gives after carrying it out of the village;"}, {"key": "pli-tv-bu-vb-pd1:2.3.10", "pali": "yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ “sati paccaye paribhuñjā”ti deti,", "brahmali": "if she gives post-midday tonics, seven-day tonics, or lifetime tonics, saying,\n“Use these when there’s a reason;”"}, {"key": "pli-tv-bu-vb-pd1:2.3.11", "pali": "sikkhamānāya,", "brahmali": "if it is a trainee nun;"}, {"key": "pli-tv-bu-vb-pd1:2.3.12", "pali": "sāmaṇeriyā,", "brahmali": "if it is a novice nun;"}, {"key": "pli-tv-bu-vb-pd1:2.3.13", "pali": "ummattakassa,", "brahmali": "if he is insane;"}, {"key": "pli-tv-bu-vb-pd1:2.3.14", "pali": "ādikammikassāti.", "brahmali": "if he is the first offender."}, {"key": "pli-tv-bu-vb-pd1:2.3.15", "pali": "Paṭhamapāṭidesanīyasikkhāpadaṁ niṭṭhitaṁ.", "brahmali": "The first training rule on receiving a nun’s food is finished."}]}]}, {"id": "pli-tv-bu-vb-pd2", "label": "Dutiyapāṭidesanīya — 2. Letting a nun give directions to donors", "children": [{"id": "pli-tv-bu-vb-pd2/0", "label": "Theravāda Vinaya", "rows": [{"key": "pli-tv-bu-vb-pd2:0.1", "pali": "Theravāda Vinaya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bu-vb-pd2:0.2", "pali": "Mahāvibhaṅga", "brahmali": "The Great Analysis"}, {"key": "pli-tv-bu-vb-pd2:0.3", "pali": "Pāṭidesanīyakaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bu-vb-pd2:0.4", "pali": "2.\nDutiyapāṭidesanīyasikkhāpada", "brahmali": "2.\nLetting a nun give directions to donors"}]}, {"id": "pli-tv-bu-vb-pd2/1", "label": "Tena samayena buddho bhagavā rājagahe viharati veḷuvane…", "rows": [{"key": "pli-tv-bu-vb-pd2:1.1", "pali": "Tena samayena buddho bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "brahmali": "At one time the Buddha was staying at Rājagaha in the Bamboo Grove, the squirrel sanctuary."}, {"key": "pli-tv-bu-vb-pd2:1.2", "pali": "Tena kho pana samayena bhikkhū kulesu nimantitā bhuñjanti.", "brahmali": "At that time, when families invited monks to meals,"}, {"key": "pli-tv-bu-vb-pd2:1.3", "pali": "Chabbaggiyā bhikkhuniyo chabbaggiyānaṁ bhikkhūnaṁ vosāsantiyo ṭhitā honti—", "brahmali": "the nuns from the group of six were directing people toward the monks from the group of six, saying,"}, {"key": "pli-tv-bu-vb-pd2:1.4", "pali": "“idha sūpaṁ detha, idha odanaṁ dethā”ti.", "brahmali": "“Give curry here;\ngive rice there.”"}, {"key": "pli-tv-bu-vb-pd2:1.5", "pali": "Chabbaggiyā bhikkhū yāvadatthaṁ bhuñjanti.", "brahmali": "The monks from the group of six ate as much as they wanted,"}, {"key": "pli-tv-bu-vb-pd2:1.6", "pali": "Aññe bhikkhū na cittarūpaṁ bhuñjanti.", "brahmali": "but not so the other monks."}, {"key": "pli-tv-bu-vb-pd2:1.7", "pali": "Ye te bhikkhū appicchā …pe… te ujjhāyanti khiyyanti vipācenti—", "brahmali": "The monks of few desires complained and criticized them,"}, {"key": "pli-tv-bu-vb-pd2:1.8", "pali": "“kathañhi nāma chabbaggiyā bhikkhū bhikkhuniyo vosāsantiyo na nivāressantī”ti …pe…", "brahmali": "“How could the monks from the group of six not restrain the nuns from giving directions?” …"}, {"key": "pli-tv-bu-vb-pd2:1.9", "pali": "“saccaṁ kira tumhe, bhikkhave, bhikkhuniyo vosāsantiyo na nivārethā”ti?", "brahmali": "“Is it true, monks, that you didn’t do this?”"}, {"key": "pli-tv-bu-vb-pd2:1.10", "pali": "“Saccaṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”"}, {"key": "pli-tv-bu-vb-pd2:1.11", "pali": "Vigarahi buddho bhagavā …pe…", "brahmali": "The Buddha rebuked them …"}, {"key": "pli-tv-bu-vb-pd2:1.12", "pali": "kathañhi nāma tumhe, moghapurisā, bhikkhuniyo vosāsantiyo na nivāressatha.", "brahmali": "“Foolish men, how could you not do this?"}, {"key": "pli-tv-bu-vb-pd2:1.13", "pali": "Netaṁ, moghapurisā, appasannānaṁ vā pasādāya …pe…", "brahmali": "This will affect people’s confidence …” …"}, {"key": "pli-tv-bu-vb-pd2:1.14", "pali": "evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "“And, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd2:1.15.1", "pali": "“Bhikkhū paneva kulesu nimantitā bhuñjanti, tatra ce sā bhikkhunī vosāsamānarūpā ṭhitā hoti—‘idha sūpaṁ detha,\nidha odanaṁ dethā’ti, tehi bhikkhūhi sā bhikkhunī apasādetabbā— ‘apasakka tāva, bhagini, yāva bhikkhū bhuñjantī’ti.\nEkassa cepi bhikkhuno na paṭibhāseyya taṁ bhikkhuniṁ apasādetuṁ— ‘apasakka tāva,\nbhagini, yāva bhikkhū bhuñjantī’ti paṭidesetabbaṁ tehi bhikkhūhi—", "brahmali": "‘When monks eat by invitation to families, if a nun is there giving directions, saying,\n“Give bean curry here;\ngive rice there,” then those monks should stop her:\n“Stop, sister, while the monks are eating.”\nIf not even a single monk addresses that nun in this way to stop her, they must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd2:1.16", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjimhā asappāyaṁ pāṭidesanīyaṁ, taṁ paṭidesemā’”ti.", "brahmali": "“We have done a blameworthy and unsuitable thing which is to be acknowledged.\nWe acknowledge it.”’”"}]}, {"id": "pli-tv-bu-vb-pd2/2", "label": "Bhikkhū paneva kulesu nimantitā bhuñjantīti", "rows": [{"key": "pli-tv-bu-vb-pd2:2.1.1", "pali": "Bhikkhū paneva kulesu nimantitā bhuñjantīti", "brahmali": "When monks eat by invitation to families:"}, {"key": "pli-tv-bu-vb-pd2:2.1.2", "pali": "kulaṁ nāma cattāri kulāni— khattiyakulaṁ, brāhmaṇakulaṁ, vessakulaṁ, suddakulaṁ.", "brahmali": "a family:\nthere are four kinds of families:\nthe aristocratic family, the brahmin family, the merchant family, the worker family."}, {"key": "pli-tv-bu-vb-pd2:2.1.3", "pali": "Nimantitā bhuñjantīti", "brahmali": "Eat by invitation:"}, {"key": "pli-tv-bu-vb-pd2:2.1.4", "pali": "pañcannaṁ bhojanānaṁ aññatarena bhojanena nimantitā bhuñjanti.", "brahmali": "eat any of the five cooked foods by invitation."}, {"key": "pli-tv-bu-vb-pd2:2.1.5", "pali": "Bhikkhunī nāma", "brahmali": "A nun:"}, {"key": "pli-tv-bu-vb-pd2:2.1.6", "pali": "ubhatosaṅghe upasampannā.", "brahmali": "she has been given the full ordination by both Sanghas."}, {"key": "pli-tv-bu-vb-pd2:2.1.7", "pali": "Vosāsantī nāma", "brahmali": "Giving directions:"}, {"key": "pli-tv-bu-vb-pd2:2.1.8", "pali": "yathāmittatā yathāsandiṭṭhatā yathāsambhattatā yathāsamānupajjhāyakatā yathāsamānācariyakatā—\n“idha sūpaṁ detha, idha odanaṁ dethā”ti.\nEsā vosāsantī nāma.", "brahmali": "saying,\n“Give bean curry here;\ngive rice there,” according to friendship, according to companionship, according to who one is devoted to,\naccording to being a co-student, according to being a co-pupil—this is called “giving directions”."}, {"key": "pli-tv-bu-vb-pd2:2.1.9", "pali": "Tehi bhikkhūhīti", "brahmali": "Those monks:"}, {"key": "pli-tv-bu-vb-pd2:2.1.10", "pali": "bhuñjamānehi bhikkhūhi.", "brahmali": "the monks who are eating."}, {"key": "pli-tv-bu-vb-pd2:2.1.11", "pali": "Sā bhikkhunīti", "brahmali": "Her:"}, {"key": "pli-tv-bu-vb-pd2:2.1.12", "pali": "yā sā vosāsantī bhikkhunī.", "brahmali": "the nun who is giving directions."}, {"key": "pli-tv-bu-vb-pd2:2.1.13", "pali": "Tehi bhikkhūhi sā bhikkhunī apasādetabbā— “apasakka tāva, bhagini, yāva bhikkhū bhuñjantī”ti.", "brahmali": "Those monks should stop her:\n‘Stop, sister, while the monks are eating’:"}, {"key": "pli-tv-bu-vb-pd2:2.1.14", "pali": "Ekassa cepi bhikkhuno anapasādito— “khādissāmi bhuñjissāmī”ti paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "if she is not stopped by even one monk, and a monk then receives food with the intention of eating it,\nhe commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd2:2.1.15", "pali": "Ajjhohāre ajjhohāre āpatti pāṭidesanīyassa.", "brahmali": "For every mouthful swallowed, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd2:2.2.1", "pali": "Upasampannāya upasampannasaññī vosāsantiyā na nivāreti, āpatti pāṭidesanīyassa.", "brahmali": "If she is fully ordained, and he perceives her as such,\nand he does not restrain her from giving directions, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd2:2.2.2", "pali": "Upasampannāya vematiko vosāsantiyā na nivāreti, āpatti pāṭidesanīyassa.", "brahmali": "If she is fully ordained, but he is unsure of it,\nand he does not restrain her from giving directions, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd2:2.2.3", "pali": "Upasampannāya anupasampannasaññī vosāsantiyā na nivāreti, āpatti pāṭidesanīyassa.", "brahmali": "If she is fully ordained, but he does not perceive her as such,\nand he does not restrain her from giving directions, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd2:2.2.4", "pali": "Ekatoupasampannāya vosāsantiyā na nivāreti, āpatti dukkaṭassa.", "brahmali": "If he does not restrain a nun who is fully ordained only on one side from giving directions,\nhe commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd2:2.2.5", "pali": "Anupasampannāya upasampannasaññī, āpatti dukkaṭassa.", "brahmali": "If the person is not fully ordained, but he perceives them as such, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd2:2.2.6", "pali": "Anupasampannāya vematiko, āpatti dukkaṭassa.", "brahmali": "If the person is not fully ordained, but he is unsure of it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd2:2.2.7", "pali": "Anupasampannāya anupasampannasaññī, anāpatti.", "brahmali": "If the person is not fully ordained, and he does not perceive them as such, there is no offense."}, {"key": "pli-tv-bu-vb-pd2:2.3.1", "pali": "Anāpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bu-vb-pd2:2.3.2", "pali": "attano bhattaṁ dāpeti na deti,", "brahmali": "if a nun does not give it herself, but gets someone else to give her own food;"}, {"key": "pli-tv-bu-vb-pd2:2.3.3", "pali": "aññesaṁ bhattaṁ deti na dāpeti,", "brahmali": "if a nun does not get someone else to give it, but she gives someone else’s food herself;"}, {"key": "pli-tv-bu-vb-pd2:2.3.4", "pali": "yaṁ na dinnaṁ taṁ dāpeti,", "brahmali": "if a nun gets someone else to give what has not yet been given;"}, {"key": "pli-tv-bu-vb-pd2:2.3.5", "pali": "yattha na dinnaṁ tattha dāpeti,", "brahmali": "if a nun gets someone else to give to someone who has not yet received anything;"}, {"key": "pli-tv-bu-vb-pd2:2.3.6", "pali": "sabbesaṁ samakaṁ dāpeti,", "brahmali": "if a nun gets someone else to give equally to all;"}, {"key": "pli-tv-bu-vb-pd2:2.3.7", "pali": "sikkhamānā vosāsati,", "brahmali": "if a trainee nun is giving directions;"}, {"key": "pli-tv-bu-vb-pd2:2.3.8", "pali": "sāmaṇerī vosāsati,", "brahmali": "if a novice nun is giving directions;"}, {"key": "pli-tv-bu-vb-pd2:2.3.9", "pali": "pañca bhojanāni ṭhapetvā sabbattha, anāpatti,", "brahmali": "if it is anything apart from the five kinds of cooked food;"}, {"key": "pli-tv-bu-vb-pd2:2.3.10", "pali": "ummattakassa,", "brahmali": "if he is insane;"}, {"key": "pli-tv-bu-vb-pd2:2.3.11", "pali": "ādikammikassāti.", "brahmali": "if he is the first offender."}, {"key": "pli-tv-bu-vb-pd2:2.3.12", "pali": "Dutiyapāṭidesanīyasikkhāpadaṁ niṭṭhitaṁ.", "brahmali": "The second training rule on letting a nun give directions to donors is finished."}]}]}, {"id": "pli-tv-bu-vb-pd3", "label": "Tatiyapāṭidesanīya — 3. Receiving food from a designated family", "children": [{"id": "pli-tv-bu-vb-pd3/0", "label": "Theravāda Vinaya", "rows": [{"key": "pli-tv-bu-vb-pd3:0.1", "pali": "Theravāda Vinaya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bu-vb-pd3:0.2", "pali": "Mahāvibhaṅga", "brahmali": "The Great Analysis"}, {"key": "pli-tv-bu-vb-pd3:0.3", "pali": "Pāṭidesanīyakaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bu-vb-pd3:0.4", "pali": "3.\nTatiyapāṭidesanīyasikkhāpada", "brahmali": "3.\nReceiving food from a designated family"}]}, {"id": "pli-tv-bu-vb-pd3/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jetavane…", "rows": [{"key": "pli-tv-bu-vb-pd3:1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "brahmali": "At one time the Buddha was staying at Sāvatthī in the Jeta Grove, Anāthapiṇḍika’s Monastery."}, {"key": "pli-tv-bu-vb-pd3:1.2", "pali": "Tena kho pana samayena sāvatthiyaṁ aññataraṁ kulaṁ ubhatopasannaṁ hoti.", "brahmali": "At that time in Sāvatthī there was a family where both the husband and the wife had confidence."}, {"key": "pli-tv-bu-vb-pd3:1.3", "pali": "Saddhāya vaḍḍhati, bhogena hāyati,\nyaṁ tasmiṁ kule uppajjati purebhattaṁ khādanīyaṁ vā bhojanīyaṁ\nvā taṁ sabbaṁ bhikkhūnaṁ vissajjetvā appekadā anasitā acchanti.", "brahmali": "They were growing in faith, but declining in wealth.\nWhatever food they had in the morning, they gave to the monks.\nSometimes they went without food."}, {"key": "pli-tv-bu-vb-pd3:1.4", "pali": "Manussā ujjhāyanti khiyyanti vipācenti—", "brahmali": "People complained and criticized the monks,"}, {"key": "pli-tv-bu-vb-pd3:1.5", "pali": "“kathañhi nāma samaṇā sakyaputtiyā na mattaṁ jānitvā paṭiggahessanti.", "brahmali": "“How can the Sakyan monastics not have a sense of moderation in receiving offerings?"}, {"key": "pli-tv-bu-vb-pd3:1.6", "pali": "Ime imesaṁ datvā appekadā anasitā acchantī”ti.", "brahmali": "After giving to them, these people sometimes go without.”"}, {"key": "pli-tv-bu-vb-pd3:1.7", "pali": "Assosuṁ kho bhikkhū tesaṁ manussānaṁ ujjhāyantānaṁ khiyyantānaṁ vipācentānaṁ.", "brahmali": "The monks heard the complaints of those people"}, {"key": "pli-tv-bu-vb-pd3:1.8", "pali": "Atha kho te bhikkhū bhagavato etamatthaṁ ārocesuṁ.", "brahmali": "and they told the Buddha."}, {"key": "pli-tv-bu-vb-pd3:1.9", "pali": "Atha kho bhagavā etasmiṁ nidāne etasmiṁ pakaraṇe dhammiṁ kathaṁ katvā bhikkhū āmantesi—", "brahmali": "Soon afterwards the Buddha gave a teaching and addressed the monks:"}, {"key": "pli-tv-bu-vb-pd3:1.10", "pali": "“anujānāmi, bhikkhave, yaṁ kulaṁ saddhāya vaḍḍhati,\nbhogena hāyati evarūpassa kulassa ñattidutiyena kammena sekkhasammutiṁ dātuṁ.", "brahmali": "“Monks, if a family’s faith is growing, but its wealth is declining, you should designate it as ‘in training’,\nthrough a legal procedure consisting of one motion and one announcement."}, {"key": "pli-tv-bu-vb-pd3:1.11", "pali": "Evañca pana, bhikkhave, dātabbā.", "brahmali": "And the designation should be given like this."}, {"key": "pli-tv-bu-vb-pd3:1.12", "pali": "Byattena bhikkhunā paṭibalena saṅgho ñāpetabbo—", "brahmali": "A competent and capable monk should inform the Sangha:"}, {"key": "pli-tv-bu-vb-pd3:1.13", "pali": "‘Suṇātu me, bhante, saṅgho.", "brahmali": "‘Please, venerables, I ask the Sangha to listen."}, {"key": "pli-tv-bu-vb-pd3:1.14", "pali": "Itthannāmaṁ kulaṁ saddhāya vaḍḍhati, bhogena hāyati.", "brahmali": "Such-and-such a family is growing in faith, but declining in wealth."}, {"key": "pli-tv-bu-vb-pd3:1.15", "pali": "Yadi saṅghassa pattakallaṁ, saṅgho itthannāmassa kulassa sekkhasammutiṁ dadeyya.", "brahmali": "If the Sangha is ready, it should designate such-and-such a family as “in training”."}, {"key": "pli-tv-bu-vb-pd3:1.16", "pali": "Esā ñatti.", "brahmali": "This is the motion."}, {"key": "pli-tv-bu-vb-pd3:1.17", "pali": "Suṇātu me, bhante, saṅgho.", "brahmali": "Please, venerables, I ask the Sangha to listen."}, {"key": "pli-tv-bu-vb-pd3:1.18", "pali": "Itthannāmaṁ kulaṁ saddhāya vaḍḍhati, bhogena hāyati.", "brahmali": "Such-and-such a family is growing in faith, but declining in wealth."}, {"key": "pli-tv-bu-vb-pd3:1.19", "pali": "Saṅgho itthannāmassa kulassa sekkhasammutiṁ deti.", "brahmali": "The Sangha designates such-and-such a family as “in training”."}, {"key": "pli-tv-bu-vb-pd3:1.20", "pali": "Yassāyasmato khamati itthannāmassa kulassa sekkhasammutiyā dānaṁ, so tuṇhassa;", "brahmali": "Any monk who approves of designating such-and-such a family as “in training” should remain silent."}, {"key": "pli-tv-bu-vb-pd3:1.21", "pali": "yassa nakkhamati, so bhāseyya.", "brahmali": "Any monk who doesn’t approve should speak up."}, {"key": "pli-tv-bu-vb-pd3:1.22", "pali": "Dinnā saṅghena itthannāmassa kulassa sekkhasammuti.", "brahmali": "The Sangha has designated such-and-such a family as “in training”."}, {"key": "pli-tv-bu-vb-pd3:1.23", "pali": "Khamati saṅghassa, tasmā tuṇhī, evametaṁ dhārayāmī’ti.", "brahmali": "The Sangha approves and is therefore silent.\nI will remember it thus.’"}, {"key": "pli-tv-bu-vb-pd3:1.24", "pali": "Evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "“And, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd3:1.25.1", "pali": "“Yāni kho pana tāni sekkhasammatāni kulāni,\nyo pana bhikkhu tathārūpesu sekkhasammatesu kulesu khādanīyaṁ vā\nbhojanīyaṁ vā sahatthā paṭiggahetvā khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘There are families that are designated as “in training”.\nIf a monk eats fresh or cooked food after personally receiving it from such a family, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd3:1.26", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}, {"key": "pli-tv-bu-vb-pd3:1.27", "pali": "Evañcidaṁ bhagavatā bhikkhūnaṁ sikkhāpadaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the monks."}]}, {"id": "pli-tv-bu-vb-pd3/2", "label": "Tena kho pana samayena sāvatthiyaṁ ussavo hoti.", "rows": [{"key": "pli-tv-bu-vb-pd3:2.1", "pali": "Tena kho pana samayena sāvatthiyaṁ ussavo hoti.", "brahmali": "Soon afterwards there was a celebration in Sāvatthī"}, {"key": "pli-tv-bu-vb-pd3:2.2", "pali": "Manussā bhikkhū nimantetvā bhojenti.", "brahmali": "and people invited the monks for a meal."}, {"key": "pli-tv-bu-vb-pd3:2.3", "pali": "Tampi kho kulaṁ bhikkhū nimantesi.", "brahmali": "And so did the family that had been designated as in training."}, {"key": "pli-tv-bu-vb-pd3:2.4", "pali": "Bhikkhū kukkuccāyantā nādhivāsenti—", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd3:2.5", "pali": "“paṭikkhittaṁ bhagavatā sekkhasammatesu kulesu khādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādituṁ bhuñjitun”ti.", "brahmali": "But knowing that the Buddha had prohibited eating fresh or cooked food after personally receiving it from such a family,\nand being afraid of wrongdoing, the monks did not accept."}, {"key": "pli-tv-bu-vb-pd3:2.6", "pali": "Te ujjhāyanti khiyyanti vipācenti—", "brahmali": "That family complained and criticized them,"}, {"key": "pli-tv-bu-vb-pd3:2.7", "pali": "“kiṁ nu kho nāma amhākaṁ jīvitena yaṁ ayyā amhākaṁ na paṭiggaṇhantī”ti.", "brahmali": "“What is it with us that they don’t receive from us?”"}, {"key": "pli-tv-bu-vb-pd3:2.8", "pali": "Assosuṁ kho bhikkhū tesaṁ manussānaṁ ujjhāyantānaṁ khiyyantānaṁ vipācentānaṁ.", "brahmali": "The monks heard the complaints of those people"}, {"key": "pli-tv-bu-vb-pd3:2.9", "pali": "Atha kho te bhikkhū bhagavato etamatthaṁ ārocesuṁ.", "brahmali": "and they told the Buddha."}, {"key": "pli-tv-bu-vb-pd3:2.10", "pali": "Atha kho bhagavā etasmiṁ nidāne etasmiṁ pakaraṇe dhammiṁ kathaṁ katvā bhikkhū āmantesi—", "brahmali": "Soon afterwards the Buddha gave a teaching and addressed the monks:"}, {"key": "pli-tv-bu-vb-pd3:2.11", "pali": "“anujānāmi, bhikkhave,\nnimantitena sekkhasammatesu kulesu khādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādituṁ bhuñjituṁ.", "brahmali": "“Monks, if you have been invited,\nI allow you to eat fresh or cooked food after personally receiving it from a family designated as in training."}, {"key": "pli-tv-bu-vb-pd3:2.12", "pali": "Evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "And so, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd3:2.13.1", "pali": "“Yāni kho pana tāni sekkhasammatāni kulāni,\nyo pana bhikkhu tathārūpesu sekkhasammatesu kulesu pubbe animantito\nkhādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘There are families that are designated as “in training”.\nIf a monk, without first being invited,\neats fresh or cooked food after personally receiving it from such a family, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd3:2.14", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ, taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}, {"key": "pli-tv-bu-vb-pd3:2.15", "pali": "Evañcidaṁ bhagavatā bhikkhūnaṁ sikkhāpadaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the monks."}]}, {"id": "pli-tv-bu-vb-pd3/3", "label": "Tena kho pana samayena aññataro bhikkhu tassa…", "rows": [{"key": "pli-tv-bu-vb-pd3:3.1", "pali": "Tena kho pana samayena aññataro bhikkhu tassa kulassa kulūpako hoti.", "brahmali": "Soon afterwards a certain monk was associating with that family."}, {"key": "pli-tv-bu-vb-pd3:3.2", "pali": "Atha kho so bhikkhu pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya yena taṁ kulaṁ tenupasaṅkami;\nupasaṅkamitvā paññatte āsane nisīdi.", "brahmali": "One morning he robed up, took his bowl and robe, went to them, and sat down on the prepared seat."}, {"key": "pli-tv-bu-vb-pd3:3.3", "pali": "Tena kho pana samayena so bhikkhu gilāno hoti.", "brahmali": "Just then that monk was sick,"}, {"key": "pli-tv-bu-vb-pd3:3.4", "pali": "Atha kho te manussā taṁ bhikkhuṁ etadavocuṁ—", "brahmali": "and so they invited him to eat."}, {"key": "pli-tv-bu-vb-pd3:3.5", "pali": "“bhuñjatha, bhante”ti.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd3:3.6", "pali": "Atha kho so bhikkhu—", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd3:3.7", "pali": "“bhagavatā paṭikkhittaṁ animantitena sekkhasammatesu kulesu khādanīyaṁ vā bhojanīyaṁ\nvā sahatthā paṭiggahetvā khādituṁ bhuñjitun”ti kukkuccāyanto na paṭiggahesi;", "brahmali": "But knowing that the Buddha had prohibited an uninvited monk from eating\nfresh or cooked food after personally receiving it from such a family,\nand being afraid of wrongdoing, he did not accept."}, {"key": "pli-tv-bu-vb-pd3:3.8", "pali": "nāsakkhi piṇḍāya carituṁ;", "brahmali": "And being unable to walk for alms,"}, {"key": "pli-tv-bu-vb-pd3:3.9", "pali": "chinnabhatto ahosi.", "brahmali": "he missed his meal."}, {"key": "pli-tv-bu-vb-pd3:3.10", "pali": "Atha kho so bhikkhu ārāmaṁ gantvā bhikkhūnaṁ etamatthaṁ ārocesi.", "brahmali": "He then returned to the monastery and told the monks what had happened,"}, {"key": "pli-tv-bu-vb-pd3:3.11", "pali": "Bhikkhū bhagavato etamatthaṁ ārocesuṁ.", "brahmali": "who in turn told the Buddha."}, {"key": "pli-tv-bu-vb-pd3:3.12", "pali": "Atha kho bhagavā etasmiṁ nidāne etasmiṁ pakaraṇe dhammiṁ kathaṁ katvā bhikkhū āmantesi—", "brahmali": "Soon afterwards the Buddha gave a teaching and addressed the monks:"}, {"key": "pli-tv-bu-vb-pd3:3.13", "pali": "“anujānāmi, bhikkhave,\ngilānena bhikkhunā sekkhasammatesu kulesu khādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādituṁ bhuñjituṁ.", "brahmali": "“Monks, I allow a sick monk to eat fresh or cooked food after\npersonally receiving it from a family designated as in training."}, {"key": "pli-tv-bu-vb-pd3:3.14", "pali": "Evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "And so, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd3:3.15.1", "pali": "“Yāni kho pana tāni sekkhasammatāni kulāni,\nyo pana bhikkhu tathārūpesu sekkhasammatesu kulesu pubbe animantito agilāno\nkhādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘There are families that are designated as “in training”.\nIf a monk, without being sick and without first being invited,\neats fresh or cooked food after personally receiving it from such a family, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd3:3.16", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ, taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}]}, {"id": "pli-tv-bu-vb-pd3/4", "label": "Yāni kho pana tāni sekkhasammatāni kulānīti", "rows": [{"key": "pli-tv-bu-vb-pd3:4.1.1", "pali": "Yāni kho pana tāni sekkhasammatāni kulānīti", "brahmali": "There are families that are designated as “in training”:"}, {"key": "pli-tv-bu-vb-pd3:4.1.2", "pali": "sekkhasammataṁ nāma kulaṁ yaṁ kulaṁ saddhāya vaḍḍhati, bhogena hāyati.\nEvarūpassa kulassa ñattidutiyena kammena sekkhasammuti dinnā hoti.", "brahmali": "a family designated as in training:\na family growing in faith but declining in wealth.\nSuch a family is designated as “in training” through a legal procedure consisting of one motion and one announcement."}, {"key": "pli-tv-bu-vb-pd3:4.1.3", "pali": "Yo panāti", "brahmali": "A:"}, {"key": "pli-tv-bu-vb-pd3:4.1.4", "pali": "yo yādiso …pe…", "brahmali": "whoever …"}, {"key": "pli-tv-bu-vb-pd3:4.1.5", "pali": "bhikkhūti", "brahmali": "Monk:"}, {"key": "pli-tv-bu-vb-pd3:4.1.6", "pali": "…pe… ayaṁ imasmiṁ atthe adhippeto bhikkhūti.", "brahmali": "…\nThe monk who has been given the full ordination by a unanimous Sangha through a legal procedure consisting of one\nmotion and three announcements that is irreversible and fit to stand—this sort of monk is meant in this case."}, {"key": "pli-tv-bu-vb-pd3:4.1.7", "pali": "Tathārūpesu sekkhasammatesu kulesūti", "brahmali": "Such a family:"}, {"key": "pli-tv-bu-vb-pd3:4.1.8", "pali": "evarūpesu sekkhasammatesu kulesu.", "brahmali": "that kind of family."}, {"key": "pli-tv-bu-vb-pd3:4.1.9", "pali": "Animantito nāma", "brahmali": "Without being invited:"}, {"key": "pli-tv-bu-vb-pd3:4.1.10", "pali": "ajjatanāya vā svātanāya vā animantito, gharūpacāraṁ okkamante nimanteti, eso animantito nāma.", "brahmali": "without being invited for the same or the following day.\nIf the invitation is made when he has entered the vicinity of the house, this is called “without being invited”."}, {"key": "pli-tv-bu-vb-pd3:4.1.11", "pali": "Nimantito nāma", "brahmali": "Invited:"}, {"key": "pli-tv-bu-vb-pd3:4.1.12", "pali": "ajjatanāya vā svātanāya vā nimantito, gharūpacāraṁ anokkamante nimanteti, eso nimantito nāma.", "brahmali": "invited for the same or the following day.\nIf the invitation is made when he has not entered the vicinity of the house, this is called “invited”."}, {"key": "pli-tv-bu-vb-pd3:4.1.13", "pali": "Agilāno nāma", "brahmali": "Without being sick:"}, {"key": "pli-tv-bu-vb-pd3:4.1.14", "pali": "sakkoti piṇḍāya carituṁ.", "brahmali": "who is able to walk for alms."}, {"key": "pli-tv-bu-vb-pd3:4.1.15", "pali": "Gilāno nāma", "brahmali": "Sick:"}, {"key": "pli-tv-bu-vb-pd3:4.1.16", "pali": "na sakkoti piṇḍāya carituṁ.", "brahmali": "who is unable to walk for alms."}, {"key": "pli-tv-bu-vb-pd3:4.1.17", "pali": "Khādanīyaṁ nāma", "brahmali": "Fresh food:"}, {"key": "pli-tv-bu-vb-pd3:4.1.18", "pali": "pañca bhojanāni yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ ṭhapetvā avasesaṁ khādanīyaṁ nāma.", "brahmali": "apart from the five cooked foods, the post-midday tonics, the seven-day tonics,\nand the lifetime tonics, the rest is called “fresh food”."}, {"key": "pli-tv-bu-vb-pd3:4.1.19", "pali": "Bhojanīyaṁ nāma", "brahmali": "Cooked food:"}, {"key": "pli-tv-bu-vb-pd3:4.1.20", "pali": "pañca bhojanāni—odano, kummāso, sattu, maccho, maṁsaṁ.", "brahmali": "there are five kinds of cooked food:\ncooked grain, porridge, flour  products, fish, and meat."}, {"key": "pli-tv-bu-vb-pd3:4.1.21", "pali": "Animantito agilāno “khādissāmi bhuñjissāmī”ti paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If, without being sick and without being invited,\nhe receives fresh or cooked food with the intention of eating it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd3:4.1.22", "pali": "Ajjhohāre ajjhohāre āpatti pāṭidesanīyassa.", "brahmali": "For every mouthful swallowed, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd3:4.2.1", "pali": "Sekkhasammate sekkhasammatasaññī animantito agilāno khādanīyaṁ\nvā bhojanīyaṁ vā sahatthā paṭiggahetvā khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If a family is designated as in training, and he perceives it as such,\nand he, without being sick or without being invited,\neats fresh or cooked food after personally receiving it from that family,\nhe commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd3:4.2.2", "pali": "Sekkhasammate vematiko …pe…", "brahmali": "If a family is designated as in training, but he is unsure of it, and he, without being sick or without being invited,\neats fresh or cooked food after personally receiving it from that family,\nhe commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd3:4.2.3", "pali": "sekkhasammate asekkhasammatasaññī animantito agilāno khādanīyaṁ\nvā bhojanīyaṁ vā sahatthā paṭiggahetvā khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If a family is designated as in training, but he does not perceive it as such,\nand he, without being sick or without being invited,\neats fresh or cooked food after personally receiving it from that family,\nhe commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd3:4.2.4", "pali": "Yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ āhāratthāya paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If he receives post-midday tonics, seven-day tonics,\nor lifetime tonics for the purpose of food, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd3:4.2.5", "pali": "Ajjhohāre ajjhohāre āpatti dukkaṭassa.", "brahmali": "For every mouthful swallowed, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd3:4.2.6", "pali": "Asekkhasammate sekkhasammatasaññī, āpatti dukkaṭassa.", "brahmali": "If a family is not designated as in training, but he perceives it as such, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd3:4.2.7", "pali": "Asekkhasammate vematiko, āpatti dukkaṭassa.", "brahmali": "If a family is not designated as in training, but he is unsure of it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd3:4.2.8", "pali": "Asekkhasammate asekkhasammatasaññī, anāpatti.", "brahmali": "If a family is not designated as in training, and he does not perceive it as such, there is no offense."}, {"key": "pli-tv-bu-vb-pd3:4.3.1", "pali": "Anāpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bu-vb-pd3:4.3.2", "pali": "nimantitassa,", "brahmali": "if he has been invited;"}, {"key": "pli-tv-bu-vb-pd3:4.3.3", "pali": "gilānassa,", "brahmali": "if he is sick;"}, {"key": "pli-tv-bu-vb-pd3:4.3.4", "pali": "nimantitassa vā gilānassa vā sesakaṁ bhuñjati,", "brahmali": "if he eats the leftovers from one who has been invited or who is sick;"}, {"key": "pli-tv-bu-vb-pd3:4.3.5", "pali": "aññesaṁ bhikkhā tattha paññattā hoti,", "brahmali": "if other people’s almsfood is prepared there;"}, {"key": "pli-tv-bu-vb-pd3:4.3.6", "pali": "gharato nīharitvā denti,", "brahmali": "if they give after coming out from the house;"}, {"key": "pli-tv-bu-vb-pd3:4.3.7", "pali": "niccabhatte,", "brahmali": "if it is a regular meal invitation;"}, {"key": "pli-tv-bu-vb-pd3:4.3.8", "pali": "salākabhatte,", "brahmali": "if it is a meal for which lots are drawn;"}, {"key": "pli-tv-bu-vb-pd3:4.3.9", "pali": "pakkhike,", "brahmali": "if it is a half-monthly meal;"}, {"key": "pli-tv-bu-vb-pd3:4.3.10", "pali": "uposathike,", "brahmali": "if it is on the observance day;"}, {"key": "pli-tv-bu-vb-pd3:4.3.11", "pali": "pāṭipadike,", "brahmali": "if it is on the day after the observance day;"}, {"key": "pli-tv-bu-vb-pd3:4.3.12", "pali": "yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ— “sati paccaye paribhuñjā”ti deti,", "brahmali": "if the family gives post-midday tonics, seven-day tonics, or lifetime tonics, saying,\n“Use these when there’s a reason;”"}, {"key": "pli-tv-bu-vb-pd3:4.3.13", "pali": "ummattakassa,", "brahmali": "if he is insane;"}, {"key": "pli-tv-bu-vb-pd3:4.3.14", "pali": "ādikammikassāti.", "brahmali": "if he is the first offender."}, {"key": "pli-tv-bu-vb-pd3:4.3.15", "pali": "Tatiyapāṭidesanīyasikkhāpadaṁ niṭṭhitaṁ.", "brahmali": "The third training rule on receiving food from a designated family is finished."}]}]}, {"id": "pli-tv-bu-vb-pd4", "label": "Catutthapāṭidesanīya — 4. Receiving food in a dangerous place", "children": [{"id": "pli-tv-bu-vb-pd4/0", "label": "Theravāda Vinaya", "rows": [{"key": "pli-tv-bu-vb-pd4:0.1", "pali": "Theravāda Vinaya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bu-vb-pd4:0.2", "pali": "Mahāvibhaṅga", "brahmali": "The Great Analysis"}, {"key": "pli-tv-bu-vb-pd4:0.3", "pali": "Pāṭidesanīyakaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bu-vb-pd4:0.4", "pali": "4.\nCatutthapāṭidesanīyasikkhāpada", "brahmali": "4.\nReceiving food in a dangerous place"}]}, {"id": "pli-tv-bu-vb-pd4/1", "label": "Tena samayena buddho bhagavā sakkesu viharati kapilavatthusmiṁ…", "rows": [{"key": "pli-tv-bu-vb-pd4:1.1", "pali": "Tena samayena buddho bhagavā sakkesu viharati kapilavatthusmiṁ nigrodhārāme.", "brahmali": "At one time when the Buddha was staying in the Sakyan country in the Banyan Tree Monastery at Kapilavatthu,"}, {"key": "pli-tv-bu-vb-pd4:1.2", "pali": "Tena kho pana samayena sākiyadāsakā avaruddhā honti.", "brahmali": "the slaves of the Sakyans were rebelling."}, {"key": "pli-tv-bu-vb-pd4:1.3", "pali": "Sākiyāniyo icchanti āraññakesu senāsanesu bhattaṁ kātuṁ.", "brahmali": "The Sakyan women wished to prepare a meal at the wilderness dwellings,"}, {"key": "pli-tv-bu-vb-pd4:1.4", "pali": "Assosuṁ kho sākiyadāsakā—", "brahmali": "but the slaves heard about this"}, {"key": "pli-tv-bu-vb-pd4:1.5", "pali": "“sākiyāniyo kira āraññakesu senāsanesu bhattaṁ kattukāmā”ti.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd4:1.6", "pali": "Te magge pariyuṭṭhiṁsu.", "brahmali": "and besieged the path."}, {"key": "pli-tv-bu-vb-pd4:1.7", "pali": "Sākiyāniyo paṇītaṁ khādanīyaṁ bhojanīyaṁ ādāya āraññakaṁ senāsanaṁ agamaṁsu.", "brahmali": "When the Sakyan women took various kinds of fine foods and set out for a wilderness dwelling,"}, {"key": "pli-tv-bu-vb-pd4:1.8", "pali": "Sākiyadāsakā nikkhamitvā sākiyāniyo acchindiṁsu ca dūsesuñca.", "brahmali": "the slaves emerged, and they robbed and raped those Sakyan women."}, {"key": "pli-tv-bu-vb-pd4:1.9", "pali": "Sākiyā nikkhamitvā te core sabhaṇḍe gahetvā ujjhāyanti khiyyanti vipācenti—", "brahmali": "Soon afterwards the Sakyan men came out, and they got hold of those criminals together with their loot.\nThey then complained and criticized the monks,"}, {"key": "pli-tv-bu-vb-pd4:1.10", "pali": "“kathañhi nāma bhadantā ārāme core paṭivasante nārocessantī”ti.", "brahmali": "“How could they not inform us that there are criminals staying near the monastery?”"}, {"key": "pli-tv-bu-vb-pd4:1.11", "pali": "Assosuṁ kho bhikkhū sākiyānaṁ ujjhāyantānaṁ khiyyantānaṁ vipācentānaṁ.", "brahmali": "The monks heard the complaints of the Sakyans"}, {"key": "pli-tv-bu-vb-pd4:1.12", "pali": "Atha kho te bhikkhū bhagavato etamatthaṁ ārocesuṁ.", "brahmali": "and they told the Buddha."}, {"key": "pli-tv-bu-vb-pd4:1.13", "pali": "Atha kho bhagavā etasmiṁ nidāne etasmiṁ pakaraṇe dhammiṁ kathaṁ katvā bhikkhū āmantesi—", "brahmali": "Soon afterwards the Buddha gave a teaching and addressed the monks:"}, {"key": "pli-tv-bu-vb-pd4:1.14", "pali": "“tena hi, bhikkhave, bhikkhūnaṁ sikkhāpadaṁ paññapessāmi dasa atthavase paṭicca saṅghasuṭṭhutāya …pe…", "brahmali": "“Well then, monks, I will lay down a training rule for the following ten reasons:\nfor the well-being of the Sangha, for the comfort of the Sangha, for the restraint of bad people,\nfor the ease of good monks, for the restraint of the corruptions relating to the present life,\nfor the restraint of the corruptions relating to future lives, to give rise to confidence in those without it,\nto increase the confidence of those who have it,\nfor the longevity of the true Teaching, and for supporting the training."}, {"key": "pli-tv-bu-vb-pd4:1.15", "pali": "evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "And, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd4:1.16.1", "pali": "“Yāni kho pana tāni āraññakāni senāsanāni sāsaṅkasammatāni sappaṭibhayāni,\nyo pana bhikkhu tathārūpesu senāsanesu pubbe appaṭisaṁviditaṁ khādanīyaṁ\nvā bhojanīyaṁ vā ajjhārāme sahatthā paṭiggahetvā khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘There are wilderness dwellings that are considered risky and dangerous.\nIf a monk, without first making an announcement about those dwellings,\neats fresh or cooked food after personally receiving it inside that monastery, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd4:1.17", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}, {"key": "pli-tv-bu-vb-pd4:1.18", "pali": "Evañcidaṁ bhagavatā bhikkhūnaṁ sikkhāpadaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the monks."}]}, {"id": "pli-tv-bu-vb-pd4/2", "label": "Tena kho pana samayena aññataro bhikkhu āraññakesu…", "rows": [{"key": "pli-tv-bu-vb-pd4:2.1", "pali": "Tena kho pana samayena aññataro bhikkhu āraññakesu senāsanesu gilāno hoti.", "brahmali": "Soon afterwards a monk in a wilderness dwelling was sick."}, {"key": "pli-tv-bu-vb-pd4:2.2", "pali": "Manussā khādanīyaṁ vā bhojanīyaṁ vā ādāya āraññakaṁ senāsanaṁ agamaṁsu.", "brahmali": "People took fresh and cooked food and went to that wilderness dwelling,"}, {"key": "pli-tv-bu-vb-pd4:2.3", "pali": "Atha kho te manussā taṁ bhikkhuṁ etadavocuṁ—", "brahmali": "and they invited that monk to eat."}, {"key": "pli-tv-bu-vb-pd4:2.4", "pali": "“bhuñjatha, bhante”ti.", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd4:2.5", "pali": "Atha kho so bhikkhu—", "brahmali": ""}, {"key": "pli-tv-bu-vb-pd4:2.6", "pali": "“bhagavatā paṭikkhittaṁ āraññakesu senāsanesu khādanīyaṁ vā bhojanīyaṁ vā\nsahatthā paṭiggahetvā khādituṁ bhuñjitun”ti kukkuccāyanto na paṭiggahesi,\nnāsakkhi piṇḍāya carituṁ, chinnabhatto ahosi.", "brahmali": "But knowing that the Buddha had prohibited the eating of fresh or\ncooked food after personally receiving it at a wilderness dwelling,\nand being afraid of wrongdoing, he did not accept it.\nAnd being unable to walk for alms, he missed his meal."}, {"key": "pli-tv-bu-vb-pd4:2.7", "pali": "Atha kho so bhikkhu bhikkhūnaṁ etamatthaṁ ārocesi.", "brahmali": "He then told the monks what had happened,"}, {"key": "pli-tv-bu-vb-pd4:2.8", "pali": "Bhikkhū bhagavato etamatthaṁ ārocesuṁ.", "brahmali": "and they in turn told the Buddha."}, {"key": "pli-tv-bu-vb-pd4:2.9", "pali": "Atha kho bhagavā etasmiṁ nidāne etasmiṁ pakaraṇe dhammiṁ kathaṁ katvā bhikkhū āmantesi—", "brahmali": "Soon afterwards the Buddha gave a teaching and addressed the monks:"}, {"key": "pli-tv-bu-vb-pd4:2.10", "pali": "“anujānāmi, bhikkhave,\ngilānena bhikkhunā āraññakesu senāsanesu pubbe appaṭisaṁviditaṁ\nkhādanīyaṁ vā bhojanīyaṁ vā sahatthā paṭiggahetvā khādituṁ bhuñjituṁ.", "brahmali": "“Monks, I allow a sick monk, without first making an announcement,\nto eat fresh or cooked food after personally receiving it at a wilderness dwelling."}, {"key": "pli-tv-bu-vb-pd4:2.11", "pali": "Evañca pana, bhikkhave, imaṁ sikkhāpadaṁ uddiseyyātha—", "brahmali": "And so, monks, this training rule should be recited like this:"}, {"key": "pli-tv-bu-vb-pd4:2.12.1", "pali": "“Yāni kho pana tāni āraññakāni senāsanāni sāsaṅkasammatāni sappaṭibhayāni,\nyo pana bhikkhu tathārūpesu senāsanesu pubbe appaṭisaṁviditaṁ khādanīyaṁ vā\nbhojanīyaṁ vā ajjhārāme sahatthā paṭiggahetvā agilāno khādeyya vā bhuñjeyya vā,\npaṭidesetabbaṁ tena bhikkhunā—", "brahmali": "‘There are wilderness dwellings that are considered risky and dangerous.\nIf a monk who is not sick, without first making an announcement about those dwellings,\neats fresh or cooked food after personally receiving it inside that monastery, he must acknowledge it:"}, {"key": "pli-tv-bu-vb-pd4:2.13", "pali": "‘gārayhaṁ, āvuso, dhammaṁ āpajjiṁ asappāyaṁ pāṭidesanīyaṁ, taṁ paṭidesemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}]}, {"id": "pli-tv-bu-vb-pd4/3", "label": "Yāni kho pana tāni āraññakāni senāsanānīti", "rows": [{"key": "pli-tv-bu-vb-pd4:3.1.1", "pali": "Yāni kho pana tāni āraññakāni senāsanānīti", "brahmali": "There are wilderness dwellings:"}, {"key": "pli-tv-bu-vb-pd4:3.1.2", "pali": "āraññakaṁ nāma senāsanaṁ pañcadhanusatikaṁ pacchimaṁ.", "brahmali": "a wilderness dwelling:\nif it is at least 800 meters away from any inhabited area."}, {"key": "pli-tv-bu-vb-pd4:3.1.3", "pali": "Sāsaṅkaṁ nāma", "brahmali": "Risky:"}, {"key": "pli-tv-bu-vb-pd4:3.1.4", "pali": "ārāme ārāmūpacāre corānaṁ niviṭṭhokāso dissati, bhuttokāso dissati,\nṭhitokāso dissati, nisinnokāso dissati, nipannokāso dissati.", "brahmali": "in the monastery, or in the vicinity of the monastery,\ncriminals have been seen camping, eating, standing, sitting, or lying down."}, {"key": "pli-tv-bu-vb-pd4:3.1.5", "pali": "Sappaṭibhayaṁ nāma", "brahmali": "Dangerous:"}, {"key": "pli-tv-bu-vb-pd4:3.1.6", "pali": "ārāme ārāmūpacāre corehi manussā hatā dissanti, viluttā dissanti, ākoṭitā dissanti.", "brahmali": "in the monastery, or in the vicinity of the monastery, criminals have been seen injuring, robbing, or beating people."}, {"key": "pli-tv-bu-vb-pd4:3.1.7", "pali": "Yo panāti", "brahmali": "A:"}, {"key": "pli-tv-bu-vb-pd4:3.1.8", "pali": "yo yādiso …pe…", "brahmali": "whoever …"}, {"key": "pli-tv-bu-vb-pd4:3.1.9", "pali": "bhikkhūti", "brahmali": "Monk:"}, {"key": "pli-tv-bu-vb-pd4:3.1.10", "pali": "…pe… ayaṁ imasmiṁ atthe adhippeto bhikkhūti.", "brahmali": "…\nThe monk who has been given the full ordination by a unanimous Sangha through a legal procedure consisting of one\nmotion and three announcements that is irreversible and fit to stand—this sort of monk is meant in this case."}, {"key": "pli-tv-bu-vb-pd4:3.1.11", "pali": "Tathārūpesu senāsanesūti", "brahmali": "About those dwellings:"}, {"key": "pli-tv-bu-vb-pd4:3.1.12", "pali": "evarūpesu senāsanesu.", "brahmali": "about such kinds of dwellings."}, {"key": "pli-tv-bu-vb-pd4:3.1.13", "pali": "Appaṭisaṁviditaṁ nāma", "brahmali": "Without making an announcement:"}, {"key": "pli-tv-bu-vb-pd4:3.1.14", "pali": "pañcannaṁ paṭisaṁviditaṁ, etaṁ appaṭisaṁviditaṁ nāma.", "brahmali": "if an announcement is made to any of one’s five co-monastics, this is called “without making an announcement”."}, {"key": "pli-tv-bu-vb-pd4:3.1.15", "pali": "Ārāmaṁ ārāmūpacāraṁ ṭhapetvā paṭisaṁviditaṁ, etaṁ appaṭisaṁviditaṁ nāma.", "brahmali": "If an announcement is made about anything apart from the monastery or its vicinity,\nthis is called “without making an announcement”."}, {"key": "pli-tv-bu-vb-pd4:3.1.16", "pali": "Paṭisaṁviditaṁ nāma", "brahmali": "Making an announcement:"}, {"key": "pli-tv-bu-vb-pd4:3.1.17", "pali": "yo koci itthī vā puriso vā ārāmaṁ ārāmūpacāraṁ āgantvā āroceti—\n“itthannāmassa, bhante, khādanīyaṁ vā bhojanīyaṁ vā āharissantī”ti.\nSace sāsaṅkaṁ hoti, sāsaṅkanti ācikkhitabbaṁ;\nsace sappaṭibhayaṁ hoti, sappaṭibhayanti ācikkhitabbaṁ;", "brahmali": "if a woman or a man comes to the monastery or the vicinity of the monastery and says,\n“Venerable, people will be bringing so-and-so’s fresh or cooked food,” then,\nif it is risky, this should be declared, and if it is dangerous, that should be declared."}, {"key": "pli-tv-bu-vb-pd4:3.1.18", "pali": "sace— “hotu, bhante, āhariyissatī”ti bhaṇati, corā vattabbā— “manussā idhūpacaranti apasakkathā”ti.", "brahmali": "If the person says,\n“Never mind, it will be brought,” then the criminals are to be told,\n“People are coming here;\ngo away.”"}, {"key": "pli-tv-bu-vb-pd4:3.1.19", "pali": "Yāguyā paṭisaṁvidite tassā parivāro āhariyyati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to congee, and accompanying food is brought, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.20", "pali": "Bhattena paṭisaṁvidite tassa parivāro āhariyyati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to rice, and accompanying food is brought, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.21", "pali": "Khādanīyena paṭisaṁvidite tassa parivāro āhariyyati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to fresh food,\nand accompanying food is brought, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.22", "pali": "Kulena paṭisaṁvidite yo tasmiṁ kule manusso khādanīyaṁ vā bhojanīyaṁ vā āharati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to a particular family,\nthen when any person from that family brings fresh or cooked food, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.23", "pali": "Gāmena paṭisaṁvidite yo tasmiṁ gāme manusso khādanīyaṁ vā bhojanīyaṁ vā āharati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to a particular village,\nthen when any person from that village brings fresh or cooked food, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.24", "pali": "Pūgena paṭisaṁvidite yo tasmiṁ pūge manusso khādanīyaṁ vā bhojanīyaṁ vā āharati, etaṁ paṭisaṁviditaṁ nāma.", "brahmali": "When an announcement has been made in regard to a particular association,\nthen when any person from that association brings fresh or cooked food, this is called “announced”."}, {"key": "pli-tv-bu-vb-pd4:3.1.25", "pali": "Khādanīyaṁ nāma", "brahmali": "Fresh food:"}, {"key": "pli-tv-bu-vb-pd4:3.1.26", "pali": "pañca bhojanāni yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ ṭhapetvā avasesaṁ khādanīyaṁ nāma.", "brahmali": "apart from the five cooked foods, the post-midday tonics, the seven-day tonics,\nand the lifetime tonics, the rest is called “fresh food”."}, {"key": "pli-tv-bu-vb-pd4:3.1.27", "pali": "Bhojanīyaṁ nāma", "brahmali": "Cooked food:"}, {"key": "pli-tv-bu-vb-pd4:3.1.28", "pali": "pañca bhojanāni—odano, kummāso, sattu, maccho, maṁsaṁ.", "brahmali": "there are five kinds of cooked food:\ncooked grain, porridge, flour products, fish, and meat."}, {"key": "pli-tv-bu-vb-pd4:3.1.29", "pali": "Ajjhārāmo nāma", "brahmali": "Inside that monastery:"}, {"key": "pli-tv-bu-vb-pd4:3.1.30", "pali": "parikkhittassa ārāmassa antoārāmo.", "brahmali": "if the monastery is enclosed, then within the enclosure."}, {"key": "pli-tv-bu-vb-pd4:3.1.31", "pali": "Aparikkhittassa upacāro.", "brahmali": "If the monastery is unenclosed, then in the vicinity."}, {"key": "pli-tv-bu-vb-pd4:3.1.32", "pali": "Agilāno nāma", "brahmali": "Who is not sick:"}, {"key": "pli-tv-bu-vb-pd4:3.1.33", "pali": "sakkoti piṇḍāya carituṁ.", "brahmali": "who is able to walk for alms."}, {"key": "pli-tv-bu-vb-pd4:3.1.34", "pali": "Gilāno nāma", "brahmali": "Who is sick:"}, {"key": "pli-tv-bu-vb-pd4:3.1.35", "pali": "na sakkoti piṇḍāya carituṁ.", "brahmali": "who is unable to walk for alms."}, {"key": "pli-tv-bu-vb-pd4:3.1.36", "pali": "Appaṭisaṁviditaṁ agilāno “khādissāmi bhuñjissāmī”ti paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If, without making an announcement, one who is not sick receives fresh or cooked food with the intention of eating it,\nhe commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd4:3.1.37", "pali": "Ajjhohāre ajjhohāre āpatti pāṭidesanīyassa.", "brahmali": "For every mouthful swallowed, he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd4:3.1.38.1", "pali": "Appaṭisaṁvidite appaṭisaṁviditasaññī khādanīyaṁ vā bhojanīyaṁ vā\najjhārāme sahatthā paṭiggahetvā agilāno khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If there has been no announcement, and he does not perceive that there has, and he, not being sick,\neats fresh or cooked food after personally receiving it inside that monastery,\nthen he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd4:3.1.39", "pali": "Appaṭisaṁvidite vematiko khādanīyaṁ vā bhojanīyaṁ vā ajjhārāme sahatthā paṭiggahetvā agilāno khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If there has been no announcement, but he is unsure of it, and he, not being sick,\neats fresh or cooked food after personally receiving it inside that monastery,\nthen he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd4:3.1.40", "pali": "Appaṭisaṁvidite paṭisaṁviditasaññī khādanīyaṁ vā bhojanīyaṁ vā\najjhārāme sahatthā paṭiggahetvā agilāno khādati vā bhuñjati vā,\nāpatti pāṭidesanīyassa.", "brahmali": "If there has been no announcement, but he perceives that there has, and he, not being sick,\neats fresh or cooked food after personally receiving it inside that monastery,\nthen he commits an offense entailing acknowledgment."}, {"key": "pli-tv-bu-vb-pd4:3.1.41", "pali": "Yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ āhāratthāya paṭiggaṇhāti, āpatti dukkaṭassa.", "brahmali": "If he receives post-midday tonics, seven-day tonics,\nor lifetime tonics for the purpose of food, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd4:3.1.42", "pali": "Ajjhohāre ajjhohāre āpatti dukkaṭassa.", "brahmali": "For every mouthful swallowed, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd4:3.1.43", "pali": "Paṭisaṁvidite appaṭisaṁviditasaññī, āpatti dukkaṭassa.", "brahmali": "If there has been an announcement, but he does not perceive that there has, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd4:3.1.44", "pali": "Paṭisaṁvidite vematiko, āpatti dukkaṭassa.", "brahmali": "If there has been an announcement, but he is unsure of it, he commits an offense of wrong conduct."}, {"key": "pli-tv-bu-vb-pd4:3.1.45", "pali": "Paṭisaṁvidite paṭisaṁviditasaññī, anāpatti.", "brahmali": "If there has been an announcement, and he perceives that there has, there is no offense."}, {"key": "pli-tv-bu-vb-pd4:3.2.1", "pali": "Anāpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bu-vb-pd4:3.2.2", "pali": "paṭisaṁvidite,", "brahmali": "if there has been an announcement;"}, {"key": "pli-tv-bu-vb-pd4:3.2.3", "pali": "gilānassa,", "brahmali": "if he is sick;"}, {"key": "pli-tv-bu-vb-pd4:3.2.4", "pali": "paṭisaṁvidite vā gilānassa vā sesakaṁ bhuñjati,", "brahmali": "if he eats the leftovers from where there has been an announcement or from one who is sick;"}, {"key": "pli-tv-bu-vb-pd4:3.2.5", "pali": "bahārāme paṭiggahetvā antoārāme bhuñjati,", "brahmali": "if he receives the food outside the monastery and then eats it inside;"}, {"key": "pli-tv-bu-vb-pd4:3.2.6", "pali": "tattha jātakaṁ mūlaṁ vā tacaṁ vā pattaṁ vā pupphaṁ vā phalaṁ vā bhuñjati,", "brahmali": "if he eats a root, bark, a leaf, a flower, or a fruit originating in that monastery;"}, {"key": "pli-tv-bu-vb-pd4:3.2.7", "pali": "yāmakālikaṁ sattāhakālikaṁ yāvajīvikaṁ sati paccaye paribhuñjati,", "brahmali": "if, when there is a reason, he uses post-midday tonics, seven-day tonics, or lifetime tonics;"}, {"key": "pli-tv-bu-vb-pd4:3.2.8", "pali": "ummattakassa,", "brahmali": "if he is insane;"}, {"key": "pli-tv-bu-vb-pd4:3.2.9", "pali": "ādikammikassāti.", "brahmali": "if he is the first offender."}, {"key": "pli-tv-bu-vb-pd4:3.2.10", "pali": "Catutthapāṭidesanīyasikkhāpadaṁ niṭṭhitaṁ.", "brahmali": "The fourth training rule on receiving food in a dangerous place  is finished."}, {"key": "pli-tv-bu-vb-pd4:3.2.11", "pali": "Uddiṭṭhā kho, āyasmanto, cattāro pāṭidesanīyā dhammā.", "brahmali": "“Venerables, the four rules on acknowledgment have been recited."}, {"key": "pli-tv-bu-vb-pd4:3.2.12", "pali": "Tatthāyasmante pucchāmi—", "brahmali": "In regard to this I ask you,"}, {"key": "pli-tv-bu-vb-pd4:3.2.13", "pali": "“kaccittha parisuddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bu-vb-pd4:3.2.14", "pali": "Dutiyampi pucchāmi—", "brahmali": "A second time I ask,"}, {"key": "pli-tv-bu-vb-pd4:3.2.15", "pali": "“kaccittha parisuddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bu-vb-pd4:3.2.16", "pali": "Tatiyampi pucchāmi—", "brahmali": "A third time I ask,"}, {"key": "pli-tv-bu-vb-pd4:3.2.17", "pali": "“kaccittha parisuddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bu-vb-pd4:3.2.18", "pali": "Parisuddhetthāyasmanto, tasmā tuṇhī, evametaṁ dhārayāmīti.", "brahmali": "You are pure in this and therefore silent.\nI will remember it thus.”"}, {"key": "pli-tv-bu-vb-pd4:3.2.19", "pali": "Pāṭidesanīyakaṇḍaṁ niṭṭhitaṁ.", "brahmali": "The chapter on offenses entailing acknowledgment is finished."}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"brahmali": {"pli-tv-bu-vb-pd1:2.1.6": ["Sp 1.505: <i>Tattha 
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

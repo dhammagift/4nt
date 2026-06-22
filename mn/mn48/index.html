@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 48", "rows": [{"key": "mn48:0.1", "pali": "Majjhima Nikāya 48", "sujato": "Middle Discourses 48", "thanissaro": "", "pts": ""}, {"key": "mn48:0.2", "pali": "Kosambiyasutta", "sujato": "The Mendicants of Kosambī", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn48:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn48:1.2", "pali": "ekaṁ samayaṁ bhagavā kosambiyaṁ viharati ghositārāme.", "sujato": "At one time the Buddha was staying near Kosambī, in Ghosita’s Monastery.", "thanissaro": "on one occasion the Blessed One was staying near Kosambī at Ghosita’s monastery.", "pts": "At one time the Lord was staying near Kosambī in Ghosita's monastery."}]}, {"id": "2", "label": "Now at that time the mendicants of…", "rows": [{"key": "mn48:2.1", "pali": "Tena kho pana samayena kosambiyaṁ bhikkhū bhaṇḍanajātā kalahajātā\nvivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharanti.", "sujato": "Now at that time the mendicants of Kosambī were fighting, quarreling,\nand disputing, continually wounding each other with barbed words.", "thanissaro": "And on that occasion the monks in Kosambī were given to arguing and quarreling and disputing,\nstabbing one another with weapons of the mouth.", "pts": "Now at that time, the monks of Kosambī, disputatious, quarrelsome,\ncontentious, lived wounding another with the weapons of the tongue."}, {"key": "mn48:2.2", "pali": "Te na ceva aññamaññaṁ saññāpenti na ca saññattiṁ upenti, na ca aññamaññaṁ nijjhāpenti, na ca nijjhattiṁ upenti.", "sujato": "They couldn’t persuade each other or be persuaded, nor could they convince each other or be convinced.", "thanissaro": "They did not persuade one another, and did not agree to be persuaded by one another.\nThey did not convince one another, and did not agree to be convinced by one another.", "pts": "They neither convinced one another nor came to be convinced themselves,\nnor did they win one another over or come to be won over themselves."}]}, {"id": "3", "label": "Then a mendicant went up to the…", "rows": [{"key": "mn48:3.1", "pali": "Atha kho aññataro bhikkhu yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho so bhikkhu bhagavantaṁ etadavoca:", "sujato": "Then a mendicant went up to the Buddha, bowed, sat down to one side, and told him what was happening.", "thanissaro": "Then a certain monk went to the Blessed One and, on arrival, having bowed down to him, sat to one side.\nAs he was sitting there, he said to the Blessed One:", "pts": "Then a certain monk approached the Lord;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, that monk spoke thus to the Lord:"}, {"key": "mn48:3.2", "pali": "“idha, bhante, kosambiyaṁ bhikkhū bhaṇḍanajātā kalahajātā vivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharanti,\nte na ceva aññamaññaṁ saññāpenti, na ca saññattiṁ upenti, na ca aññamaññaṁ nijjhāpenti, na ca nijjhattiṁ upentī”ti.", "sujato": "", "thanissaro": "“Lord, the monks in Kosambī are now given to arguing and quarreling and disputing,\nstabbing one another with weapons of the mouth.\nThey don’t persuade one another, and don’t agree to be persuaded by one another.\nThey don’t convince one another, and don’t agree to be convinced by one another.", "pts": "\"Now, Lord, the monks of Kosambī, disputatious, quarrelsome,\ncontentious, live wounding another with the weapons of the tongue.\nThey neither convinced one another nor came to be convinced themselves,\nnor did they win one another over or come to be won over themselves.\""}]}, {"id": "4", "label": "So the Buddha addressed one of the…", "rows": [{"key": "mn48:4.1", "pali": "Atha kho bhagavā aññataraṁ bhikkhuṁ āmantesi:", "sujato": "So the Buddha addressed one of the monks,", "thanissaro": "Then the Blessed One told a certain monk,", "pts": "Then the Lord addressed a certain monk, saying:"}, {"key": "mn48:4.2", "pali": "“ehi tvaṁ, bhikkhu, mama vacanena te bhikkhū āmantehi:", "sujato": "“Please, monk, in my name tell those mendicants that", "thanissaro": "“Come, monk.\nIn my name, call those monks, saying,", "pts": "\"Come you, monk, summon these monks in my name, saying:"}, {"key": "mn48:4.3", "pali": "‘satthā vo āyasmante āmantetī’”ti.", "sujato": "the teacher summons them.”", "thanissaro": "‘The Teacher calls you, venerable ones.’”", "pts": "'The Teacher is summoning you.'\""}, {"key": "mn48:4.4", "pali": "“Evaṁ, bhante”ti kho so bhikkhu bhagavato paṭissutvā yena te bhikkhū tenupasaṅkami;\nupasaṅkamitvā te bhikkhū etadavoca:", "sujato": "“Yes, sir,” that monk replied.\nHe went to those monks and said,", "thanissaro": "Responding,\n“As you say, lord,” to the Blessed One, the monk went to those monks, and on arrival he said to them,", "pts": "\"Yes, Lord,\" and this monk, having answered the Lord in assent, approached those monks;\nhaving approached, he spoke thus to those monks:"}, {"key": "mn48:4.5", "pali": "“satthā āyasmante āmantetī”ti.", "sujato": "“Venerables, the teacher summons you.”", "thanissaro": "“The Teacher calls you, venerable ones.”", "pts": "\"The Teacher is summoning the venerable ones.\""}, {"key": "mn48:4.6", "pali": "“Evamāvuso”ti kho te bhikkhū tassa bhikkhuno paṭissutvā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinne kho te bhikkhū bhagavā etadavoca:", "sujato": "“Yes, reverend,” those monks replied.\nThey went to the Buddha, bowed, and sat down to one side.\nThe Buddha said to them,", "thanissaro": "Responding,\n“As you say, my friend,” to the monk, those monks went to the Blessed One and,\non arrival, having bowed down to him, sat to one side.\nAs they were sitting there, the Blessed One said to them,", "pts": "\"Yes, your reverence,\" and those monks having answered that monk in assent, approached the Lord;\nhaving approached, having greeted the Lord, they sat down at a respectful distance.\nThe Lord spoke thus to those monks as they were sitting down at a respectful distance:"}, {"key": "mn48:4.7", "pali": "“saccaṁ kira tumhe, bhikkhave, bhaṇḍanajātā kalahajātā vivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharatha,", "sujato": "“Is it really true, mendicants, that you have been fighting, quarreling,\nand disputing, continually wounding each other with barbed words?", "thanissaro": "“Is it true, monks, that you are given to arguing and quarreling and disputing,\nstabbing one another with weapons of the mouth?", "pts": "\"Is it true, as is said, that you, monks, are disputatious, quarrelsome,\ncontentious, and live wounding another with the weapons of the tongue."}, {"key": "mn48:4.8", "pali": "te na ceva aññamaññaṁ saññāpetha, na ca saññattiṁ upetha, na ca aññamaññaṁ nijjhāpetha, na ca nijjhattiṁ upethā”ti?", "sujato": "And that you can’t persuade each other or be persuaded, nor can you convince each other or be convinced?”", "thanissaro": "That you don’t persuade one another, and don’t agree to be persuaded by one another?\nThat you don’t convince one another, and don’t agree to be convinced by one another?”", "pts": "That you neither convince one another nor came to be convinced yourselves,\nthat you neither win one another over nor are won over yourselves?\""}, {"key": "mn48:4.9", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir,” they said.", "thanissaro": "“Yes, lord.”", "pts": "\"Yes, Lord.\""}]}, {"id": "5", "label": "“What do you think, mendicants?", "rows": [{"key": "mn48:5.1", "pali": "“Taṁ kiṁ maññatha, bhikkhave,", "sujato": "“What do you think, mendicants?", "thanissaro": "“And while you are given to arguing and quarreling and disputing, stabbing one another with weapons of the mouth,", "pts": "\"What do you think about this, monks?"}, {"key": "mn48:5.2", "pali": "yasmiṁ tumhe samaye bhaṇḍanajātā kalahajātā vivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharatha,\napi nu tumhākaṁ tasmiṁ samaye mettaṁ kāyakammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca,\nmettaṁ vacīkammaṁ …pe… mettaṁ manokammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho cā”ti?", "sujato": "When you’re fighting, quarreling, and disputing, continually wounding each other with barbed words,\nare you treating your spiritual companions with kindness by way of body,\nspeech, and mind, both in public and in private?”", "thanissaro": "are you set on bodily acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs?\nAre you set on verbal acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs?\nAre you set on mental acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs?”", "pts": "At the time when you, disputatious, quarrelsome, contentious, live wounding one another with the weapon of the tongue,\nis a friendly act of body offered your fellow Brahma-farers, both in public and in private?\nIs a friendly act of speech offered your fellow Brahma-farers, both in public and in private?\nIs a friendly act of thought offered your fellow Brahma-farers, both in public and in private?"}, {"key": "mn48:5.3", "pali": "“No hetaṁ, bhante”.", "sujato": "“No, sir.”", "thanissaro": "“No, lord.”", "pts": "\"No, Lord.\""}, {"key": "mn48:5.4", "pali": "“Iti kira, bhikkhave,\nyasmiṁ tumhe samaye bhaṇḍanajātā kalahajātā vivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharatha,\nneva tumhākaṁ tasmiṁ samaye mettaṁ kāyakammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca,\nna mettaṁ vacīkammaṁ …pe… na mettaṁ manokammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca.", "sujato": "“So it seems that when you’re arguing you are not treating each other with kindness.", "thanissaro": "“So then, while you are given to arguing and quarreling and disputing, stabbing one another with weapons of the mouth,\nyou are not set on bodily acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs;\nyou are not set on verbal acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs;\nyou are not set on mental acts of good will with regard to your companions in the holy life,\nto their faces & behind their backs.", "pts": "\"Then it is to be said, monks, that at that time when you, disputatious, quarrelsome, contentious,\nlive wounding one another with the weapons of the tongue - at that\ntime no friendly act of body is offered your fellow Brahma-farers,\nboth in public and in private no friendly act of speech is offered your fellow Brahma-farers,\nboth in public and in private no friendly act of thought is offered your fellow Brahma-farers,\neither in public or in private."}, {"key": "mn48:5.5", "pali": "Atha kiñcarahi tumhe, moghapurisā,\nkiṁ jānantā kiṁ passantā bhaṇḍanajātā kalahajātā vivādāpannā aññamaññaṁ mukhasattīhi vitudantā viharatha,\nte na ceva aññamaññaṁ saññāpetha, na ca saññattiṁ upetha, na ca aññamaññaṁ nijjhāpetha, na ca nijjhattiṁ upetha?", "sujato": "So what then do you know and see, you futile men, that you behave in such a way?", "thanissaro": "Then what could you worthless men possibly know or see that you are given to arguing and quarreling and disputing,\nstabbing one another with weapons of the mouth?", "pts": "Therefore, knowing what, seeing what, is it that you, foolish men, disputatious,\nquarrelsome, contentious, live wounding one another with the weapons of the tongue?\nYou neither convince one another nor are convinced yourselves,\nneither do you win one another over nor are won over yourselves."}, {"key": "mn48:5.6", "pali": "Tañhi tumhākaṁ, moghapurisā, bhavissati dīgharattaṁ ahitāya dukkhāyā”ti.", "sujato": "This will be for your lasting harm and suffering.”", "thanissaro": "That will be to your long-term harm and suffering.”", "pts": "So this, foolish men, will be for a long time for your woe and sorrow.\""}]}, {"id": "6", "label": "Then the Buddha said to the mendicants:", "rows": [{"key": "mn48:6.1", "pali": "Atha kho bhagavā bhikkhū āmantesi:", "sujato": "Then the Buddha said to the mendicants:", "thanissaro": "Then the Blessed One addressed the monks:", "pts": "Then the Lord addressed the monks, saying:"}, {"key": "mn48:6.2", "pali": "“chayime, bhikkhave, dhammā sāraṇīyā piyakaraṇā garukaraṇā saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattanti.", "sujato": "“Mendicants, these six warm-hearted qualities make for fondness and respect,\nconducing to inclusion, harmony, and unity, without quarreling.", "thanissaro": "“Monks, these six are conditions that are conducive to amiability, that engender feelings of endearment,\nengender feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "\"Monks, these six things are to be remembered;\nmaking for affection, making for respect, they conduce to concord, to lack of contention, to harmony and unity."}, {"key": "mn48:6.3", "pali": "Katame cha?", "sujato": "What six?", "thanissaro": "Which six?", "pts": "What six?"}, {"key": "mn48:6.4", "pali": "Idha, bhikkhave, bhikkhuno mettaṁ kāyakammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca.", "sujato": "Firstly, a mendicant consistently treats their spiritual companions with bodily kindness, both in public and in private.", "thanissaro": "“There is the case where a monk is set on bodily acts of good will with regard to his companions in the holy life,\nto their faces & behind their backs.", "pts": "Herein, monks, a monk should offer his fellow Brahma-farers a friendly act of body both in public and in private."}, {"key": "mn48:6.5", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "This warm-hearted quality makes for fondness and respect,\nconducing to inclusion, harmony, and unity, without quarreling.", "thanissaro": "This is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity. ■"}, {"key": "mn48:6.6", "pali": "Puna caparaṁ, bhikkhave, bhikkhuno mettaṁ vacīkammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca.", "sujato": "Furthermore, a mendicant consistently treats their spiritual companions with verbal kindness …", "thanissaro": "“And further, the monk is set on verbal acts of good will with regard to his companions in the holy life,\nto their faces & behind their backs.", "pts": "And again, monks, a monk should offer a friendly act of speech both in public and in private."}, {"key": "mn48:6.7", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "", "thanissaro": "This, too, is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity. ■"}, {"key": "mn48:6.8", "pali": "Puna caparaṁ, bhikkhave, bhikkhuno mettaṁ manokammaṁ paccupaṭṭhitaṁ hoti sabrahmacārīsu āvi ceva raho ca.", "sujato": "Furthermore, a mendicant consistently treats their spiritual companions with mental kindness …", "thanissaro": "“And further, the monk is set on mental acts of good will with regard to his companions in the holy life,\nto their faces & behind their backs.", "pts": "And again, monks, a monk should offer a friendly act of thought both in public and in private."}, {"key": "mn48:6.9", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "", "thanissaro": "This, too, is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity. ■"}, {"key": "mn48:6.10", "pali": "Puna caparaṁ, bhikkhave, bhikkhu ye te lābhā dhammikā dhammaladdhā antamaso pattapariyāpannamattampi,\ntathārūpehi lābhehi appaṭivibhattabhogī hoti sīlavantehi sabrahmacārīhi sādhāraṇabhogī.", "sujato": "Furthermore, a mendicant shares without reservation any material things they have gained by legitimate means,\neven the food placed in the alms-bowl, using them in common with their ethical spiritual companions …", "thanissaro": "“And further, whatever righteous gains the monk may obtain in a righteous way—\neven if only the alms in his bowl—he does not consume them alone.\nHe consumes them after sharing them in common with his virtuous companions in the holy life.", "pts": "And again, monks, whatever those lawful acquisitions, lawfully acquired,\nif they be even but what is put into the begging bowl - a monk should be one to enjoy sharing such acquisitions,\nto enjoy them in common with his virtuous fellow Brahma-farers."}, {"key": "mn48:6.11", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "", "thanissaro": "This, too, is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This too is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity. ■"}, {"key": "mn48:6.12", "pali": "Puna caparaṁ, bhikkhave,\nbhikkhu yāni tāni sīlāni akhaṇḍāni acchiddāni asabalāni akammāsāni bhujissāni viññuppasatthāni aparāmaṭṭhāni\nsamādhisaṁvattanikāni tathārūpesu sīlesu sīlasāmaññagato viharati sabrahmacārīhi āvi ceva raho ca.", "sujato": "Furthermore, a mendicant lives according to the precepts shared with their spiritual companions,\nboth in public and in private.\nThose precepts are intact, impeccable, spotless, and unmarred, liberating,\npraised by sensible people, not mistaken, and leading to immersion. …", "thanissaro": "“And further—with reference to the virtues that are untorn, unbroken,\nunspotted, unsplattered, liberating, praised by the observant, ungrasped at,\nleading to concentration—the monk dwells with his virtue in tune with that of his companions in the holy life,\nto their faces & behind their backs.", "pts": "And again, monks, whatever those moral habits that are faultless, without flaw,\nspotless, without blemish, freeing, praised by wise men, untarnished,\nconducive to concentration - a monk should dwell united in virtues such as these with his fellow Brahma-farers,\nboth in public and in private."}, {"key": "mn48:6.13", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "", "thanissaro": "This, too, is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This too is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity. ■"}, {"key": "mn48:6.14", "pali": "Puna caparaṁ, bhikkhave,\nbhikkhu yāyaṁ diṭṭhi ariyā niyyānikā niyyāti takkarassa sammā dukkhakkhayāya\ntathārūpāya diṭṭhiyā diṭṭhisāmaññagato viharati sabrahmacārīhi āvi ceva raho ca.", "sujato": "Furthermore, a mendicant lives according to the view shared with their spiritual companions,\nboth in public and in private.\nThat view is noble and emancipating, and delivers one who practices it to the complete ending of suffering.", "thanissaro": "“And further—with reference to the view that is noble, leading outward,\nthat leads those who act in accordance with it to the right ending of suffering & stress—\nthe monk dwells with a view in tune with those of his companions in the holy life, to their faces & behind their backs.", "pts": "And again, monks, whatever view is ariyan, leading onwards,\nleading him who acts according to it to the complete destruction of anguish - a\nmonk should dwell united in a view such as this with his fellow Brahma-farers,\nboth in public and in private."}, {"key": "mn48:6.15", "pali": "Ayampi dhammo sāraṇīyo piyakaraṇo garukaraṇo saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattati.", "sujato": "This warm-hearted quality makes for fondness and respect,\nconducing to inclusion, harmony, and unity, without quarreling.", "thanissaro": "This, too, is a condition that is conducive to amiability, that engenders feelings of endearment,\nengenders feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "This too is a thing to be remembered, making for affection, making for respect,\nwhich conduces to concord, to lack of contention, harmony and unity."}, {"key": "mn48:6.16", "pali": "Ime kho, bhikkhave, cha sāraṇīyā dhammā piyakaraṇā garukaraṇā saṅgahāya avivādāya sāmaggiyā ekībhāvāya saṁvattanti.", "sujato": "These six warm-hearted qualities make for fondness and respect,\nconducing to inclusion, harmony, and unity, without quarreling.", "thanissaro": "“These are the six conditions that are conducive to amiability, that engender feelings of endearment,\nengender feelings of respect, leading to a sense of fellowship, a lack of disputes, harmony, & a state of unity.", "pts": "Monks, these are the six things to be remembered, making for affection,\nmaking for respect, which conduce to concord, to lack of contention, to harmony and unity."}]}, {"id": "7", "label": "Of these six warm-hearted qualities, the chief…", "rows": [{"key": "mn48:7.1", "pali": "Imesaṁ kho, bhikkhave,\nchannaṁ sāraṇīyānaṁ dhammānaṁ etaṁ aggaṁ etaṁ saṅgāhikaṁ etaṁ saṅghāṭanikaṁ—yadidaṁ\nyāyaṁ diṭṭhi ariyā niyyānikā niyyāti takkarassa sammā dukkhakkhayāya.", "sujato": "Of these six warm-hearted qualities, the chief is the view that is noble and emancipating,\nand delivers one who practices it to the complete ending of suffering.\nIt holds and binds everything together.", "thanissaro": "“Of these six conditions conducive to amiability, this is the summit, this the girding, this the kingpin:\nthe view that is noble, leading outward,\nthat leads those who act in accordance with it to the right ending of suffering & stress.", "pts": "And, monks, of these six things to be remembered, this is the topmost, this the roof-plate, this the dome,\nthat is to say whatever view is ariyan, leading onwards,\nleading him who acts according to it to the complete destruction of anguish."}, {"key": "mn48:7.2", "pali": "Seyyathāpi, bhikkhave, kūṭāgārassa etaṁ aggaṁ etaṁ saṅgāhikaṁ etaṁ saṅghāṭanikaṁ yadidaṁ kūṭaṁ;", "sujato": "It’s like a bungalow.\nThe roof-peak is the chief point, which holds and binds everything together.", "thanissaro": "Just as in a building with a ridged roof, this is the summit, this the girding, this the kingpin:\nthe ridge beam;", "pts": "As, monks, in a house with a peaked roof, this is the topmost, the roof-plate, the dome,\nthat is to say the peak, even so, monks, of these six things to be remembered, this is the topmost,"}, {"key": "mn48:7.3", "pali": "evameva kho, bhikkhave,\nimesaṁ channaṁ sāraṇīyānaṁ dhammānaṁ etaṁ aggaṁ etaṁ saṅgāhikaṁ etaṁ saṅghāṭanikaṁ\nyadidaṁ yāyaṁ diṭṭhi ariyā niyyānikā niyyāti takkarassa sammā dukkhakkhayāya.", "sujato": "In the same way, of these six warm-hearted qualities, the chief is the view that is noble and emancipating,\nand delivers one who practices it to the complete ending of suffering.\nIt holds and binds everything together.", "thanissaro": "in the same way, of these six conditions conducive to amiability,\nthis is the summit, this the girding, this the kingpin:\nthe view that is noble, leading outward,\nthat leads those who act in accordance with it to the right ending of suffering & stress.", "pts": "this the roof-plate, this the dome, that is to say whatever view is ariyan, leading onwards,\nleading him who acts according to it to the complete destruction of anguish."}]}, {"id": "8", "label": "And how does the view that is…", "rows": [{"key": "mn48:8.1", "pali": "Kathañca, bhikkhave, yāyaṁ diṭṭhi ariyā niyyānikā niyyāti takkarassa sammā dukkhakkhayāya?", "sujato": "And how does the view that is noble and emancipating lead one who practices it to the complete ending of suffering?", "thanissaro": "“And how is there the view that is noble, leading outward,\nthat leads those who act in accordance with it to the right ending of suffering & stress?", "pts": "And what, monks, is that view which is ariyan, leading onwards,\nand which leads him who acts according to it to the complete destruction of anguish?"}, {"key": "mn48:8.2", "pali": "Idha, bhikkhave, bhikkhu araññagato vā rukkhamūlagato vā suññāgāragato vā iti paṭisañcikkhati:", "sujato": "It’s when a mendicant has gone to a wilderness, or to the root of a tree, or to an empty hut, and reflects like this,", "thanissaro": "“There is the case where a monk, having gone to the wilderness,\nto the root of a tree, or to an empty dwelling, considers thus:", "pts": "Herein, monks, a monk who is forest-gone or gone to the root of a tree or gone to an empty place, reflects like this;\n'Now, have I a subjective obsession, not got rid of, owing to which I,\nif my mind were obsessed by it, could not know, could not see (things) as they really are?"}, {"key": "mn48:8.3", "pali": "‘atthi nu kho me taṁ pariyuṭṭhānaṁ ajjhattaṁ appahīnaṁ,\nyenāhaṁ pariyuṭṭhānena pariyuṭṭhitacitto yathābhūtaṁ nappajāneyyaṁ na passeyyan’ti?", "sujato": "‘Is there anything that I’m overcome with internally and haven’t given up,\nbecause of which I might not accurately know and see?’", "thanissaro": "‘Is there any internal subjugation unabandoned in me that, subjugated by which,\nmy subjugated mind would not know or see things as they have come to be?’", "pts": ""}, {"key": "mn48:8.4", "pali": "Sace, bhikkhave, bhikkhu kāmarāgapariyuṭṭhito hoti, pariyuṭṭhitacittova hoti.", "sujato": "If a mendicant is overcome with sensual desire, it’s their mind that’s overcome.", "thanissaro": "If a monk is subjugated by sensual passion, monks, then his mind is subjugated.", "pts": "If, monks, a monk is obsessed by addiction to sense-pleasures, to this extent is his mind obsessed."}, {"key": "mn48:8.5", "pali": "Sace, bhikkhave, bhikkhu byāpādapariyuṭṭhito hoti, pariyuṭṭhitacittova hoti.", "sujato": "If a mendicant is overcome with ill will,", "thanissaro": "If he is subjugated by ill will, then his mind is subjugated.", "pts": "If, monks, a monk is obsessed by malevolence, to this extent is his mind obsessed."}, {"key": "mn48:8.6", "pali": "Sace, bhikkhave, bhikkhu thinamiddhapariyuṭṭhito hoti, pariyuṭṭhitacittova hoti.", "sujato": "dullness and drowsiness,", "thanissaro": "If he is subjugated by sloth & torpor, then his mind is subjugated.", "pts": "If, monks, a monk is obsessed by sloth and torpor, to this extent is his mind obsessed."}, {"key": "mn48:8.7", "pali": "Sace, bhikkhave, bhikkhu uddhaccakukkuccapariyuṭṭhito hoti, pariyuṭṭhitacittova hoti.", "sujato": "restlessness and remorse,", "thanissaro": "If he is subjugated by restlessness & anxiety, then his mind is subjugated.", "pts": "If, monks, a monk is obsessed by restlessness and worry, to this extent is his mind obsessed."}, {"key": "mn48:8.8", "pali": "Sace, bhikkhave, bhikkhu vicikicchāpariyuṭṭhito hoti, pariyuṭṭhitacittova hoti.", "sujato": "doubt,", "thanissaro": "If he is subjugated by uncertainty, then his mind is subjugated.", "pts": "If, monks, a monk is obsessed by doubt, to this extent is his mind obsessed, to this extent is his mind obsessed."}, {"key": "mn48:8.9", "pali": "Sace, bhikkhave, bhikkhu idhalokacintāya pasuto hoti, pariyuṭṭhitacittova hoti.", "sujato": "pursuing speculation about this world,", "thanissaro": "If a monk is absorbed in speculation about this world, then his mind is subjugated.", "pts": "If, monks, a monk centres his thought on this world, to this extent is his mind obsessed."}, {"key": "mn48:8.10", "pali": "Sace, bhikkhave, bhikkhu paralokacintāya pasuto hoti, pariyuṭṭhitacittova hoti.", "sujato": "pursuing speculation about the next world,", "thanissaro": "If a monk is absorbed in speculation about the other world, then his mind is subjugated.", "pts": "If, monks, a monk centres his thought on the world beyond, to this extent is his mind obsessed."}, {"key": "mn48:8.11", "pali": "Sace, bhikkhave, bhikkhu bhaṇḍanajāto kalahajāto vivādāpanno aññamaññaṁ mukhasattīhi vitudanto viharati,\npariyuṭṭhitacittova hoti.", "sujato": "or fighting, quarreling, and disputing, continually wounding others with barbed words, it’s their mind that’s overcome.", "thanissaro": "If a monk is given to arguing and quarreling and disputing,\nstabbing others with weapons of the mouth, then his mind is subjugated.", "pts": "If, monks, a monk, disputatious, quarrelsome, contentious,\nlives wounding with the weapons of his tongue, to this extent is his mind obsessed. ■"}, {"key": "mn48:8.12", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:8.13", "pali": "‘natthi kho me taṁ pariyuṭṭhānaṁ ajjhattaṁ appahīnaṁ,\nyenāhaṁ pariyuṭṭhānena pariyuṭṭhitacitto yathābhūtaṁ nappajāneyyaṁ na passeyyaṁ.", "sujato": "‘There is nothing that I’m overcome with internally and haven’t given up,\nbecause of which I might not accurately know and see.", "thanissaro": "‘There is no subjugation unabandoned in me that, subjugated by which,\nmy subjugated mind would not know and see things as they have come to be.", "pts": "'I have no subjective obsession, not got rid of, owing to which I,\nif my mind were obsessed by it, could not know, could not see (things) as they really are;"}, {"key": "mn48:8.14", "pali": "Suppaṇihitaṁ me mānasaṁ saccānaṁ bodhāyā’ti.", "sujato": "My heart is properly disposed for awakening to the truths.’", "thanissaro": "My mind is well directed for awakening to the truths.’", "pts": "my thought is well directed towards awakening as to the truths.'"}, {"key": "mn48:8.15", "pali": "Idamassa paṭhamaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is the first knowledge they have achieved that is noble and transcendent,\nand is distinct from that of ordinary people.", "thanissaro": "This is the first knowledge attained by him that is noble, transcendent, not held in common with run-of-the-mill people.", "pts": "This is the first knowledge won by him, ariyan, transcendental, not in common with average men."}]}, {"id": "9", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:9.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, the ariyan disciple reflects thus:"}, {"key": "mn48:9.2", "pali": "‘imaṁ nu kho ahaṁ diṭṭhiṁ āsevanto bhāvento bahulīkaronto labhāmi paccattaṁ samathaṁ, labhāmi paccattaṁ nibbutin’ti?", "sujato": "‘When I develop, cultivate, and make much of this view, do I personally gain serenity and quenching?’", "thanissaro": "‘When I cultivate, develop, and pursue this view, do I personally obtain tranquility, do I personally obtain unbinding?’", "pts": "'While I am following, developing, maturing this view, I gain calm for myself, I gain quenchedness for myself.' ■"}, {"key": "mn48:9.3", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:9.4", "pali": "‘imaṁ kho ahaṁ diṭṭhiṁ āsevanto bhāvento bahulīkaronto labhāmi paccattaṁ samathaṁ, labhāmi paccattaṁ nibbutin’ti.", "sujato": "‘When I develop, cultivate, and make much of this view, I personally gain serenity and quenching.’", "thanissaro": "‘When I cultivate, develop, and pursue this view, I personally obtain tranquility, I personally obtain unbinding.’", "pts": "'While I am following, developing, maturing this view, I gain calm for myself, I gain quenchedness for myself."}, {"key": "mn48:9.5", "pali": "Idamassa dutiyaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is their second knowledge …", "thanissaro": "This is the second knowledge attained by him that is noble,\ntranscendent, not held in common with run-of-the-mill people.", "pts": "This is the second knowledge won by him, ariyan, transcendental, not in common with average men. ■"}]}, {"id": "10", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:10.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, an ariyan disciple reflects thus:"}, {"key": "mn48:10.2", "pali": "‘yathārūpāyāhaṁ diṭṭhiyā samannāgato,\natthi nu kho ito bahiddhā añño samaṇo vā brāhmaṇo vā tathārūpāya diṭṭhiyā samannāgato’ti?", "sujato": "‘Are there any ascetics or brahmins outside of the Buddhist community who have the same kind of view that I have?’", "thanissaro": "‘Is there, outside of this (Dhamma & Vinaya),\nany other contemplative or brahman endowed with the sort of view with which I am endowed?’", "pts": "'Is there another recluse or brahman - outside here - who is possessed of a view such as I am possessed of?'"}, {"key": "mn48:10.3", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:10.4", "pali": "‘yathārūpāyāhaṁ diṭṭhiyā samannāgato,\nnatthi ito bahiddhā añño samaṇo vā brāhmaṇo vā tathārūpāya diṭṭhiyā samannāgato’ti.", "sujato": "‘There are no ascetics or brahmins outside of the Buddhist community who have the same kind of view that I have.’", "thanissaro": "‘There is no other contemplative or brahman outside (the Dhamma &\nVinaya) endowed with the sort of view with which I am endowed.’", "pts": "'There is no other recluse or brahman - outside here - who is possessed of a view such as I am possessed of.'"}, {"key": "mn48:10.5", "pali": "Idamassa tatiyaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is their third knowledge …", "thanissaro": "This is the third knowledge attained by him that is noble, transcendent, not held in common with run-of-the-mill people.", "pts": "This is the third knowledge won by him, ariyan, transcendental, not in common with average men. ■"}]}, {"id": "11", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:11.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, the ariyan disciple reflects thus:"}, {"key": "mn48:11.2", "pali": "‘yathārūpāya dhammatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya dhammatāya samannāgato’ti.", "sujato": "‘Do I have the same nature as an individual accomplished in view?’", "thanissaro": "‘I am endowed with the character of a person consummate in view?’\nAnd what,", "pts": "'Am I too possessed of the kind of propriety a man is possessed of who is endowed with right view?'"}, {"key": "mn48:11.3", "pali": "Kathaṁrūpāya ca, bhikkhave, dhammatāya diṭṭhisampanno puggalo samannāgato?", "sujato": "And what, mendicants, is the nature of an individual accomplished in view?", "thanissaro": "monks, is the character of a person consummate in view?", "pts": "And what kind of propriety, monks, is a man possessed of who is endowed with (right) view?"}, {"key": "mn48:11.4", "pali": "Dhammatā esā, bhikkhave, diṭṭhisampannassa puggalassa:", "sujato": "This is the nature of an individual accomplished in view.", "thanissaro": "This is the character of a person consummate in view:", "pts": "This is propriety, monks, for a man endowed with (right) view:"}, {"key": "mn48:11.5", "pali": "kiñcāpi tathārūpiṁ āpattiṁ āpajjati, yathārūpāya āpattiyā vuṭṭhānaṁ paññāyati,\natha kho naṁ khippameva satthari vā viññūsu vā sabrahmacārīsu deseti vivarati uttānīkaroti;", "sujato": "Though they may fall into a kind of offense for which rehabilitation is possible,\nthey quickly disclose, clarify, and reveal it to the Teacher or a sensible spiritual companion.", "thanissaro": "Although he may commit some kind of offence for which a means of rehabilitation has been laid down,\nstill he immediately confesses, reveals, and discloses it to the Teacher or to observant companions in the holy life;", "pts": "Whatever kind of offence he falls into he makes known the removal of such an offence, for he confesses it,\ndiscloses it, declares it quickly to the Teacher or to intelligent fellow Brahma-farers;"}, {"key": "mn48:11.6", "pali": "desetvā vivaritvā uttānīkatvā āyatiṁ saṁvaraṁ āpajjati.", "sujato": "And having revealed it they restrain themselves in the future.", "thanissaro": "having done that, he undertakes restraint for the future.", "pts": "having confessed, disclosed and declared it, he comes to restraint in the future."}, {"key": "mn48:11.7", "pali": "Seyyathāpi, bhikkhave,\ndaharo kumāro mando uttānaseyyako hatthena vā pādena vā aṅgāraṁ akkamitvā khippameva paṭisaṁharati;", "sujato": "Suppose there was a little baby boy.\nIf he puts his hand or foot on a burning coal, he quickly pulls it back.", "thanissaro": "Just as a young, tender infant lying on his back,\nwhen he has hit a live ember with his hand or his foot, immediately draws back;", "pts": "Just as an innocent little baby lying on its back quickly draws\nback its hand or foot if it has touched a live ember - even so,"}, {"key": "mn48:11.8", "pali": "evameva kho, bhikkhave, dhammatā esā diṭṭhisampannassa puggalassa:", "sujato": "In the same way, this is the nature of an individual accomplished in view.", "thanissaro": "in the same way, this is the character of a person consummate in view:", "pts": "monks, this is propriety for a man endowed with (right) view:"}, {"key": "mn48:11.9", "pali": "kiñcāpi tathārūpiṁ āpattiṁ āpajjati yathārūpāya āpattiyā vuṭṭhānaṁ paññāyati,\natha kho naṁ khippameva satthari vā viññūsu vā sabrahmacārīsu deseti vivarati uttānīkaroti;", "sujato": "Though they may still fall into a kind of offense for which rehabilitation is possible,\nthey quickly reveal it to the Teacher or a sensible spiritual companion.", "thanissaro": "Although he may commit some kind of offence for which a means of rehabilitation has been laid down,\nstill he immediately confesses, reveals, and discloses it to the Teacher or to observant companions in the holy life;", "pts": "Whatever kind of offence he falls into he makes known the removal of such an offence, for he confesses it,\ndiscloses it, declares it quickly to the Teacher or to intelligent fellow Brahma-farers;"}, {"key": "mn48:11.10", "pali": "desetvā vivaritvā uttānīkatvā āyatiṁ saṁvaraṁ āpajjati.", "sujato": "And having revealed it they restrain themselves in the future.", "thanissaro": "having done that, he undertakes restraint for the future.", "pts": "having confessed, disclosed and declared it, he comes to restraint in the future."}, {"key": "mn48:11.11", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:11.12", "pali": "‘yathārūpāya dhammatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya dhammatāya samannāgato’ti.", "sujato": "‘I have the same nature as an individual accomplished in view.’", "thanissaro": "‘I am endowed with the character of a person consummate in view.’", "pts": "'I too am possessed of the kind of propriety which a man is possessed of who is endowed with (right) view.'"}, {"key": "mn48:11.13", "pali": "Idamassa catutthaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is their fourth knowledge …", "thanissaro": "This is the fourth knowledge attained by him that is noble,\ntranscendent, not held in common with run-of-the-mill people.", "pts": "This is the fourth knowledge won by him, ariyan, transcendental, not in common with average men. ■"}]}, {"id": "12", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:12.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, the ariyan disciple reflects thus:"}, {"key": "mn48:12.2", "pali": "‘yathārūpāya dhammatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya dhammatāya samannāgato’ti.", "sujato": "‘Do I have the same nature as an individual accomplished in view?’", "thanissaro": "‘I am endowed with the character of a person consummate in view?’", "pts": "'Am I too possessed of the kind of propriety a man is possessed of who is endowed with (right) view?'"}, {"key": "mn48:12.3", "pali": "Kathaṁrūpāya ca, bhikkhave, dhammatāya diṭṭhisampanno puggalo samannāgato?", "sujato": "And what, mendicants, is the nature of an individual accomplished in view?", "thanissaro": "And what, monks, is the character of a person consummate in view?", "pts": "And what kind of propriety, monks, is a man possessed of who is endowed with (right) view?"}, {"key": "mn48:12.4", "pali": "Dhammatā esā, bhikkhave, diṭṭhisampannassa puggalassa:", "sujato": "This is the nature of an individual accomplished in view.", "thanissaro": "This is the character of a person consummate in view:", "pts": "This is propriety, monks, for a man endowed with (right) view:"}, {"key": "mn48:12.5", "pali": "kiñcāpi yāni tāni sabrahmacārīnaṁ uccāvacāni kiṅkaraṇīyāni tattha ussukkaṁ āpanno hoti,\natha khvāssa tibbāpekkhā hoti adhisīlasikkhāya adhicittasikkhāya adhipaññāsikkhāya.", "sujato": "Though they might manage a diverse spectrum of duties for their spiritual companions,\nthey still feel a keen regard for the training in higher ethics, higher mind, and higher wisdom.", "thanissaro": "Although he may be active in the various affairs of his companions in the holy life,\nhe still has a keen regard for training in heightened virtue,\ntraining in heightened mind, & training in heightened discernment.", "pts": "If he is zealous concerning those manifold things which are to be done for fellow Brahma-farers,\nhe then becomes of strong aspiration for training in the higher moral habit,\nfor training in the higher thought, for training in the higher intuitive wisdom."}, {"key": "mn48:12.6", "pali": "Seyyathāpi, bhikkhave, gāvī taruṇavacchā thambañca ālumpati vacchakañca apacinati;", "sujato": "Suppose there was a cow with a baby calf.\nShe watches her calf devotedly as she grazes.", "thanissaro": "Just as a cow with a new calf watches after her calf all the while she is grazing on grass,", "pts": "Just as a cow with a young calf, while she is pulling the grass keeps an eye on the calf - even so,"}, {"key": "mn48:12.7", "pali": "evameva kho, bhikkhave, dhammatā esā diṭṭhisampannassa puggalassa:", "sujato": "In the same way, this is the nature of an individual accomplished in view.", "thanissaro": "in the same way, this is the character of a person consummate in view:", "pts": "monks, this is propriety for a man endowed with (right) view:"}, {"key": "mn48:12.8", "pali": "kiñcāpi yāni tāni sabrahmacārīnaṁ uccāvacāni kiṅkaraṇīyāni tattha ussukkaṁ āpanno hoti,\natha khvāssa tibbāpekkhā hoti adhisīlasikkhāya adhicittasikkhāya adhipaññāsikkhāya.", "sujato": "Though they might manage a diverse spectrum of duties for their spiritual companions,\nthey still feel a keen regard for the training in higher ethics, higher mind, and higher wisdom.", "thanissaro": "Although he may be active in the various affairs of his companions in the holy life,\nhe still has a keen regard for training in heightened virtue,\ntraining in heightened mind, & training in heightened discernment.", "pts": "If he is zealous concerning those manifold things which are to be done for fellow Brahma-farers,\nhe then becomes of strong aspiration for training in the higher moral habit,\nfor training in the higher thought, for training in the higher intuitive wisdom."}, {"key": "mn48:12.9", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:12.10", "pali": "‘yathārūpāya dhammatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya dhammatāya samannāgato’ti.", "sujato": "‘I have the same nature as an individual accomplished in view.’", "thanissaro": "‘I am endowed with the character of a person consummate in view.’", "pts": "'I too am possessed of the kind of propriety a man is possessed of who is endowed with (right) view.'"}, {"key": "mn48:12.11", "pali": "Idamassa pañcamaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is their fifth knowledge …", "thanissaro": "This is the fifth knowledge attained by him that is noble, transcendent, not held in common with run-of-the-mill people.", "pts": "This is the fifth knowledge won by him, ariyan, transcendental, not in common with average men."}]}, {"id": "13", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:13.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, the ariyan disciple reflects thus:"}, {"key": "mn48:13.2", "pali": "‘yathārūpāya balatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya balatāya samannāgato’ti.", "sujato": "‘Do I have the same strength as an individual accomplished in view?’", "thanissaro": "‘I am endowed with the strength of a person consummate in view?’", "pts": "'Am I too possessed of the kind of strength a man is possessed of who is endowed with (right) view?"}, {"key": "mn48:13.3", "pali": "Kathaṁrūpāya ca, bhikkhave, balatāya diṭṭhisampanno puggalo samannāgato?", "sujato": "And what, mendicants, is the strength of an individual accomplished in view?", "thanissaro": "And what, monks, is the strength of a person consummate in view?", "pts": "And what kind of strength, monks, is a man possessed of who is endowed with (right) view?"}, {"key": "mn48:13.4", "pali": "Balatā esā, bhikkhave,\ndiṭṭhisampannassa puggalassa yaṁ tathāgatappavedite dhammavinaye desiyamāne\naṭṭhiṁ katvā manasikatvā sabbacetasā samannāharitvā ohitasoto dhammaṁ suṇāti.", "sujato": "The strength of an individual accomplished in view is that,\nwhen the teaching and training proclaimed by the Realized One are being taught,\nthey pay attention, apply the mind, concentrate wholeheartedly, and actively listen to the teaching.", "thanissaro": "This is the strength of a person consummate in view:\nWhen the Dhamma & Vinaya proclaimed by the Tathāgata is being taught, he heeds it,\ngives it attention, engages it with all his mind, hears the Dhamma with eager ears.", "pts": "This is strength, monks, for a man endowed with (right) view:\nWhile Dhamma and discipline proclaimed by the Tathāgata are being taught, having applied himself,\npaying attention, concentrating with all the mind, he listens to Dhamma with ready ear."}, {"key": "mn48:13.5", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:13.6", "pali": "‘yathārūpāya balatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya balatāya samannāgato’ti.", "sujato": "‘I have the same strength as an individual accomplished in view.’", "thanissaro": "‘I am endowed with the strength of a person consummate in view.’", "pts": "'I too am possessed of the kind of strength a man is possessed of who is endowed with (right) view.'"}, {"key": "mn48:13.7", "pali": "Idamassa chaṭṭhaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is their sixth knowledge …", "thanissaro": "This is the sixth knowledge attained by him that is noble, transcendent, not held in common with run-of-the-mill people.", "pts": "This is the sixth knowledge won by him, ariyan, transcendental, not in common with average men. ■"}]}, {"id": "14", "label": "Furthermore, a noble disciple reflects,", "rows": [{"key": "mn48:14.1", "pali": "Puna caparaṁ, bhikkhave, ariyasāvako iti paṭisañcikkhati:", "sujato": "Furthermore, a noble disciple reflects,", "thanissaro": "“And further, the disciple of the noble ones considers thus:", "pts": "And again, monks, the ariyan disciple reflects thus:"}, {"key": "mn48:14.2", "pali": "‘yathārūpāya balatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya balatāya samannāgato’ti.", "sujato": "‘Do I have the same strength as an individual accomplished in view?’", "thanissaro": "‘I am endowed with the strength of a person consummate in view?’", "pts": "'Am I too possessed of the kind of strength a man is possessed of who is endowed with (right) view?"}, {"key": "mn48:14.3", "pali": "Kathaṁrūpāya ca, bhikkhave, balatāya diṭṭhisampanno puggalo samannāgato?", "sujato": "And what, mendicants, is the strength of an individual accomplished in view?", "thanissaro": "And what, monks, is the strength of a person consummate in view?", "pts": "And what kind of strength, monks, is a man possessed of who is endowed with (right) view?"}, {"key": "mn48:14.4", "pali": "Balatā esā, bhikkhave, diṭṭhisampannassa puggalassa yaṁ tathāgatappavedite dhammavinaye desiyamāne labhati atthavedaṁ,\nlabhati dhammavedaṁ, labhati dhammūpasaṁhitaṁ pāmojjaṁ.", "sujato": "The strength of an individual accomplished in view is that,\nwhen the teaching and training proclaimed by the Realized One are being taught,\nthey find inspiration in the meaning and the teaching, and find joy connected with the teaching.", "thanissaro": "This is the strength of a person consummate in view:\nWhen the Dhamma & Vinaya proclaimed by the Tathāgata is being taught, he gains understanding of the meaning,\ngains understanding of the Dhamma, gains gladness connected with the Dhamma.", "pts": "This is strength, monks, for a man endowed with (right) view:\nWhile Dhamma and discipline proclaimed by the Tathāgata are being taught, he acquires knowledge of the goal,\nhe acquires knowledge of Dhamma, he acquires the rapture that is connected with Dhamma."}, {"key": "mn48:14.5", "pali": "So evaṁ pajānāti:", "sujato": "They understand,", "thanissaro": "“He discerns that,", "pts": "He comprehends thus:"}, {"key": "mn48:14.6", "pali": "‘yathārūpāya balatāya diṭṭhisampanno puggalo samannāgato, ahampi tathārūpāya balatāya samannāgato’ti.", "sujato": "‘I have the same strength as an individual accomplished in view.’", "thanissaro": "‘I am endowed with the strength of a person consummate in view.’", "pts": "'I too am possessed of the kind of strength a man is possessed of who is endowed with (right) view.'"}, {"key": "mn48:14.7", "pali": "Idamassa sattamaṁ ñāṇaṁ adhigataṁ hoti ariyaṁ lokuttaraṁ asādhāraṇaṁ puthujjanehi.", "sujato": "This is the seventh knowledge they have achieved that is noble and transcendent,\nand is distinct from that of ordinary people.", "thanissaro": "This is the seventh knowledge attained by him that is noble,\ntranscendent, not held in common with run-of-the-mill people.", "pts": "This monks, is the seventh knowledge won by him, ariyan, transcendental, not in common with average men."}]}, {"id": "15", "label": "When a noble disciple has these seven…", "rows": [{"key": "mn48:15.1", "pali": "Evaṁ sattaṅgasamannāgatassa kho, bhikkhave, ariyasāvakassa dhammatā susamanniṭṭhā hoti sotāpattiphalasacchikiriyāya.", "sujato": "When a noble disciple has these seven factors,\nthey have properly investigated their nature through the realization of the fruit of stream-entry.", "thanissaro": "“A disciple of the noble ones thus endowed with seven factors has well\nexamined the character for the realization of the fruit of stream entry.", "pts": "Thus, monks, propriety has come to be well sought by an ariyan disciple who\nis possessed of seven factors for realising the fruit of stream-attainment."}, {"key": "mn48:15.2", "pali": "Evaṁ sattaṅgasamannāgato kho, bhikkhave, ariyasāvako sotāpattiphalasamannāgato hotī”ti.", "sujato": "A noble disciple with these seven factors has the fruit of stream-entry.”", "thanissaro": "A disciple of the noble ones thus endowed with seven factors is endowed with the fruit of stream entry.”", "pts": "Possessed of seven factors thus, monks, an ariyan disciple is possessed of the fruit of stream-attainment.\""}, {"key": "mn48:15.3", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said.", "thanissaro": "That is what the Blessed One said.", "pts": "Thus spoke the Lord."}, {"key": "mn48:15.4", "pali": "Attamanā te bhikkhū bhagavato bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the mendicants approved what the Buddha said.", "thanissaro": "Gratified, the monks delighted in the Blessed One’s words.", "pts": "Delighted, these monks rejoiced in what the Lord had said."}, {"key": "mn48:15.5", "pali": "Kosambiyasuttaṁ niṭṭhitaṁ aṭṭhamaṁ.", "sujato": "", "thanissaro": "", "pts": "Discourse at Kosambī"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn48:2.1": ["This is in reference to the notoriou
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

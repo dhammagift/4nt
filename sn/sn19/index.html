@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn19-pathamavagga", "label": "Paṭhamavagga — Chapter One", "children": [{"id": "sn19.1", "label": "SN 19.1 · A Skeleton", "children": [{"id": "sn19.1/0", "label": "Linked Discourses 19.1", "rows": [{"key": "sn19.1:0.1", "pali": "Saṁyutta Nikāya 19.1", "sujato": "Linked Discourses 19.1"}, {"key": "sn19.1:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.1:0.3", "pali": "Aṭṭhisutta", "sujato": "A Skeleton"}]}, {"id": "sn19.1/1", "label": "So I have heard.", "rows": [{"key": "sn19.1:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn19.1:1.2", "pali": "ekaṁ samayaṁ bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground."}, {"key": "sn19.1:1.3", "pali": "Tena kho pana samayena āyasmā ca lakkhaṇo āyasmā ca mahāmoggallāno gijjhakūṭe pabbate viharanti.", "sujato": "Now at that time Venerable Mark and Venerable Mahāmoggallāna were staying on the Vulture’s Peak Mountain."}, {"key": "sn19.1:1.4", "pali": "Atha kho āyasmā mahāmoggallāno pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya yenāyasmā lakkhaṇo tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ lakkhaṇaṁ etadavoca:", "sujato": "Then Mahāmoggallāna robed up in the morning and, taking his bowl and robe, went to Mark and said to him,"}, {"key": "sn19.1:1.5", "pali": "“āyāmāvuso lakkhaṇa, rājagahaṁ piṇḍāya pavisissāmā”ti.", "sujato": "“Come, Reverend Mark, let’s enter Rājagaha for alms.”"}, {"key": "sn19.1:1.6", "pali": "“Evamāvuso”ti kho āyasmā lakkhaṇo āyasmato mahāmoggallānassa paccassosi.", "sujato": "“Yes, reverend,” Mark replied."}, {"key": "sn19.1:1.7", "pali": "Atha kho āyasmā mahāmoggallāno gijjhakūṭā pabbatā orohanto aññatarasmiṁ padese sitaṁ pātvākāsi.", "sujato": "As Mahāmoggallāna was descending from Vulture’s Peak Mountain he smiled at a certain spot."}, {"key": "sn19.1:1.8", "pali": "Atha kho āyasmā lakkhaṇo āyasmantaṁ mahāmoggallānaṁ etadavoca:", "sujato": "So Lakkhaṇa said to Mahāmoggallāna,"}, {"key": "sn19.1:1.9", "pali": "“ko nu kho, āvuso moggallāna, hetu ko paccayo sitassa pātukammāyā”ti?", "sujato": "“What is the cause, Reverend Moggallāna, what is the reason you smiled?”"}, {"key": "sn19.1:1.10", "pali": "“Akālo kho, āvuso lakkhaṇa, etassa pañhassa.", "sujato": "“Reverend Mark, it’s the wrong time for this question."}, {"key": "sn19.1:1.11", "pali": "Bhagavato maṁ santike etaṁ pañhaṁ pucchā”ti.", "sujato": "Ask me when we’re in the Buddha’s presence.”"}]}, {"id": "sn19.1/2", "label": "Then Mark and Mahāmoggallāna wandered for alms…", "rows": [{"key": "sn19.1:2.1", "pali": "Atha kho āyasmā ca lakkhaṇo āyasmā ca mahāmoggallāno rājagahe piṇḍāya\ncaritvā pacchābhattaṁ piṇḍapātapaṭikkantā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinno kho āyasmā lakkhaṇo āyasmantaṁ mahāmoggallānaṁ etadavoca:", "sujato": "Then Mark and Mahāmoggallāna wandered for alms in Rājagaha.\nAfter the meal, on their return from almsround, they went to the Buddha, bowed, and sat down to one side.\nMark said to Mahāmoggallāna:"}, {"key": "sn19.1:2.2", "pali": "“idhāyasmā mahāmoggallāno gijjhakūṭā pabbatā orohanto aññatarasmiṁ padese sitaṁ pātvākāsi.", "sujato": "“Just now, as Mahāmoggallāna was descending from Vulture’s Peak Mountain he smiled at a certain spot."}, {"key": "sn19.1:2.3", "pali": "Ko nu kho, āvuso moggallāna, hetu ko paccayo sitassa pātukammāyā”ti?", "sujato": "What is the cause, Reverend Moggallāna, what is the reason you smiled?”"}]}, {"id": "sn19.1/3", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.1:3.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ aṭṭhikasaṅkhalikaṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a skeleton flying through the air."}, {"key": "sn19.1:3.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā phāsuḷantarikāhi vitudenti vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing it, pecking, clawing, and stabbing it in the ribs"}, {"key": "sn19.1:3.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti.", "sujato": "as it screeched in pain."}, {"key": "sn19.1:3.4", "pali": "Tassa mayhaṁ, āvuso, etadahosi:", "sujato": "It occurred to me:"}, {"key": "sn19.1:3.5", "pali": "‘acchariyaṁ vata bho, abbhutaṁ vata bho.", "sujato": "‘Oh lord, how incredible, how amazing!"}, {"key": "sn19.1:3.6", "pali": "Evarūpopi nāma satto bhavissati.", "sujato": "That there can be such a sentient being,"}, {"key": "sn19.1:3.7", "pali": "Evarūpopi nāma yakkho bhavissati.", "sujato": "such a spirit,"}, {"key": "sn19.1:3.8", "pali": "Evarūpopi nāma attabhāvapaṭilābho bhavissatī’”ti.", "sujato": "such an incarnation!’”"}]}, {"id": "sn19.1/4", "label": "Then the Buddha said to the mendicants:", "rows": [{"key": "sn19.1:4.1", "pali": "Atha kho bhagavā bhikkhū āmantesi:", "sujato": "Then the Buddha said to the mendicants:"}, {"key": "sn19.1:4.2", "pali": "“cakkhubhūtā vata, bhikkhave, sāvakā viharanti;", "sujato": "“Mendicants, there are disciples who live full of vision and knowledge,"}, {"key": "sn19.1:4.3", "pali": "ñāṇabhūtā vata, bhikkhave, sāvakā viharanti, yatra hi nāma sāvako evarūpaṁ ñassati vā dakkhati vā sakkhiṁ vā karissati.", "sujato": "since a disciple knows, sees, and witnesses such a thing."}, {"key": "sn19.1:4.4", "pali": "Pubbeva me so, bhikkhave, satto diṭṭho ahosi, api cāhaṁ na byākāsiṁ.", "sujato": "Formerly, I too saw that being, but I did not speak of it."}, {"key": "sn19.1:4.5", "pali": "Ahañcetaṁ byākareyyaṁ, pare ca me na saddaheyyuṁ.", "sujato": "For if I had spoken of it others would not have believed me,"}, {"key": "sn19.1:4.6", "pali": "Ye me na saddaheyyuṁ, tesaṁ taṁ assa dīgharattaṁ ahitāya dukkhāya.", "sujato": "which would be for their lasting harm and suffering."}, {"key": "sn19.1:4.7", "pali": "Eso, bhikkhave, satto imasmiṁyeva rājagahe goghātako ahosi.", "sujato": "That being used to be a cattle butcher right here in Rājagaha."}, {"key": "sn19.1:4.8", "pali": "So tassa kammassa vipākena bahūni vassāni bahūni vassasatāni bahūni vassasahassāni bahūni vassasatasahassāni\nniraye paccitvā tasseva kammassa vipākāvasesena evarūpaṁ attabhāvapaṭilābhaṁ paṭisaṁvedayatī”ti.", "sujato": "As a result of that deed he burned in hell for many years,\nmany hundreds, many thousands, many hundreds of thousands of years.\nNow he experiences the residual result of that deed in such an incarnation.”"}, {"key": "sn19.1:4.9", "pali": "(Sabbesaṁ suttantānaṁ eseva peyyālo.)", "sujato": "(Tell all these discourses in full like this.)"}, {"key": "sn19.1:4.10", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn19.2", "label": "SN 19.2 · A Piece of Meat", "children": [{"id": "sn19.2/0", "label": "Linked Discourses 19.2", "rows": [{"key": "sn19.2:0.1", "pali": "Saṁyutta Nikāya 19.2", "sujato": "Linked Discourses 19.2"}, {"key": "sn19.2:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.2:0.3", "pali": "Pesisutta", "sujato": "A Piece of Meat"}]}, {"id": "sn19.2/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.2:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ maṁsapesiṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a scrap of meat flying through the air."}, {"key": "sn19.2:1.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing it, pecking and clawing"}, {"key": "sn19.2:1.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as it screeched in pain. …” …"}, {"key": "sn19.2:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe goghātako ahosi …pe….", "sujato": "“That being used to be a cattle butcher right here in Rājagaha. …”"}, {"key": "sn19.2:1.5", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn19.3", "label": "SN 19.3 · A Piece of Flesh", "children": [{"id": "sn19.3/0", "label": "Linked Discourses 19.3", "rows": [{"key": "sn19.3:0.1", "pali": "Saṁyutta Nikāya 19.3", "sujato": "Linked Discourses 19.3"}, {"key": "sn19.3:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.3:0.3", "pali": "Piṇḍasutta", "sujato": "A Piece of Flesh"}]}, {"id": "sn19.3/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.3:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ maṁsapiṇḍaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a piece of flesh flying through the air."}, {"key": "sn19.3:1.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing it, pecking and clawing"}, {"key": "sn19.3:1.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as it screeched in pain. …” …"}, {"key": "sn19.3:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe sākuṇiko ahosi …pe….", "sujato": "“That being used to be a bird hunter right here in Rājagaha. …”"}, {"key": "sn19.3:1.5", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn19.4", "label": "SN 19.4 · A Flayed Man", "children": [{"id": "sn19.4/0", "label": "Linked Discourses 19.4", "rows": [{"key": "sn19.4:0.1", "pali": "Saṁyutta Nikāya 19.4", "sujato": "Linked Discourses 19.4"}, {"key": "sn19.4:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.4:0.3", "pali": "Nicchavisutta", "sujato": "A Flayed Man"}]}, {"id": "sn19.4/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.4:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ nicchaviṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a flayed man flying through the air."}, {"key": "sn19.4:1.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing it, pecking and clawing"}, {"key": "sn19.4:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.4:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe orabbhiko ahosi …pe….", "sujato": "“That being used to be a sheep butcher right here in Rājagaha. …”"}, {"key": "sn19.4:1.5", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn19.5", "label": "SN 19.5 · Sword Hairs", "children": [{"id": "sn19.5/0", "label": "Linked Discourses 19.5", "rows": [{"key": "sn19.5:0.1", "pali": "Saṁyutta Nikāya 19.5", "sujato": "Linked Discourses 19.5"}, {"key": "sn19.5:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.5:0.3", "pali": "Asilomasutta", "sujato": "Sword Hairs"}]}, {"id": "sn19.5/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.5:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ asilomaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man whose body hairs were swords flying through the air."}, {"key": "sn19.5:1.2", "pali": "Tassa te asī uppatitvā uppatitvā tasseva kāye nipatanti.", "sujato": "And those swords kept rising up and falling on his body"}, {"key": "sn19.5:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.5:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe sūkariko ahosi …pe….", "sujato": "“That being used to be a pig butcher right here in Rājagaha. …”"}, {"key": "sn19.5:1.5", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn19.6", "label": "SN 19.6 · Spear Hairs", "children": [{"id": "sn19.6/0", "label": "Linked Discourses 19.6", "rows": [{"key": "sn19.6:0.1", "pali": "Saṁyutta Nikāya 19.6", "sujato": "Linked Discourses 19.6"}, {"key": "sn19.6:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.6:0.3", "pali": "Sattisutta", "sujato": "Spear Hairs"}]}, {"id": "sn19.6/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.6:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ sattilomaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man whose body hairs were spears flying through the air."}, {"key": "sn19.6:1.2", "pali": "Tassa tā sattiyo uppatitvā uppatitvā tasseva kāye nipatanti.", "sujato": "And those spears kept rising up and falling on his body"}, {"key": "sn19.6:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.6:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe māgaviko ahosi …pe….", "sujato": "“That being used to be a deer hunter right here in Rājagaha. …”"}, {"key": "sn19.6:1.5", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn19.7", "label": "SN 19.7 · Arrow Hairs", "children": [{"id": "sn19.7/0", "label": "Linked Discourses 19.7", "rows": [{"key": "sn19.7:0.1", "pali": "Saṁyutta Nikāya 19.7", "sujato": "Linked Discourses 19.7"}, {"key": "sn19.7:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.7:0.3", "pali": "Usulomasutta", "sujato": "Arrow Hairs"}]}, {"id": "sn19.7/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.7:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ usulomaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man whose body hairs were arrows flying through the air."}, {"key": "sn19.7:1.2", "pali": "Tassa te usū uppatitvā uppatitvā tasseva kāye nipatanti.", "sujato": "And those arrows kept rising up and falling on his body"}, {"key": "sn19.7:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.7:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe kāraṇiko ahosi …pe….", "sujato": "“That being used to be a punisher right here in Rājagaha. …”"}, {"key": "sn19.7:1.5", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn19.8", "label": "SN 19.8 · Needle Hairs", "children": [{"id": "sn19.8/0", "label": "Linked Discourses 19.8", "rows": [{"key": "sn19.8:0.1", "pali": "Saṁyutta Nikāya 19.8", "sujato": "Linked Discourses 19.8"}, {"key": "sn19.8:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.8:0.3", "pali": "Sūcilomasutta", "sujato": "Needle Hairs"}]}, {"id": "sn19.8/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.8:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ sūcilomaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man whose body hairs were needles flying through the air."}, {"key": "sn19.8:1.2", "pali": "Tassa tā sūciyo uppatitvā uppatitvā tasseva kāye nipatanti.", "sujato": "And those needles kept rising up and falling on his body"}, {"key": "sn19.8:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.8:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe sūto ahosi …pe….", "sujato": "“That being used to be an equerry right here in Rājagaha. …”"}, {"key": "sn19.8:1.5", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn19.9", "label": "SN 19.9 · Needle Hairs (2nd)", "children": [{"id": "sn19.9/0", "label": "Linked Discourses 19.9", "rows": [{"key": "sn19.9:0.1", "pali": "Saṁyutta Nikāya 19.9", "sujato": "Linked Discourses 19.9"}, {"key": "sn19.9:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.9:0.3", "pali": "Dutiyasūcilomasutta", "sujato": "Needle Hairs (2nd)"}]}, {"id": "sn19.9/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.9:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ sūcilomaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man whose body hairs were needles flying through the air."}, {"key": "sn19.9:1.2", "pali": "Tassa tā sūciyo sīse pavisitvā mukhato nikkhamanti;", "sujato": "The needles bored into his head and out his mouth,"}, {"key": "sn19.9:1.3", "pali": "mukhe pavisitvā urato nikkhamanti;", "sujato": "into his mouth and out his chest,"}, {"key": "sn19.9:1.4", "pali": "ure pavisitvā udarato nikkhamanti;", "sujato": "into his chest and out his belly,"}, {"key": "sn19.9:1.5", "pali": "udare pavisitvā ūrūhi nikkhamanti;", "sujato": "into his belly and out his thighs,"}, {"key": "sn19.9:1.6", "pali": "ūrūsu pavisitvā jaṅghāhi nikkhamanti;", "sujato": "into his thighs and out his calves,"}, {"key": "sn19.9:1.7", "pali": "jaṅghāsu pavisitvā pādehi nikkhamanti;", "sujato": "and into his calves and out his feet."}, {"key": "sn19.9:1.8", "pali": "so sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "And he screamed in pain. …” …"}, {"key": "sn19.9:1.9", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe sūcako ahosi …pe….", "sujato": "“That being used to be an informant right here in Rājagaha. …”"}, {"key": "sn19.9:1.10", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn19.10", "label": "SN 19.10 · Pot Balls", "children": [{"id": "sn19.10/0", "label": "Linked Discourses 19.10", "rows": [{"key": "sn19.10:0.1", "pali": "Saṁyutta Nikāya 19.10", "sujato": "Linked Discourses 19.10"}, {"key": "sn19.10:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn19.10:0.3", "pali": "Kumbhaṇḍasutta", "sujato": "Pot Balls"}]}, {"id": "sn19.10/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.10:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ kumbhaṇḍaṁ purisaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a man with testicles big as pots flying through the air."}, {"key": "sn19.10:1.2", "pali": "So gacchantopi teva aṇḍe khandhe āropetvā gacchati.", "sujato": "When he was walking he had to lift his testicles on to his shoulder."}, {"key": "sn19.10:1.3", "pali": "Nisīdantopi tesveva aṇḍesu nisīdati.", "sujato": "And when he sat down, he sat right on them."}, {"key": "sn19.10:1.4", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing him, pecking and clawing"}, {"key": "sn19.10:1.5", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.10:1.6", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe gāmakūṭako ahosi …pe….", "sujato": "“That being used to be a corrupt village head right here in Rājagaha. …”"}, {"key": "sn19.10:1.7", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn19.10:1.8", "pali": "Paṭhamo vaggo.", "sujato": ""}]}, {"id": "sn19.10/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn19.10:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn19.10:2.1", "pali": "Aṭṭhi pesi ubho gāvaghātakā,", "sujato": ""}, {"key": "sn19.10:2.2", "pali": "Piṇḍo sākuṇiyo nicchavorabbhi;", "sujato": ""}, {"key": "sn19.10:2.3", "pali": "Asi sūkariko sattimāgavi,", "sujato": ""}, {"key": "sn19.10:2.4", "pali": "Usu kāraṇiko sūci sārathi;", "sujato": ""}, {"key": "sn19.10:2.5", "pali": "Yo ca sibbiyati sūcako hi so,", "sujato": ""}, {"key": "sn19.10:2.6", "pali": "Aṇḍabhāri ahu gāmakūṭakoti.", "sujato": ""}]}]}]}, {"id": "sn19-dutiyavagga", "label": "Dutiyavagga — Chapter Two", "children": [{"id": "sn19.11", "label": "SN 19.11 · Over His Head", "children": [{"id": "sn19.11/0", "label": "Linked Discourses 19.11", "rows": [{"key": "sn19.11:0.1", "pali": "Saṁyutta Nikāya 19.11", "sujato": "Linked Discourses 19.11"}, {"key": "sn19.11:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.11:0.3", "pali": "Sasīsakasutta", "sujato": "Over His Head"}]}, {"id": "sn19.11/1", "label": "So I have heard.", "rows": [{"key": "sn19.11:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn19.11:1.2", "pali": "ekaṁ samayaṁ rājagahe veḷuvane.", "sujato": "At one time near Rājagaha in the Bamboo Grove …"}, {"key": "sn19.11:1.3", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ purisaṁ gūthakūpe sasīsakaṁ nimuggaṁ …pe…", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a man sunk over his head in a sewer. …” …"}, {"key": "sn19.11:1.4", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe pāradāriko ahosi …pe….", "sujato": "“That being used to be an adulterer right here in Rājagaha. …”"}, {"key": "sn19.11:1.5", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn19.12", "label": "SN 19.12 · A Dung Eater", "children": [{"id": "sn19.12/0", "label": "Linked Discourses 19.12", "rows": [{"key": "sn19.12:0.1", "pali": "Saṁyutta Nikāya 19.12", "sujato": "Linked Discourses 19.12"}, {"key": "sn19.12:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.12:0.3", "pali": "Gūthakhādasutta", "sujato": "A Dung Eater"}]}, {"id": "sn19.12/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.12:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ purisaṁ gūthakūpe nimuggaṁ ubhohi hatthehi gūthaṁ khādantaṁ …pe…", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a man sunk in a sewer,\neating dung with both hands. …” …"}, {"key": "sn19.12:1.2", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe duṭṭhabrāhmaṇo ahosi.", "sujato": "“That being used to be a nasty brahmin right here in Rājagaha."}, {"key": "sn19.12:1.3", "pali": "So kassapassa sammāsambuddhassa pāvacane bhikkhusaṅghaṁ bhattena nimantetvā doṇiyo gūthassa pūrāpetvā etadavoca—", "sujato": "In the time of the Buddha Kassapa’s dispensation he invited the Saṅgha of mendicants for a meal.\nHe filled a trough with dung and said:"}, {"key": "sn19.12:1.4", "pali": "aho bhonto yāvadatthaṁ bhuñjantu ceva harantu cā’ti …pe….", "sujato": "‘My good men, eat as much as you like, and take what’s left.’ …”"}, {"key": "sn19.12:1.5", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn19.13", "label": "SN 19.13 · A Flayed Woman", "children": [{"id": "sn19.13/0", "label": "Linked Discourses 19.13", "rows": [{"key": "sn19.13:0.1", "pali": "Saṁyutta Nikāya 19.13", "sujato": "Linked Discourses 19.13"}, {"key": "sn19.13:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.13:0.3", "pali": "Nicchavitthisutta", "sujato": "A Flayed Woman"}]}, {"id": "sn19.13/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.13:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ nicchaviṁ itthiṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a flayed woman flying through the air."}, {"key": "sn19.13:1.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing her, pecking and clawing"}, {"key": "sn19.13:1.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as she screamed in pain. …” …"}, {"key": "sn19.13:1.4", "pali": "esā, bhikkhave, itthī imasmiṁyeva rājagahe aticārinī ahosi …pe….", "sujato": "“That woman used to be an adulteress right here in Rājagaha. …”"}, {"key": "sn19.13:1.5", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn19.14", "label": "SN 19.14 · A Fishwife", "children": [{"id": "sn19.14/0", "label": "Linked Discourses 19.14", "rows": [{"key": "sn19.14:0.1", "pali": "Saṁyutta Nikāya 19.14", "sujato": "Linked Discourses 19.14"}, {"key": "sn19.14:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.14:0.3", "pali": "Maṅgulitthisutta", "sujato": "A Fishwife"}]}, {"id": "sn19.14/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.14:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ itthiṁ duggandhaṁ maṅguliṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend,\nas I was descending from Vulture’s Peak Mountain I saw a woman stinking and dingy as a catfish flying through the air."}, {"key": "sn19.14:1.2", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing her, pecking and clawing"}, {"key": "sn19.14:1.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as she screamed in pain. …” …"}, {"key": "sn19.14:1.4", "pali": "esā, bhikkhave, itthī imasmiṁyeva rājagahe ikkhaṇikā ahosi …pe….", "sujato": "“That woman used to be a sorceress right here in Rājagaha. …”"}, {"key": "sn19.14:1.5", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn19.15", "label": "SN 19.15 · A Sweltering Woman", "children": [{"id": "sn19.15/0", "label": "Linked Discourses 19.15", "rows": [{"key": "sn19.15:0.1", "pali": "Saṁyutta Nikāya 19.15", "sujato": "Linked Discourses 19.15"}, {"key": "sn19.15:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.15:0.3", "pali": "Okilinīsutta", "sujato": "A Sweltering Woman"}]}, {"id": "sn19.15/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.15:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ itthiṁ uppakkaṁ okiliniṁ okiriniṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a scorched woman,\nsooty and sweaty, flying through the air,"}, {"key": "sn19.15:1.2", "pali": "Sā sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as she screamed in pain. …” …"}, {"key": "sn19.15:1.3", "pali": "esā, bhikkhave, itthī kaliṅgassa rañño aggamahesī ahosi.", "sujato": "“That woman used to be the king of Kaliṅga’s chief queen."}, {"key": "sn19.15:1.4", "pali": "Sā issāpakatā sapattiṁ aṅgārakaṭāhena okiri …pe….", "sujato": "She was of jealous nature, and poured a brazier of hot coals over her co-wife. …” …"}, {"key": "sn19.15:1.5", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn19.16", "label": "SN 19.16 · A Headless Trunk", "children": [{"id": "sn19.16/0", "label": "Linked Discourses 19.16", "rows": [{"key": "sn19.16:0.1", "pali": "Saṁyutta Nikāya 19.16", "sujato": "Linked Discourses 19.16"}, {"key": "sn19.16:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.16:0.3", "pali": "Asīsakasutta", "sujato": "A Headless Trunk"}]}, {"id": "sn19.16/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.16:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ asīsakaṁ kabandhaṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a headless trunk flying through the air."}, {"key": "sn19.16:1.2", "pali": "Tassa ure akkhīni ceva honti mukhañca.", "sujato": "Its eyes and mouth were on its chest."}, {"key": "sn19.16:1.3", "pali": "Tamenaṁ gijjhāpi kākāpi kulalāpi anupatitvā anupatitvā vitacchenti virājenti.", "sujato": "Vultures, crows, and hawks kept chasing it, pecking and clawing"}, {"key": "sn19.16:1.4", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as it screamed in pain. …” …"}, {"key": "sn19.16:1.5", "pali": "eso, bhikkhave, satto imasmiṁyeva rājagahe hāriko nāma coraghātako ahosi …pe….", "sujato": "“That being used to be an executioner named Taker right here in Rājagaha. …”"}, {"key": "sn19.16:1.6", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn19.17", "label": "SN 19.17 · A Bad Monk", "children": [{"id": "sn19.17/0", "label": "Linked Discourses 19.17", "rows": [{"key": "sn19.17:0.1", "pali": "Saṁyutta Nikāya 19.17", "sujato": "Linked Discourses 19.17"}, {"key": "sn19.17:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.17:0.3", "pali": "Pāpabhikkhusutta", "sujato": "A Bad Monk"}]}, {"id": "sn19.17/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.17:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ bhikkhuṁ vehāsaṁ gacchantaṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a monk flying through the air."}, {"key": "sn19.17:1.2", "pali": "Tassa saṅghāṭipi ādittā sampajjalitā sajotibhūtā, pattopi āditto sampajjalito sajotibhūto,\nkāyabandhanampi ādittaṁ sampajjalitaṁ sajotibhūtaṁ, kāyopi āditto sampajjalito sajotibhūto.", "sujato": "His outer robe, bowl, belt, and body were burning, blazing, and glowing"}, {"key": "sn19.17:1.3", "pali": "So sudaṁ aṭṭassaraṁ karoti …pe…", "sujato": "as he screamed in pain. …” …"}, {"key": "sn19.17:1.4", "pali": "eso, bhikkhave, bhikkhu kassapassa sammāsambuddhassa pāvacane pāpabhikkhu ahosi …pe….", "sujato": "“That monk used to be a bad monk in the time of Buddha Kassapa’s dispensation. …”"}, {"key": "sn19.17:1.5", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn19.18", "label": "SN 19.18 · A Bad Nun", "children": [{"id": "sn19.18/0", "label": "Linked Discourses 19.18", "rows": [{"key": "sn19.18:0.1", "pali": "Saṁyutta Nikāya 19.18", "sujato": "Linked Discourses 19.18"}, {"key": "sn19.18:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.18:0.3", "pali": "Pāpabhikkhunīsutta", "sujato": "A Bad Nun"}]}, {"id": "sn19.18/1", "label": "“I saw a nun flying through the…", "rows": [{"key": "sn19.18:1.1", "pali": "“Addasaṁ bhikkhuniṁ vehāsaṁ gacchantiṁ.", "sujato": "“I saw a nun flying through the air."}, {"key": "sn19.18:1.2", "pali": "Tassā saṅghāṭipi ādittā …pe…", "sujato": "Her outer robe was burning …” …"}, {"key": "sn19.18:1.3", "pali": "pāpabhikkhunī ahosi …pe….", "sujato": "“She used to be a bad nun …”"}, {"key": "sn19.18:1.4", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn19.19", "label": "SN 19.19 · A Bad Trainee Nun", "children": [{"id": "sn19.19/0", "label": "Linked Discourses 19.19", "rows": [{"key": "sn19.19:0.1", "pali": "Saṁyutta Nikāya 19.19", "sujato": "Linked Discourses 19.19"}, {"key": "sn19.19:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.19:0.3", "pali": "Pāpasikkhamānasutta", "sujato": "A Bad Trainee Nun"}]}, {"id": "sn19.19/1", "label": "“I saw a trainee nun flying through…", "rows": [{"key": "sn19.19:1.1", "pali": "“Addasaṁ sikkhamānaṁ vehāsaṁ gacchantiṁ.", "sujato": "“I saw a trainee nun flying through the air."}, {"key": "sn19.19:1.2", "pali": "Tassā saṅghāṭipi ādittā …pe…", "sujato": "Her outer robe was burning …” …"}, {"key": "sn19.19:1.3", "pali": "pāpasikkhamānā ahosi …pe….", "sujato": "“She used to be a bad trainee nun …”"}, {"key": "sn19.19:1.4", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn19.20", "label": "SN 19.20 · A Bad Novice Monk", "children": [{"id": "sn19.20/0", "label": "Linked Discourses 19.20", "rows": [{"key": "sn19.20:0.1", "pali": "Saṁyutta Nikāya 19.20", "sujato": "Linked Discourses 19.20"}, {"key": "sn19.20:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.20:0.3", "pali": "Pāpasāmaṇerasutta", "sujato": "A Bad Novice Monk"}]}, {"id": "sn19.20/1", "label": "“I saw a novice monk flying through…", "rows": [{"key": "sn19.20:1.1", "pali": "“Addasaṁ sāmaṇeraṁ vehāsaṁ gacchantaṁ.", "sujato": "“I saw a novice monk flying through the air."}, {"key": "sn19.20:1.2", "pali": "Tassa saṅghāṭipi ādittā …pe…", "sujato": "His outer robe was burning …” …"}, {"key": "sn19.20:1.3", "pali": "pāpasāmaṇero ahosi …pe….", "sujato": "“He used to be a bad novice monk …”"}, {"key": "sn19.20:1.4", "pali": "Dasamaṁ.", "sujato": ""}]}]}, {"id": "sn19.21", "label": "SN 19.21 · A Bad Novice Nun", "children": [{"id": "sn19.21/0", "label": "Linked Discourses 19.21", "rows": [{"key": "sn19.21:0.1", "pali": "Saṁyutta Nikāya 19.21", "sujato": "Linked Discourses 19.21"}, {"key": "sn19.21:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn19.21:0.3", "pali": "Pāpasāmaṇerīsutta", "sujato": "A Bad Novice Nun"}]}, {"id": "sn19.21/1", "label": "“Just now, reverend, as I was descending…", "rows": [{"key": "sn19.21:1.1", "pali": "“Idhāhaṁ, āvuso, gijjhakūṭā pabbatā orohanto addasaṁ sāmaṇeriṁ vehāsaṁ gacchantiṁ.", "sujato": "“Just now, reverend, as I was descending from Vulture’s Peak Mountain I saw a novice nun flying through the air."}, {"key": "sn19.21:1.2", "pali": "Tassā saṅghāṭipi ādittā sampajjalitā sajotibhūtā, pattopi āditto sampajjalito sajotibhūto,\nkāyabandhanampi ādittaṁ sampajjalitaṁ sajotibhūtaṁ, kāyopi āditto sampajjalito sajotibhūto.", "sujato": "Her outer robe, bowl, belt, and body were burning, blazing, and glowing"}, {"key": "sn19.21:1.3", "pali": "Sā sudaṁ aṭṭassaraṁ karoti.", "sujato": "as she screamed in pain."}, {"key": "sn19.21:1.4", "pali": "Tassa mayhaṁ, āvuso, etadahosi:", "sujato": "It occurred to me:"}, {"key": "sn19.21:1.5", "pali": "‘acchariyaṁ vata bho, abbhutaṁ vata bho.", "sujato": "‘Oh lord, how incredible, how amazing!"}, {"key": "sn19.21:1.6", "pali": "Evarūpopi nāma satto bhavissati.", "sujato": "That there can be such a sentient being,"}, {"key": "sn19.21:1.7", "pali": "Evarūpopi nāma yakkho bhavissati.", "sujato": "such a spirit,"}, {"key": "sn19.21:1.8", "pali": "Evarūpopi nāma attabhāvapaṭilābho bhavissatī’”ti.", "sujato": "such an incarnation!’”"}]}, {"id": "sn19.21/2", "label": "Then the Buddha said to the mendicants:", "rows": [{"key": "sn19.21:2.1", "pali": "Atha kho bhagavā bhikkhū āmantesi:", "sujato": "Then the Buddha said to the mendicants:"}, {"key": "sn19.21:2.2", "pali": "“cakkhubhūtā vata, bhikkhave, sāvakā viharanti;", "sujato": "“Mendicants, there are disciples who live full of vision and knowledge,"}, {"key": "sn19.21:2.3", "pali": "ñāṇabhūtā vata, bhikkhave, sāvakā viharanti, yatra hi nāma sāvako evarūpaṁ ñassati vā dakkhati vā sakkhiṁ vā karissati.", "sujato": "since a disciple knows, sees, and witnesses such a thing."}, {"key": "sn19.21:2.4", "pali": "Pubbeva me sā, bhikkhave, sāmaṇerī diṭṭhā ahosi.", "sujato": "Formerly, I too saw that novice nun, but I did not speak of it."}, {"key": "sn19.21:2.5", "pali": "Api cāhaṁ na byākāsiṁ.", "sujato": ""}, {"key": "sn19.21:2.6", "pali": "Ahañcetaṁ byākareyyaṁ, pare ca me na saddaheyyuṁ.", "sujato": "For if I had spoken of it others would not have believed me,"}, {"key": "sn19.21:2.7", "pali": "Ye me na saddaheyyuṁ, tesaṁ taṁ assa dīgharattaṁ ahitāya dukkhāya.", "sujato": "which would be for their lasting harm and suffering."}, {"key": "sn19.21:2.8", "pali": "Esā, bhikkhave, sāmaṇerī kassapassa sammāsambuddhassa pāvacane pāpasāmaṇerī ahosi.", "sujato": "That female novice used to be a bad novice nun in the time of the Buddha Kassapa’s dispensation."}, {"key": "sn19.21:2.9", "pali": "Sā tassa kammassa vipākena bahūni vassāni bahūni vassasatāni bahūni vassasahassāni bahūni vassasatasahassāni\nniraye paccitvā tasseva kammassa vipākāvasesena evarūpaṁ attabhāvapaṭilābhaṁ paṭisaṁvedayatī”ti.", "sujato": "As a result of that deed she burned in hell for many years,\nmany hundreds, many thousands, many hundreds of thousands of years.\nNow she experiences the residual result of that deed in such an incarnation.”"}, {"key": "sn19.21:2.10", "pali": "Ekādasamaṁ.", "sujato": ""}, {"key": "sn19.21:2.11", "pali": "Dutiyo vaggo.", "sujato": ""}]}, {"id": "sn19.21/3", "label": "Tassuddānaṁ", "rows": [{"key": "sn19.21:3.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn19.21:3.1", "pali": "Kūpe nimuggo hi so pāradāriko,", "sujato": ""}, {"key": "sn19.21:3.2", "pali": "Gūthakhādi ahu duṭṭhabrāhmaṇo;", "sujato": ""}, {"key": "sn19.21:3.3", "pali": "Nicchavitthi aticārinī ahu,", "sujato": ""}, {"key": "sn19.21:3.4", "pali": "Maṅgulitthi ahu ikkhaṇitthikā;", "sujato": ""}, {"key": "sn19.21:3.5", "pali": "Okilini sapattaṅgārokiri,", "sujato": ""}, {"key": "sn19.21:3.6", "pali": "Sīsacchinno ahu coraghātako.", "sujato": ""}]}, {"id": "sn19.21/4", "label": "Bhikkhu bhikkhunī sikkhamānā,", "rows": [{"key": "sn19.21:4.1", "pali": "Bhikkhu bhikkhunī sikkhamānā,", "sujato": ""}, {"key": "sn19.21:4.2", "pali": "Sāmaṇero atha sāmaṇerikā;", "sujato": ""}, {"key": "sn19.21:4.3", "pali": "Kassapassa vinayasmiṁ pabbajjaṁ,", "sujato": ""}, {"key": "sn19.21:4.4", "pali": "Pāpakammaṁ kariṁsu tāvadeti.", "sujato": ""}, {"key": "sn19.21:4.5", "pali": "Lakkhaṇasaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses with Mark are complete."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn19.1:1.1": ["In this collection, a monk with ps
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

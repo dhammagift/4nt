@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn21-bhikkhuvagga", "label": "Bhikkhuvagga — The Chapter on Monks", "children": [{"id": "sn21.1", "label": "SN 21.1 · With Kolita", "children": [{"id": "sn21.1/0", "label": "Linked Discourses 21.1", "rows": [{"key": "sn21.1:0.1", "pali": "Saṁyutta Nikāya 21.1", "sujato": "Linked Discourses 21.1"}, {"key": "sn21.1:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.1:0.3", "pali": "Kolitasutta", "sujato": "With Kolita"}]}, {"id": "sn21.1/1", "label": "So I have heard.", "rows": [{"key": "sn21.1:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn21.1:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn21.1:1.3", "pali": "Tatra kho āyasmā mahāmoggallāno bhikkhū āmantesi:", "sujato": "There Venerable Mahāmoggallāna addressed the mendicants:"}, {"key": "sn21.1:1.4", "pali": "“āvuso bhikkhave”ti.", "sujato": "“Reverends, mendicants!”"}, {"key": "sn21.1:1.5", "pali": "“Āvuso”ti kho te bhikkhū āyasmato mahāmoggallānassa paccassosuṁ.", "sujato": "“Reverend,” they replied."}]}, {"id": "sn21.1/2", "label": "Venerable Mahāmoggallāna said this:", "rows": [{"key": "sn21.1:2.1", "pali": "Āyasmā mahāmoggallāno etadavoca:", "sujato": "Venerable Mahāmoggallāna said this:"}, {"key": "sn21.1:2.2", "pali": "“idha mayhaṁ, āvuso, rahogatassa paṭisallīnassa evaṁ cetaso parivitakko udapādi:", "sujato": "“Just now, reverends, as I was in private retreat this thought came to mind:"}, {"key": "sn21.1:2.3", "pali": "‘ariyo tuṇhībhāvo, ariyo tuṇhībhāvoti vuccati.", "sujato": "‘They speak of this thing called “noble silence”."}, {"key": "sn21.1:2.4", "pali": "Katamo nu kho ariyo tuṇhībhāvo’ti?", "sujato": "What then is this noble silence?’"}, {"key": "sn21.1:2.5", "pali": "Tassa mayhaṁ āvuso, etadahosi:", "sujato": "It occurred to me:"}, {"key": "sn21.1:2.6", "pali": "‘idha bhikkhu vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso ekodibhāvaṁ\navitakkaṁ avicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja viharati.", "sujato": "‘As the placing of the mind and keeping it connected are stilled,\na mendicant enters and remains in the second absorption,\nwhich has the rapture and bliss born of immersion, with internal clarity and mind at one,\nwithout placing the mind and keeping it connected."}, {"key": "sn21.1:2.7", "pali": "Ayaṁ vuccati ariyo tuṇhībhāvo’ti.", "sujato": "This is called noble silence.’"}, {"key": "sn21.1:2.8", "pali": "So khvāhaṁ, āvuso, vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso ekodibhāvaṁ\navitakkaṁ avicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja vihariṁ.", "sujato": "And so, as the placing of the mind and keeping it connected were stilled,\nI was entering and remaining in the second absorption,\nwhich has the rapture and bliss born of immersion, with internal clarity and mind at one,\nwithout placing the mind and keeping it connected."}, {"key": "sn21.1:2.9", "pali": "Tassa mayhaṁ, āvuso, iminā vihārena viharato vitakkasahagatā saññāmanasikārā samudācaranti.", "sujato": "While I was in that meditation, perception and focus accompanied by placing the mind beset me."}]}, {"id": "sn21.1/3", "label": "Then the Buddha came up to me…", "rows": [{"key": "sn21.1:3.1", "pali": "Atha kho maṁ, āvuso, bhagavā iddhiyā upasaṅkamitvā etadavoca:", "sujato": "Then the Buddha came up to me with his psychic power and said,"}, {"key": "sn21.1:3.2", "pali": "‘moggallāna moggallāna, mā, brāhmaṇa, ariyaṁ tuṇhībhāvaṁ pamādo, ariye tuṇhībhāve cittaṁ saṇṭhapehi,\nariye tuṇhībhāve cittaṁ ekodibhāvaṁ karohi, ariye tuṇhībhāve cittaṁ samādahā’ti.", "sujato": "‘Moggallāna, Moggallāna!\nDon’t neglect noble silence, brahmin!\nSettle your mind in noble silence;\nunify your mind and bring it to immersion in noble silence.’"}, {"key": "sn21.1:3.3", "pali": "So khvāhaṁ, āvuso, aparena samayena vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso\nekodibhāvaṁ avitakkaṁ avicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja viharāmi.", "sujato": "And so, after some time, as the placing of the mind and keeping it connected were stilled,\nI entered and remained in the second absorption …"}, {"key": "sn21.1:3.4", "pali": "Yañhi taṁ, āvuso, sammā vadamāno vadeyya:", "sujato": "So if anyone should be rightly called"}, {"key": "sn21.1:3.5", "pali": "‘satthārā anuggahito sāvako mahābhiññataṁ patto’ti, mamaṁ taṁ sammā vadamāno vadeyya:", "sujato": "a disciple who attained to great direct knowledge with help from the Teacher, it’s me.”"}, {"key": "sn21.1:3.6", "pali": "‘satthārā anuggahito sāvako mahābhiññataṁ patto’”ti.", "sujato": ""}, {"key": "sn21.1:3.7", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn21.2", "label": "SN 21.2 · With Upatissa", "children": [{"id": "sn21.2/0", "label": "Linked Discourses 21.2", "rows": [{"key": "sn21.2:0.1", "pali": "Saṁyutta Nikāya 21.2", "sujato": "Linked Discourses 21.2"}, {"key": "sn21.2:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.2:0.3", "pali": "Upatissasutta", "sujato": "With Upatissa"}]}, {"id": "sn21.2/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.2:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn21.2:1.2", "pali": "Tatra kho āyasmā sāriputto bhikkhū āmantesi:", "sujato": "There Sāriputta addressed the mendicants:"}, {"key": "sn21.2:1.3", "pali": "“āvuso bhikkhave”ti.", "sujato": "“Reverends, mendicants!”"}, {"key": "sn21.2:1.4", "pali": "“Āvuso”ti kho te bhikkhū āyasmato sāriputtassa paccassosuṁ.", "sujato": "“Reverend,” they replied."}, {"key": "sn21.2:1.5", "pali": "Āyasmā sāriputto etadavoca:", "sujato": "Sāriputta said this:"}]}, {"id": "sn21.2/2", "label": "“Just now, reverends, as I was in…", "rows": [{"key": "sn21.2:2.1", "pali": "“Idha mayhaṁ, āvuso, rahogatassa paṭisallīnassa evaṁ cetaso parivitakko udapādi:", "sujato": "“Just now, reverends, as I was in private retreat this thought came to mind:"}, {"key": "sn21.2:2.2", "pali": "‘atthi nu kho taṁ kiñci lokasmiṁ yassa me vipariṇāmaññathābhāvā uppajjeyyuṁ sokaparidevadukkhadomanassupāyāsā’ti?", "sujato": "‘Is there anything in the world whose decay and perishing would give rise to sorrow,\nlamentation, pain, sadness, and distress in me?’"}, {"key": "sn21.2:2.3", "pali": "Tassa mayhaṁ, āvuso, etadahosi:", "sujato": "It occurred to me:"}, {"key": "sn21.2:2.4", "pali": "‘natthi kho taṁ kiñci lokasmiṁ yassa me vipariṇāmaññathābhāvā uppajjeyyuṁ sokaparidevadukkhadomanassupāyāsā’”ti.", "sujato": "‘There is nothing in the world whose decay and perishing would give rise to sorrow,\nlamentation, pain, sadness, and distress in me.’”"}]}, {"id": "sn21.2/3", "label": "When he said this, Venerable Ānanda said…", "rows": [{"key": "sn21.2:3.1", "pali": "Evaṁ vutte, āyasmā ānando āyasmantaṁ sāriputtaṁ etadavoca:", "sujato": "When he said this, Venerable Ānanda said to him,"}, {"key": "sn21.2:3.2", "pali": "“satthupi kho te, āvuso sāriputta, vipariṇāmaññathābhāvā nuppajjeyyuṁ sokaparidevadukkhadomanassupāyāsā”ti?", "sujato": "“Even if the Teacher were to decay and perish?\nWouldn’t that give rise to sorrow, lamentation, pain, sadness, and distress in you?”"}, {"key": "sn21.2:3.3", "pali": "“Satthupi kho me, āvuso, vipariṇāmaññathābhāvā nuppajjeyyuṁ sokaparidevadukkhadomanassupāyāsā, api ca me evamassa:", "sujato": "“Even if the Teacher were to decay and perish, that wouldn’t give rise to sorrow,\nlamentation, pain, sadness, and distress in me.\nStill, I would think:"}, {"key": "sn21.2:3.4", "pali": "‘mahesakkho vata bho satthā antarahito mahiddhiko mahānubhāvo.", "sujato": "‘Oh lord, the illustrious Teacher, so mighty and powerful, has vanished!"}, {"key": "sn21.2:3.5", "pali": "Sace hi bhagavā ciraṁ dīghamaddhānaṁ tiṭṭheyya tadassa bahujanahitāya\nbahujanasukhāya lokānukampāya atthāya hitāya sukhāya devamanussānan’ti.", "sujato": "If the Buddha was to remain for a long time, that would be for the welfare and happiness of the people,\nout of sympathy for the world, for the benefit, welfare, and happiness of gods and humans.’”"}, {"key": "sn21.2:3.6", "pali": "Tathā hi panāyasmato sāriputtassa dīgharattaṁ ahaṅkāramamaṅkāramānānusayā susamūhatā.", "sujato": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn21.2:3.7", "pali": "Tasmā āyasmato sāriputtassa satthupi vipariṇāmaññathābhāvā nuppajjeyyuṁ sokaparidevadukkhadomanassupāyāsā”ti.", "sujato": "So even if the Teacher were to decay and perish, it wouldn’t give rise to sorrow,\nlamentation, pain, sadness, and distress in him.”"}, {"key": "sn21.2:3.8", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn21.3", "label": "SN 21.3 · A Mound of Salt", "children": [{"id": "sn21.3/0", "label": "Linked Discourses 21.3", "rows": [{"key": "sn21.3:0.1", "pali": "Saṁyutta Nikāya 21.3", "sujato": "Linked Discourses 21.3"}, {"key": "sn21.3:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.3:0.3", "pali": "Ghaṭasutta", "sujato": "A Mound of Salt"}]}, {"id": "sn21.3/1", "label": "So I have heard.", "rows": [{"key": "sn21.3:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn21.3:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn21.3:1.3", "pali": "Tena kho pana samayena āyasmā ca sāriputto āyasmā ca mahāmoggallāno\nrājagahe viharanti veḷuvane kalandakanivāpe ekavihāre.", "sujato": "At that time Venerables Sāriputta and Moggallāna were staying near Rājagaha,\nin the Bamboo Grove, the squirrels’ feeding ground."}, {"key": "sn21.3:1.4", "pali": "Atha kho āyasmā sāriputto sāyanhasamayaṁ paṭisallānā vuṭṭhito yenāyasmā mahāmoggallāno tenupasaṅkami;\nupasaṅkamitvā āyasmatā mahāmoggallānena saddhiṁ sammodi.", "sujato": "Then in the late afternoon, Venerable Sāriputta came out of retreat,\nwent to Venerable Moggallāna, and exchanged greetings with him."}, {"key": "sn21.3:1.5", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā sāriputto āyasmantaṁ mahāmoggallānaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, Sāriputta sat down to one side, and said to Mahāmoggallāna:"}]}, {"id": "sn21.3/2", "label": "“Reverend Moggallāna, your faculties are so very…", "rows": [{"key": "sn21.3:2.1", "pali": "“Vippasannāni kho te, āvuso moggallāna, indriyāni;", "sujato": "“Reverend Moggallāna, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn21.3:2.2", "pali": "parisuddho mukhavaṇṇo pariyodāto santena nūnāyasmā mahāmoggallāno ajja vihārena vihāsī”ti.", "sujato": "Have you spent the day in a peaceful meditation?”"}, {"key": "sn21.3:2.3", "pali": "“Oḷārikena khvāhaṁ, āvuso, ajja vihārena vihāsiṁ.", "sujato": "“Reverend, I’ve spent the day in a coarse meditation."}, {"key": "sn21.3:2.4", "pali": "Api ca me ahosi dhammī kathā”ti.", "sujato": "But I have had some Dhamma talk.”"}, {"key": "sn21.3:2.5", "pali": "“Kena saddhiṁ panāyasmato mahāmoggallānassa ahosi dhammī kathā”ti?", "sujato": "“Who did you have a Dhamma talk with?”"}, {"key": "sn21.3:2.6", "pali": "“Bhagavatā kho me, āvuso, saddhiṁ ahosi dhammī kathā”ti.", "sujato": "“With the Buddha.”"}, {"key": "sn21.3:2.7", "pali": "“Dūre kho, āvuso, bhagavā etarahi sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "“But Reverend, the Buddha is far away.\nHe’s staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn21.3:2.8", "pali": "Kiṁ nu kho āyasmā mahāmoggallāno bhagavantaṁ iddhiyā upasaṅkami;", "sujato": "Did you go to him with your psychic power,"}, {"key": "sn21.3:2.9", "pali": "udāhu bhagavā āyasmantaṁ mahāmoggallānaṁ iddhiyā upasaṅkamī”ti?", "sujato": "or did he come to you?”"}, {"key": "sn21.3:2.10", "pali": "“Na khvāhaṁ, āvuso, bhagavantaṁ iddhiyā upasaṅkamiṁ;", "sujato": "“No reverend, I didn’t go to him with my psychic power,"}, {"key": "sn21.3:2.11", "pali": "napi maṁ bhagavā iddhiyā upasaṅkami.", "sujato": "nor did he come to me."}, {"key": "sn21.3:2.12", "pali": "Api ca me yāvatā bhagavā ettāvatā dibbacakkhu visujjhi dibbā ca sotadhātu.", "sujato": "Rather, the Buddha cleared his clairvoyance and clairaudience towards me,"}, {"key": "sn21.3:2.13", "pali": "Bhagavatopi yāvatāhaṁ ettāvatā dibbacakkhu visujjhi dibbā ca sotadhātū”ti.", "sujato": "and I cleared my clairvoyance and clairaudience towards him.”"}, {"key": "sn21.3:2.14", "pali": "“Yathākathaṁ panāyasmato mahāmoggallānassa bhagavatā saddhiṁ ahosi dhammī kathā”ti?", "sujato": "“But what manner of Dhamma talk did you have together?”"}]}, {"id": "sn21.3/3", "label": "“Well, reverend, I said to the Buddha,", "rows": [{"key": "sn21.3:3.1", "pali": "“Idhāhaṁ, āvuso, bhagavantaṁ etadavocaṁ:", "sujato": "“Well, reverend, I said to the Buddha,"}, {"key": "sn21.3:3.2", "pali": "‘āraddhavīriyo āraddhavīriyoti, bhante, vuccati.", "sujato": "‘Sir, they speak of one who is energetic."}, {"key": "sn21.3:3.3", "pali": "Kittāvatā nu kho, bhante, āraddhavīriyo hotī’ti?", "sujato": "How is an energetic person defined?’"}, {"key": "sn21.3:3.4", "pali": "Evaṁ vutte, maṁ, āvuso, bhagavā etadavoca:", "sujato": "When I said this, the Buddha said,"}, {"key": "sn21.3:3.5", "pali": "‘idha, moggallāna, bhikkhu āraddhavīriyo viharati—", "sujato": "‘Moggallāna, it’s when a mendicant lives with energy roused up:"}, {"key": "sn21.3:3.6", "pali": "kāmaṁ taco ca nhāru ca aṭṭhi ca avasissatu, sarīre upassussatu maṁsalohitaṁ,\nyaṁ taṁ purisathāmena purisavīriyena purisaparakkamena pattabbaṁ na taṁ apāpuṇitvā vīriyassa saṇṭhānaṁ bhavissatīti.", "sujato": "“Gladly, let only skin, sinews, and bones remain!\nLet the flesh and blood waste away in my body!\nI will not stop trying until I have achieved what is possible by human strength, energy, and vigor.”"}, {"key": "sn21.3:3.7", "pali": "Evaṁ kho, moggallāna, āraddhavīriyo hotī’ti.", "sujato": "That’s how an individual is energetic.’"}, {"key": "sn21.3:3.8", "pali": "Evaṁ kho me, āvuso, bhagavatā saddhiṁ ahosi dhammī kathā”ti.", "sujato": "That’s the Dhamma talk I had together with the Buddha.”"}]}, {"id": "sn21.3/4", "label": "“Reverend, next to Venerable Mahāmoggallāna I’m like…", "rows": [{"key": "sn21.3:4.1", "pali": "“Seyyathāpi, āvuso, himavato pabbatarājassa parittā pāsāṇasakkharā yāvadeva upanikkhepanamattāya;", "sujato": "“Reverend, next to Venerable Mahāmoggallāna I’m like a few pieces of gravel next to the Himalayas,\nthe king of mountains."}, {"key": "sn21.3:4.2", "pali": "evameva kho mayaṁ āyasmato mahāmoggallānassa yāvadeva upanikkhepanamattāya.", "sujato": ""}, {"key": "sn21.3:4.3", "pali": "Āyasmā hi mahāmoggallāno mahiddhiko mahānubhāvo ākaṅkhamāno kappaṁ tiṭṭheyyā”ti.", "sujato": "Venerable Mahāmoggallāna is so mighty and powerful he could, if he wished, live on for the proper lifespan.”"}]}, {"id": "sn21.3/5", "label": "“Reverend, next to Venerable Sāriputta I’m like…", "rows": [{"key": "sn21.3:5.1", "pali": "“Seyyathāpi, āvuso, mahatiyā loṇaghaṭāya parittā loṇasakkharāya yāvadeva upanikkhepanamattāya;", "sujato": "“Reverend, next to Venerable Sāriputta I’m like a few grains of salt next to a mound of salt."}, {"key": "sn21.3:5.2", "pali": "evameva kho mayaṁ āyasmato sāriputtassa yāvadeva upanikkhepanamattāya.", "sujato": ""}, {"key": "sn21.3:5.3", "pali": "Āyasmā hi sāriputto bhagavatā anekapariyāyena thomito vaṇṇito pasattho:", "sujato": "Venerable Sāriputta has been commended, complimented, and praised by the Buddha:"}]}, {"id": "sn21.3/6", "label": "‘Sāriputta is full of wisdom,", "rows": [{"key": "sn21.3:6.1", "pali": "‘Sāriputtova paññāya,", "sujato": "‘Sāriputta is full of wisdom,"}, {"key": "sn21.3:6.2", "pali": "sīlena upasamena ca;", "sujato": "ethics, and peace."}, {"key": "sn21.3:6.3", "pali": "Yopi pāraṅgato bhikkhu,", "sujato": "Even a mendicant who has crossed over"}, {"key": "sn21.3:6.4", "pali": "etāvaparamo siyā’”ti.", "sujato": "might at best equal him.’”"}]}, {"id": "sn21.3/7", "label": "And so these two spiritual giants agreed…", "rows": [{"key": "sn21.3:7.1", "pali": "Itiha te ubho mahānāgā aññamaññassa subhāsitaṁ sulapitaṁ samanumodiṁsūti.", "sujato": "And so these two spiritual giants agreed with each others’ fine words."}, {"key": "sn21.3:7.2", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn21.4", "label": "SN 21.4 · A Junior Mendicant", "children": [{"id": "sn21.4/0", "label": "Linked Discourses 21.4", "rows": [{"key": "sn21.4:0.1", "pali": "Saṁyutta Nikāya 21.4", "sujato": "Linked Discourses 21.4"}, {"key": "sn21.4:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.4:0.3", "pali": "Navasutta", "sujato": "A Junior Mendicant"}]}, {"id": "sn21.4/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.4:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.4:1.2", "pali": "Tena kho pana samayena aññataro navo bhikkhu pacchābhattaṁ\npiṇḍapātapaṭikkanto vihāraṁ pavisitvā appossukko tuṇhībhūto saṅkasāyati,\nna bhikkhūnaṁ veyyāvaccaṁ karoti cīvarakārasamaye.", "sujato": "Now at that time a certain junior monk, after his meal, on his return from almsround,\nentered his dwelling, where he adhered to passivity and silence.\nAnd he didn’t help the mendicants out when it was time to sew robes."}, {"key": "sn21.4:1.3", "pali": "Atha kho sambahulā bhikkhū yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho te bhikkhū bhagavantaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to the Buddha, bowed, sat down to one side, and told him what had happened."}, {"key": "sn21.4:1.4", "pali": "“idha, bhante, aññataro navo bhikkhu pacchābhattaṁ piṇḍapātapaṭikkanto\nvihāraṁ pavisitvā appossukko tuṇhībhūto saṅkasāyati,\nna bhikkhūnaṁ veyyāvaccaṁ karoti cīvarakārasamaye”ti.", "sujato": ""}]}, {"id": "sn21.4/2", "label": "So the Buddha addressed one of the…", "rows": [{"key": "sn21.4:2.1", "pali": "Atha kho bhagavā aññataraṁ bhikkhuṁ āmantesi:", "sujato": "So the Buddha addressed one of the monks,"}, {"key": "sn21.4:2.2", "pali": "“ehi tvaṁ, bhikkhu, mama vacanena taṁ bhikkhuṁ āmantehi ‘satthā taṁ, āvuso, āmantetī’”ti.", "sujato": "“Please, monk, in my name tell that monk that the Teacher summons him.”"}, {"key": "sn21.4:2.3", "pali": "“Evaṁ, bhante”ti kho so bhikkhu bhagavato paṭissutvā yena so bhikkhu tenupasaṅkami;\nupasaṅkamitvā taṁ bhikkhuṁ etadavoca:", "sujato": "“Yes, sir,” that monk replied.\nHe went to that monk and said to him,"}, {"key": "sn21.4:2.4", "pali": "“satthā taṁ, āvuso, āmantetī”ti.", "sujato": "“Reverend, the teacher summons you.”"}, {"key": "sn21.4:2.5", "pali": "“Evamāvuso”ti kho so bhikkhu tassa bhikkhuno paṭissutvā yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinnaṁ kho taṁ bhikkhuṁ bhagavā etadavoca:", "sujato": "“Yes, reverend,” that monk replied.\nHe went to the Buddha, bowed, and sat down to one side.\nThe Buddha said to him:"}, {"key": "sn21.4:2.6", "pali": "“saccaṁ kira tvaṁ, bhikkhu, pacchābhattaṁ piṇḍapātapaṭikkanto vihāraṁ pavisitvā appossukko tuṇhībhūto saṅkasāyasi,\nna bhikkhūnaṁ veyyāvaccaṁ karosi cīvarakārasamaye”ti?", "sujato": "“Is it really true, monk, that after your meal, on your return from almsround, you entered your dwelling,\nwhere you adhered to passivity and silence, and you didn’t help the mendicants out when it was time to sew robes?”"}, {"key": "sn21.4:2.7", "pali": "“Ahampi kho, bhante, sakaṁ kiccaṁ karomī”ti.", "sujato": "“Sir, I am doing my own work.”"}]}, {"id": "sn21.4/3", "label": "Then the Buddha, knowing that monk’s train…", "rows": [{"key": "sn21.4:3.1", "pali": "Atha kho bhagavā tassa bhikkhuno cetasā cetoparivitakkamaññāya bhikkhū āmantesi:", "sujato": "Then the Buddha, knowing that monk’s train of thought, addressed the mendicants:"}, {"key": "sn21.4:3.2", "pali": "“mā kho tumhe, bhikkhave, etassa bhikkhuno ujjhāyittha.", "sujato": "“Mendicants, don’t complain about this monk."}, {"key": "sn21.4:3.3", "pali": "Eso kho, bhikkhave, bhikkhu catunnaṁ jhānānaṁ ābhicetasikānaṁ\ndiṭṭhadhammasukhavihārānaṁ nikāmalābhī akicchalābhī akasiralābhī,\nyassa catthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti,\ntadanuttaraṁ brahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti.", "sujato": "This monk gets the four absorptions—blissful meditations in this life that belong to the higher mind—when he wants,\nwithout trouble or difficulty.\nHe has realized the supreme culmination of the spiritual path in this very life,\nand lives having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.”"}]}, {"id": "sn21.4/4", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.4:4.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.4:4.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.4/5", "label": "“Not by being slack,", "rows": [{"key": "sn21.4:5.1", "pali": "“Nayidaṁ sithilamārabbha,", "sujato": "“Not by being slack,"}, {"key": "sn21.4:5.2", "pali": "nayidaṁ appena thāmasā;", "sujato": "or with little strength"}, {"key": "sn21.4:5.3", "pali": "Nibbānaṁ adhigantabbaṁ,", "sujato": "may this be realized—extinguishment,"}, {"key": "sn21.4:5.4", "pali": "sabbadukkhappamocanaṁ.", "sujato": "the release from all suffering."}]}, {"id": "sn21.4/6", "label": "This young monk,", "rows": [{"key": "sn21.4:6.1", "pali": "Ayañca daharo bhikkhu,", "sujato": "This young monk,"}, {"key": "sn21.4:6.2", "pali": "ayamuttamapuriso;", "sujato": "this best of men,"}, {"key": "sn21.4:6.3", "pali": "Dhāreti antimaṁ dehaṁ,", "sujato": "bears his final body,"}, {"key": "sn21.4:6.4", "pali": "jetvā māraṁ savāhinin”ti.", "sujato": "having vanquished Māra with his legions.”"}, {"key": "sn21.4:6.5", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn21.5", "label": "SN 21.5 · With Sujāta", "children": [{"id": "sn21.5/0", "label": "Linked Discourses 21.5", "rows": [{"key": "sn21.5:0.1", "pali": "Saṁyutta Nikāya 21.5", "sujato": "Linked Discourses 21.5"}, {"key": "sn21.5:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.5:0.3", "pali": "Sujātasutta", "sujato": "With Sujāta"}]}, {"id": "sn21.5/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.5:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.5:1.2", "pali": "Atha kho āyasmā sujāto yena bhagavā tenupasaṅkami.", "sujato": "Then Venerable Sujāta went to see the Buddha."}, {"key": "sn21.5:1.3", "pali": "Addasā kho bhagavā āyasmantaṁ sujātaṁ dūratova āgacchantaṁ.", "sujato": "The Buddha saw him coming off in the distance,"}, {"key": "sn21.5:1.4", "pali": "Disvāna bhikkhū āmantesi:", "sujato": "and addressed the mendicants:"}, {"key": "sn21.5:1.5", "pali": "“ubhayenevāyaṁ, bhikkhave, kulaputto sobhati—", "sujato": "“This gentleman shines in both ways."}, {"key": "sn21.5:1.6", "pali": "yañca abhirūpo dassanīyo pāsādiko paramāya vaṇṇapokkharatāya samannāgato,\nyassa catthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti tadanuttaraṁ\nbrahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti.", "sujato": "He’s attractive, good-looking, lovely, of surpassing beauty.\nAnd he has realized the supreme end of the spiritual path in this very life.\nHe lives having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.”"}, {"key": "sn21.5:1.7", "pali": "Idamavoca bhagavā …pe…", "sujato": "That is what the Buddha said."}, {"key": "sn21.5:1.8", "pali": "satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.5/2", "label": "“This mendicant truly shines.", "rows": [{"key": "sn21.5:2.1", "pali": "“Sobhati vatāyaṁ bhikkhu,", "sujato": "“This mendicant truly shines."}, {"key": "sn21.5:2.2", "pali": "ujubhūtena cetasā;", "sujato": "His heart is upright,"}, {"key": "sn21.5:2.3", "pali": "Vippayutto visaṁyutto,", "sujato": "he’s unfettered, detached,"}, {"key": "sn21.5:2.4", "pali": "anupādāya nibbuto;", "sujato": "quenched by not grasping."}, {"key": "sn21.5:2.5", "pali": "Dhāreti antimaṁ dehaṁ,", "sujato": "He bears his final body,"}, {"key": "sn21.5:2.6", "pali": "jetvā māraṁ savāhinin”ti.", "sujato": "having vanquished Māra with his legions.”"}, {"key": "sn21.5:2.7", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn21.6", "label": "SN 21.6 · With Bhaddiya the Dwarf", "children": [{"id": "sn21.6/0", "label": "Linked Discourses 21.6", "rows": [{"key": "sn21.6:0.1", "pali": "Saṁyutta Nikāya 21.6", "sujato": "Linked Discourses 21.6"}, {"key": "sn21.6:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.6:0.3", "pali": "Lakuṇḍakabhaddiyasutta", "sujato": "With Bhaddiya the Dwarf"}]}, {"id": "sn21.6/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.6:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.6:1.2", "pali": "Atha kho āyasmā lakuṇḍakabhaddiyo yena bhagavā tenupasaṅkami.", "sujato": "Then Venerable Bhaddiya the Dwarf went to see the Buddha."}, {"key": "sn21.6:1.3", "pali": "Addasā kho bhagavā āyasmantaṁ lakuṇḍakabhaddiyaṁ dūratova āgacchantaṁ.", "sujato": "The Buddha saw him coming off in the distance,"}, {"key": "sn21.6:1.4", "pali": "Disvāna bhikkhū āmantesi:", "sujato": "and addressed the mendicants:"}, {"key": "sn21.6:1.5", "pali": "“passatha no tumhe, bhikkhave, etaṁ bhikkhuṁ āgacchantaṁ dubbaṇṇaṁ duddasikaṁ okoṭimakaṁ bhikkhūnaṁ paribhūtarūpan”ti?", "sujato": "“Mendicants, do you see this monk coming—ugly, unsightly, deformed, and despised by the mendicants?”"}, {"key": "sn21.6:1.6", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”"}, {"key": "sn21.6:1.7", "pali": "“Eso kho, bhikkhave, bhikkhu mahiddhiko mahānubhāvo, na ca sā samāpatti sulabharūpā yā tena bhikkhunā asamāpannapubbā.", "sujato": "“That mendicant is very mighty and powerful.\nIt’s not easy to find an attainment that he has not already attained."}, {"key": "sn21.6:1.8", "pali": "Yassa catthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti,\ntadanuttaraṁ brahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti.", "sujato": "And he has realized the supreme end of the spiritual path in this very life.\nHe lives having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.”"}, {"key": "sn21.6:1.9", "pali": "Idamavoca bhagavā …pe…", "sujato": "That is what the Buddha said."}, {"key": "sn21.6:1.10", "pali": "satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.6/2", "label": "“Geese, herons, and peacocks,", "rows": [{"key": "sn21.6:2.1", "pali": "“Haṁsā koñcā mayūrā ca,", "sujato": "“Geese, herons, and peacocks,"}, {"key": "sn21.6:2.2", "pali": "hatthayo pasadā migā;", "sujato": "elephants and spotted deer—"}, {"key": "sn21.6:2.3", "pali": "Sabbe sīhassa bhāyanti,", "sujato": "though their bodies are not equal,"}, {"key": "sn21.6:2.4", "pali": "natthi kāyasmiṁ tulyatā.", "sujato": "they all fear the lion."}]}, {"id": "sn21.6/3", "label": "So it is for humans—", "rows": [{"key": "sn21.6:3.1", "pali": "Evameva manussesu,", "sujato": "So it is for humans—"}, {"key": "sn21.6:3.2", "pali": "daharo cepi paññavā;", "sujato": "if a little person is wise,"}, {"key": "sn21.6:3.3", "pali": "So hi tattha mahā hoti,", "sujato": "they’re the truly great one,"}, {"key": "sn21.6:3.4", "pali": "neva bālo sarīravā”ti.", "sujato": "not the fool with a good body.”"}, {"key": "sn21.6:3.5", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn21.7", "label": "SN 21.7 · With Visākha, Pañcāli’s Son", "children": [{"id": "sn21.7/0", "label": "Linked Discourses 21.7", "rows": [{"key": "sn21.7:0.1", "pali": "Saṁyutta Nikāya 21.7", "sujato": "Linked Discourses 21.7"}, {"key": "sn21.7:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.7:0.3", "pali": "Visākhasutta", "sujato": "With Visākha, Pañcāli’s Son"}]}, {"id": "sn21.7/1", "label": "So I have heard.", "rows": [{"key": "sn21.7:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn21.7:1.2", "pali": "ekaṁ samayaṁ bhagavā vesāliyaṁ viharati mahāvane kūṭāgārasālāyaṁ.", "sujato": "At one time the Buddha was staying near Vesālī, at the Great Wood, in the hall with the peaked roof."}, {"key": "sn21.7:1.3", "pali": "Tena kho pana samayena āyasmā visākho pañcālaputto upaṭṭhānasālāyaṁ\nbhikkhū dhammiyā kathāya sandasseti samādapeti samuttejeti sampahaṁseti,\nporiyā vācāya vissaṭṭhāya anelagalāya atthassa viññāpaniyā pariyāpannāya anissitāya.", "sujato": "Now at that time Venerable Visākha, Pañcāli’s son, was educating, encouraging,\nfiring up, and inspiring the mendicants in the assembly hall with a Dhamma talk.\nHis words were polished, clear, articulate, expressing the meaning, comprehensive, and independent."}]}, {"id": "sn21.7/2", "label": "Then in the late afternoon, the Buddha…", "rows": [{"key": "sn21.7:2.1", "pali": "Atha kho bhagavā sāyanhasamayaṁ paṭisallānā vuṭṭhito yena upaṭṭhānasālā tenupasaṅkami;\nupasaṅkamitvā paññatte āsane nisīdi.", "sujato": "Then in the late afternoon, the Buddha came out of retreat and went to the assembly hall.\nHe sat down on the seat spread out,"}, {"key": "sn21.7:2.2", "pali": "Nisajja kho bhagavā bhikkhū āmantesi:", "sujato": "and addressed the mendicants:"}, {"key": "sn21.7:2.3", "pali": "“ko nu kho, bhikkhave,\nupaṭṭhānasālāyaṁ bhikkhū dhammiyā kathāya sandasseti samādapeti samuttejeti sampahaṁseti\nporiyā vācāya vissaṭṭhāya anelagalāya atthassa viññāpaniyā pariyāpannāya anissitāyā”ti?", "sujato": "“Mendicants, who was educating, encouraging, firing up,\nand inspiring the mendicants in the assembly hall with a Dhamma talk?”"}, {"key": "sn21.7:2.4", "pali": "“Āyasmā, bhante, visākho pañcālaputto upaṭṭhānasālāyaṁ bhikkhū\ndhammiyā kathāya sandasseti samādapeti samuttejeti sampahaṁseti,\nporiyā vācāya vissaṭṭhāya anelagalāya atthassa viññāpaniyā pariyāpannāya anissitāyā”ti.", "sujato": "“Sir, it was Venerable Visākha, Pañcāli’s son.”"}]}, {"id": "sn21.7/3", "label": "Then the Buddha said to Visākha:", "rows": [{"key": "sn21.7:3.1", "pali": "Atha kho bhagavā āyasmantaṁ visākhaṁ pañcālaputtaṁ āmantesi:", "sujato": "Then the Buddha said to Visākha:"}, {"key": "sn21.7:3.2", "pali": "“sādhu sādhu, visākha,", "sujato": "“Good, good, Visākha!"}, {"key": "sn21.7:3.3", "pali": "sādhu kho tvaṁ, visākha, bhikkhū dhammiyā kathāya sandassesi …pe… atthassa viññāpaniyā pariyāpannāya anissitāyā”ti.", "sujato": "It’s good that you educate, encourage, fire up, and inspire the mendicants in the assembly hall with a Dhamma talk,\nwith words that are polished, clear, articulate, expressing the meaning, comprehensive, and independent.”"}]}, {"id": "sn21.7/4", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.7:4.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.7:4.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.7/5", "label": "“Though an astute person is mixed up…", "rows": [{"key": "sn21.7:5.1", "pali": "“Nābhāsamānaṁ jānanti,", "sujato": "“Though an astute person is mixed up with fools,"}, {"key": "sn21.7:5.2", "pali": "missaṁ bālehi paṇḍitaṁ;", "sujato": "they don’t know unless he speaks."}, {"key": "sn21.7:5.3", "pali": "Bhāsamānañca jānanti,", "sujato": "But when he speaks they know,"}, {"key": "sn21.7:5.4", "pali": "desentaṁ amataṁ padaṁ.", "sujato": "he’s teaching the state free of death."}]}, {"id": "sn21.7/6", "label": "He should speak and illustrate the teaching,", "rows": [{"key": "sn21.7:6.1", "pali": "Bhāsaye jotaye dhammaṁ,", "sujato": "He should speak and illustrate the teaching,"}, {"key": "sn21.7:6.2", "pali": "paggaṇhe isinaṁ dhajaṁ;", "sujato": "holding up the banner of the seers."}, {"key": "sn21.7:6.3", "pali": "Subhāsitadhajā isayo,", "sujato": "Words well spoken are the seers’ banner,"}, {"key": "sn21.7:6.4", "pali": "dhammo hi isinaṁ dhajo”ti.", "sujato": "for the teaching is the banner of the seers.”"}, {"key": "sn21.7:6.5", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn21.8", "label": "SN 21.8 · With Nanda", "children": [{"id": "sn21.8/0", "label": "Linked Discourses 21.8", "rows": [{"key": "sn21.8:0.1", "pali": "Saṁyutta Nikāya 21.8", "sujato": "Linked Discourses 21.8"}, {"key": "sn21.8:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.8:0.3", "pali": "Nandasutta", "sujato": "With Nanda"}]}, {"id": "sn21.8/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.8:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.8:1.2", "pali": "Atha kho āyasmā nando bhagavato mātucchāputto ākoṭitapaccākoṭitāni cīvarāni\npārupitvā akkhīni añjetvā acchaṁ pattaṁ gahetvā yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinnaṁ kho āyasmantaṁ nandaṁ bhagavā etadavoca:", "sujato": "Then Venerable Nanda—the Buddha’s cousin on his mother’s side—dressed in nicely pressed and ironed robes,\napplied eyeshadow, and took a glazed bowl.\nHe went to the Buddha, bowed, and sat down to one side.\nThe Buddha said to him:"}, {"key": "sn21.8:1.3", "pali": "“na kho te taṁ, nanda, patirūpaṁ kulaputtassa saddhā agārasmā anagāriyaṁ pabbajitassa,\nyaṁ tvaṁ ākoṭitapaccākoṭitāni cīvarāni pārupeyyāsi, akkhīni ca añjeyyāsi, acchañca pattaṁ dhāreyyāsi.", "sujato": "“Nanda, as a gentleman who has gone forth out of faith from the lay life to homelessness,\nit’s not appropriate for you to dress in nicely pressed and ironed robes, apply eyeshadow, and carry a glazed bowl."}, {"key": "sn21.8:1.4", "pali": "Etaṁ kho te, nanda, patirūpaṁ kulaputtassa saddhā agārasmā anagāriyaṁ pabbajitassa,\nyaṁ tvaṁ āraññiko ca assasi, piṇḍapātiko ca paṁsukūliko ca kāmesu ca anapekkho vihareyyāsī”ti.", "sujato": "It’s appropriate for you to stay in the wilderness, eat only almsfood,\nwear rag robes, and live without concern for sensual pleasures.”"}, {"key": "sn21.8:1.5", "pali": "Idamavoca bhagavā …pe…", "sujato": "That is what the Buddha said."}, {"key": "sn21.8:1.6", "pali": "satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.8/2", "label": "“When will I see Nanda", "rows": [{"key": "sn21.8:2.1", "pali": "“Kadāhaṁ nandaṁ passeyyaṁ,", "sujato": "“When will I see Nanda"}, {"key": "sn21.8:2.2", "pali": "āraññaṁ paṁsukūlikaṁ;", "sujato": "in the wilderness, wearing rag robes,"}, {"key": "sn21.8:2.3", "pali": "Aññātuñchena yāpentaṁ,", "sujato": "feeding on scraps offered by strangers,"}, {"key": "sn21.8:2.4", "pali": "kāmesu anapekkhinan”ti.", "sujato": "unconcerned for sensual pleasures?”"}]}, {"id": "sn21.8/3", "label": "Then some time later Venerable Nanda stayed…", "rows": [{"key": "sn21.8:3.1", "pali": "Atha kho āyasmā nando aparena samayena āraññiko ca piṇḍapātiko ca paṁsukūliko ca kāmesu ca anapekkho vihāsīti.", "sujato": "Then some time later Venerable Nanda stayed in the wilderness, ate only almsfood,\nwore rag robes, and lived without concern for sensual pleasures."}, {"key": "sn21.8:3.2", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn21.9", "label": "SN 21.9 · With Tissa", "children": [{"id": "sn21.9/0", "label": "Linked Discourses 21.9", "rows": [{"key": "sn21.9:0.1", "pali": "Saṁyutta Nikāya 21.9", "sujato": "Linked Discourses 21.9"}, {"key": "sn21.9:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.9:0.3", "pali": "Tissasutta", "sujato": "With Tissa"}]}, {"id": "sn21.9/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.9:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.9:1.2", "pali": "Atha kho āyasmā tisso bhagavato pitucchāputto yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi dukkhī dummano assūni pavattayamāno.\nAtha kho bhagavā āyasmantaṁ tissaṁ etadavoca:", "sujato": "Then Venerable Tissa—the Buddha’s cousin on his father’s side—went to the Buddha, bowed, and sat down to one side.\nHe was miserable and sad, with tears flowing.\nThen the Buddha said to him:"}, {"key": "sn21.9:1.3", "pali": "“kiṁ nu kho tvaṁ, tissa, ekamantaṁ nisinno dukkhī dummano assūni pavattayamāno”ti?", "sujato": "“Tissa, why are you sitting there so miserable and sad, with tears flowing?”"}, {"key": "sn21.9:1.4", "pali": "“Tathā hi pana maṁ, bhante, bhikkhū samantā vācāyasannitodakena sañjambharimakaṁsū”ti.", "sujato": "“Sir, it’s because the mendicants beset me on all sides with sneering and jeering.”"}, {"key": "sn21.9:1.5", "pali": "“Tathāhi pana tvaṁ, tissa, vattā no ca vacanakkhamo;", "sujato": "“That’s because you admonish others, but don’t accept admonition yourself."}, {"key": "sn21.9:1.6", "pali": "na kho te taṁ, tissa, patirūpaṁ kulaputtassa saddhā agārasmā anagāriyaṁ pabbajitassa, yaṁ tvaṁ vattā no ca vacanakkhamo.", "sujato": "As a gentleman who has gone forth out of faith from the lay life to homelessness,\nit’s not appropriate for you to admonish others without accepting admonition yourself."}, {"key": "sn21.9:1.7", "pali": "Etaṁ kho te, tissa, patirūpaṁ kulaputtassa saddhā agārasmā anagāriyaṁ pabbajitassa:", "sujato": "It’s appropriate for you to"}, {"key": "sn21.9:1.8", "pali": "‘yaṁ tvaṁ vattā ca assa vacanakkhamo cā’”ti.", "sujato": "admonish others and accept admonition yourself.”"}]}, {"id": "sn21.9/2", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.9:2.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.9:2.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.9/3", "label": "“Why are you angry? Don’t be angry!", "rows": [{"key": "sn21.9:3.1", "pali": "“Kiṁ nu kujjhasi mā kujjhi,", "sujato": "“Why are you angry?\nDon’t be angry!"}, {"key": "sn21.9:3.2", "pali": "Akkodho tissa te varaṁ;", "sujato": "It’s better to not be angry, Tissa."}, {"key": "sn21.9:3.3", "pali": "Kodhamānamakkhavinayatthañhi,", "sujato": "For this spiritual life is lived"}, {"key": "sn21.9:3.4", "pali": "Tissa brahmacariyaṁ vussatī”ti.", "sujato": "in order to remove anger, conceit, and denigration.”"}, {"key": "sn21.9:3.5", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn21.10", "label": "SN 21.10 · Senior In Name Only", "children": [{"id": "sn21.10/0", "label": "Linked Discourses 21.10", "rows": [{"key": "sn21.10:0.1", "pali": "Saṁyutta Nikāya 21.10", "sujato": "Linked Discourses 21.10"}, {"key": "sn21.10:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.10:0.3", "pali": "Theranāmakasutta", "sujato": "Senior In Name Only"}]}, {"id": "sn21.10/1", "label": "At one time the Buddha was staying…", "rows": [{"key": "sn21.10:1.1", "pali": "Ekaṁ samayaṁ bhagavā rājagahe viharati veḷuvane kalandakanivāpe.", "sujato": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground."}, {"key": "sn21.10:1.2", "pali": "Tena kho pana samayena aññataro bhikkhu theranāmako ekavihārī ceva hoti ekavihārassa ca vaṇṇavādī.", "sujato": "Now at that time there was a certain mendicant who was Senior in name only.\nHe lived alone and praised living alone."}, {"key": "sn21.10:1.3", "pali": "So eko gāmaṁ piṇḍāya pavisati eko paṭikkamati eko raho nisīdati eko caṅkamaṁ adhiṭṭhāti.", "sujato": "He entered the village for alms alone, returned alone, sat in private alone, and focussed on walking mindfully alone."}, {"key": "sn21.10:1.4", "pali": "Atha kho sambahulā bhikkhū yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.\nEkamantaṁ nisinnā kho te bhikkhū bhagavantaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to the Buddha, bowed, sat down to one side, and said to him,"}, {"key": "sn21.10:1.5", "pali": "“idha, bhante, aññataro bhikkhu theranāmako ekavihārī ekavihārassa ca vaṇṇavādī”ti.", "sujato": "“Sir, there’s a certain mendicant who is Senior in name only.\nHe lives alone and praises living alone.”"}]}, {"id": "sn21.10/2", "label": "So the Buddha addressed one of the…", "rows": [{"key": "sn21.10:2.1", "pali": "Atha kho bhagavā aññataraṁ bhikkhuṁ āmantesi:", "sujato": "So the Buddha addressed one of the monks,"}, {"key": "sn21.10:2.2", "pali": "“ehi tvaṁ, bhikkhu, mama vacanena theraṁ bhikkhuṁ āmantehi:", "sujato": "“Please, monk, in my name tell the mendicant Senior that"}, {"key": "sn21.10:2.3", "pali": "‘satthā taṁ, āvuso thera, āmantetī’”ti.", "sujato": "the teacher summons him.”"}, {"key": "sn21.10:2.4", "pali": "“Evaṁ, bhante”ti kho so bhikkhu bhagavato paṭissutvā yenāyasmā thero tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ theraṁ etadavoca:", "sujato": "“Yes, sir,” that monk replied.\nHe went to Venerable Senior and said to him,"}, {"key": "sn21.10:2.5", "pali": "“satthā taṁ, āvuso thera, āmantetī”ti.", "sujato": "“Reverend Senior, the teacher summons you.”"}, {"key": "sn21.10:2.6", "pali": "“Evamāvuso”ti kho āyasmā thero tassa bhikkhuno paṭissutvā yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinnaṁ kho āyasmantaṁ theraṁ bhagavā etadavoca:", "sujato": "“Yes, reverend,” that monk replied.\nHe went to the Buddha, bowed, and sat down to one side.\nThe Buddha said to him:"}, {"key": "sn21.10:2.7", "pali": "“saccaṁ kira tvaṁ, thera, ekavihārī ekavihārassa ca vaṇṇavādī”ti?", "sujato": "“Is it really true, Senior, that you live alone and praise living alone?”"}, {"key": "sn21.10:2.8", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”"}, {"key": "sn21.10:2.9", "pali": "“Yathā kathaṁ pana tvaṁ, thera, ekavihārī ekavihārassa ca vaṇṇavādī”ti?", "sujato": "“But in what way do you live alone and praise living alone?”"}, {"key": "sn21.10:2.10", "pali": "“Idhāhaṁ, bhante, eko gāmaṁ piṇḍāya pavisāmi eko paṭikkamāmi eko raho nisīdāmi eko caṅkamaṁ adhiṭṭhāmi.", "sujato": "“Well, sir, I enter the village for alms alone, return alone,\nsit in private alone, and focus on walking mindfully alone."}, {"key": "sn21.10:2.11", "pali": "Evaṁ khvāhaṁ, bhante, ekavihārī ekavihārassa ca vaṇṇavādī”ti.", "sujato": "That’s how I live alone and praise living alone.”"}]}, {"id": "sn21.10/3", "label": "“That is a kind of living alone,…", "rows": [{"key": "sn21.10:3.1", "pali": "“Attheso, thera, ekavihāro neso natthīti vadāmi.", "sujato": "“That is a kind of living alone, I don’t deny it."}, {"key": "sn21.10:3.2", "pali": "Api ca, thera, yathā ekavihāro vitthārena paripuṇṇo hoti", "sujato": "But as to how living alone is fulfilled in detail,"}, {"key": "sn21.10:3.3", "pali": "taṁ suṇāhi, sādhukaṁ manasi karohi;\nbhāsissāmī”ti.", "sujato": "listen and apply your mind well, I will speak.”"}, {"key": "sn21.10:3.4", "pali": "“Evaṁ, bhante”ti kho …pe….", "sujato": "“Yes, sir,” he replied."}, {"key": "sn21.10:3.5", "pali": "“Kathañca, thera, ekavihāro vitthārena paripuṇṇo hoti.", "sujato": "“And how, Senior, is living alone fulfilled in detail?"}, {"key": "sn21.10:3.6", "pali": "Idha, thera, yaṁ atītaṁ taṁ pahīnaṁ, yaṁ anāgataṁ taṁ paṭinissaṭṭhaṁ,\npaccuppannesu ca attabhāvapaṭilābhesu chandarāgo suppaṭivinīto.", "sujato": "It’s when what’s in the past is given up, what’s in the future is relinquished,\nand desire and greed for present incarnations is eliminated."}, {"key": "sn21.10:3.7", "pali": "Evaṁ kho, thera, ekavihāro vitthārena paripuṇṇo hotī”ti.", "sujato": "That’s how living alone is fulfilled in detail.”"}]}, {"id": "sn21.10/4", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.10:4.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.10:4.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.10/5", "label": "“The champion, all-knower, so very intelligent,", "rows": [{"key": "sn21.10:5.1", "pali": "“Sabbābhibhuṁ sabbaviduṁ sumedhaṁ,", "sujato": "“The champion, all-knower, so very intelligent,"}, {"key": "sn21.10:5.2", "pali": "Sabbesu dhammesu anūpalittaṁ;", "sujato": "is unsullied in the midst of all things."}, {"key": "sn21.10:5.3", "pali": "Sabbañjahaṁ taṇhākkhaye vimuttaṁ,", "sujato": "He’s given up all, freed in the ending of craving:"}, {"key": "sn21.10:5.4", "pali": "Tamahaṁ naraṁ ekavihārīti brūmī”ti.", "sujato": "I declare that man to be one who lives alone.”"}, {"key": "sn21.10:5.5", "pali": "Dasamaṁ.", "sujato": ""}]}]}, {"id": "sn21.11", "label": "SN 21.11 · With Mahākappina", "children": [{"id": "sn21.11/0", "label": "Linked Discourses 21.11", "rows": [{"key": "sn21.11:0.1", "pali": "Saṁyutta Nikāya 21.11", "sujato": "Linked Discourses 21.11"}, {"key": "sn21.11:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.11:0.3", "pali": "Mahākappinasutta", "sujato": "With Mahākappina"}]}, {"id": "sn21.11/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.11:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.11:1.2", "pali": "Atha kho āyasmā mahākappino yena bhagavā tenupasaṅkami.", "sujato": "Then Venerable Mahākappina went to see the Buddha."}, {"key": "sn21.11:1.3", "pali": "Addasā kho bhagavā āyasmantaṁ mahākappinaṁ dūratova āgacchantaṁ.", "sujato": "The Buddha saw him coming off in the distance,"}, {"key": "sn21.11:1.4", "pali": "Disvāna bhikkhū āmantesi:", "sujato": "and addressed the mendicants:"}, {"key": "sn21.11:1.5", "pali": "“passatha no tumhe, bhikkhave, etaṁ bhikkhuṁ āgacchantaṁ odātakaṁ tanukaṁ tuṅganāsikan”ti?", "sujato": "“Mendicants, do you see that monk coming—white, thin, with a pointy nose?”"}, {"key": "sn21.11:1.6", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”"}, {"key": "sn21.11:1.7", "pali": "“Eso kho, bhikkhave, bhikkhu mahiddhiko mahānubhāvo.", "sujato": "“That mendicant is very mighty and powerful."}, {"key": "sn21.11:1.8", "pali": "Na ca sā samāpatti sulabharūpā yā tena bhikkhunā asamāpannapubbā.", "sujato": "It’s not easy to find an attainment that he has not already attained."}, {"key": "sn21.11:1.9", "pali": "Yassa catthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti tadanuttaraṁ\nbrahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharatī”ti.", "sujato": "And he has realized the supreme end of the spiritual path in this very life.\nHe lives having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.”"}]}, {"id": "sn21.11/2", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.11:2.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.11:2.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.11/3", "label": "“The aristocrat is best among people", "rows": [{"key": "sn21.11:3.1", "pali": "“Khattiyo seṭṭho janetasmiṁ,", "sujato": "“The aristocrat is best among people"}, {"key": "sn21.11:3.2", "pali": "ye gottapaṭisārino;", "sujato": "who take clan as the standard."}, {"key": "sn21.11:3.3", "pali": "Vijjācaraṇasampanno,", "sujato": "But one accomplished in knowledge and conduct"}, {"key": "sn21.11:3.4", "pali": "so seṭṭho devamānuse.", "sujato": "is best among gods and humans."}]}, {"id": "sn21.11/4", "label": "The sun blazes by day,", "rows": [{"key": "sn21.11:4.1", "pali": "Divā tapati ādicco,", "sujato": "The sun blazes by day,"}, {"key": "sn21.11:4.2", "pali": "rattimābhāti candimā;", "sujato": "the moon radiates at night,"}, {"key": "sn21.11:4.3", "pali": "Sannaddho khattiyo tapati,", "sujato": "the aristocrat shines in armor,"}, {"key": "sn21.11:4.4", "pali": "jhāyī tapati brāhmaṇo;", "sujato": "and the brahmin shines in absorption."}, {"key": "sn21.11:4.5", "pali": "Atha sabbamahorattiṁ,", "sujato": "But all day and all night,"}, {"key": "sn21.11:4.6", "pali": "buddho tapati tejasā”ti.", "sujato": "the Buddha blazes with glory.”"}, {"key": "sn21.11:4.7", "pali": "Ekādasamaṁ.", "sujato": ""}]}]}, {"id": "sn21.12", "label": "SN 21.12 · Companions", "children": [{"id": "sn21.12/0", "label": "Linked Discourses 21.12", "rows": [{"key": "sn21.12:0.1", "pali": "Saṁyutta Nikāya 21.12", "sujato": "Linked Discourses 21.12"}, {"key": "sn21.12:0.2", "pali": "1.\nBhikkhuvagga", "sujato": "1.\nMonks"}, {"key": "sn21.12:0.3", "pali": "Sahāyakasutta", "sujato": "Companions"}]}, {"id": "sn21.12/1", "label": "At Sāvatthī.", "rows": [{"key": "sn21.12:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn21.12:1.2", "pali": "Atha kho dve bhikkhū sahāyakā āyasmato mahākappinassa saddhivihārino yena bhagavā tenupasaṅkamiṁsu.", "sujato": "Then two mendicants who were companions, protégés of Venerable Mahākappina, went to see the Buddha."}, {"key": "sn21.12:1.3", "pali": "Addasā kho bhagavā te bhikkhū dūratova āgacchante.", "sujato": "The Buddha saw them coming off in the distance,"}, {"key": "sn21.12:1.4", "pali": "Disvāna bhikkhū āmantesi:", "sujato": "and addressed the mendicants:"}, {"key": "sn21.12:1.5", "pali": "“passatha no tumhe, bhikkhave, ete bhikkhū sahāyake āgacchante kappinassa saddhivihārino”ti?", "sujato": "“Mendicants, do you see those monks coming who are companions, protégés of Venerable Mahākappina?”"}, {"key": "sn21.12:1.6", "pali": "“Evaṁ, bhante”.", "sujato": "“Yes, sir.”"}, {"key": "sn21.12:1.7", "pali": "“Ete kho te bhikkhū mahiddhikā mahānubhāvā.", "sujato": "“Those mendicants are very mighty and powerful."}, {"key": "sn21.12:1.8", "pali": "Na ca sā samāpatti sulabharūpā, yā tehi bhikkhūhi asamāpannapubbā.", "sujato": "It’s not easy to find an attainment that they have not already attained."}, {"key": "sn21.12:1.9", "pali": "Yassa catthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti tadanuttaraṁ\nbrahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "And they’ve realized the supreme end of the spiritual path in this very life.\nThey live having achieved with their own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.”"}]}, {"id": "sn21.12/2", "label": "That is what the Buddha said.", "rows": [{"key": "sn21.12:2.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn21.12:2.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn21.12/3", "label": "“These companion mendicants", "rows": [{"key": "sn21.12:3.1", "pali": "“Sahāyāvatime bhikkhū,", "sujato": "“These companion mendicants"}, {"key": "sn21.12:3.2", "pali": "cirarattaṁ sametikā;", "sujato": "have been together for a long time."}, {"key": "sn21.12:3.3", "pali": "Sameti nesaṁ saddhammo,", "sujato": "The true teaching has brought them together,"}, {"key": "sn21.12:3.4", "pali": "dhamme buddhappavedite.", "sujato": "the teaching proclaimed by the Buddha."}]}, {"id": "sn21.12/4", "label": "They’ve been well trained by Kappina", "rows": [{"key": "sn21.12:4.1", "pali": "Suvinītā kappinena,", "sujato": "They’ve been well trained by Kappina"}, {"key": "sn21.12:4.2", "pali": "dhamme ariyappavedite;", "sujato": "in the teaching proclaimed by the Noble One."}, {"key": "sn21.12:4.3", "pali": "Dhārenti antimaṁ dehaṁ,", "sujato": "They bear their final body,"}, {"key": "sn21.12:4.4", "pali": "jetvā māraṁ savāhinin”ti.", "sujato": "having vanquished Māra with his legions.”"}, {"key": "sn21.12:4.5", "pali": "Dvādasamaṁ.", "sujato": ""}, {"key": "sn21.12:4.6", "pali": "Bhikkhuvaggo paṭhamo.", "sujato": ""}]}, {"id": "sn21.12/5", "label": "Tassuddānaṁ", "rows": [{"key": "sn21.12:5.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn21.12:5.1", "pali": "Kolito upatisso ca,", "sujato": ""}, {"key": "sn21.12:5.2", "pali": "ghaṭo cāpi pavuccati;", "sujato": ""}, {"key": "sn21.12:5.3", "pali": "Navo sujāto bhaddi ca,", "sujato": ""}, {"key": "sn21.12:5.4", "pali": "visākho nando tisso ca;", "sujato": ""}, {"key": "sn21.12:5.5", "pali": "Theranāmo ca kappino,", "sujato": ""}, {"key": "sn21.12:5.6", "pali": "sahāyena ca dvādasāti.", "sujato": ""}, {"key": "sn21.12:5.7", "pali": "Bhikkhusaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses on monks are complete."}, {"key": "sn21.12:5.8", "pali": "Nidānavaggo dutiyo.", "sujato": ""}]}, {"id": "sn21.12/6", "label": "Tassuddānaṁ", "rows": [{"key": "sn21.12:6.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn21.12:6.1", "pali": "Nidānābhisamayadhātu,", "sujato": ""}, {"key": "sn21.12:6.2", "pali": "anamataggena kassapaṁ;", "sujato": ""}, {"key": "sn21.12:6.3", "pali": "Sakkārarāhulalakkhaṇo,", "sujato": ""}, {"key": "sn21.12:6.4", "pali": "opammabhikkhunā vaggo.", "sujato": ""}, {"key": "sn21.12:6.5", "pali": "Dutiyo tena pavuccatīti.", "sujato": ""}, {"key": "sn21.12:6.6", "pali": "Nidānavaggasaṁyuttapāḷi niṭṭhitā.", "sujato": "The Book of Causality is finished."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn21.1:1.3": ["Kolita was his personal name, Mogg
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

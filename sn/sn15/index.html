@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn15-pathamavagga", "label": "Paṭhamavagga — Chapter One", "children": [{"id": "sn15.1", "label": "SN 15.1 · Grass and Sticks", "children": [{"id": "sn15.1/0", "label": "Linked Discourses 15.1", "rows": [{"key": "sn15.1:0.1", "pali": "Saṁyutta Nikāya 15.1", "sujato": "Linked Discourses 15.1"}, {"key": "sn15.1:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.1:0.3", "pali": "Tiṇakaṭṭhasutta", "sujato": "Grass and Sticks"}]}, {"id": "sn15.1/1", "label": "So I have heard.", "rows": [{"key": "sn15.1:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard."}, {"key": "sn15.1:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn15.1:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,"}, {"key": "sn15.1:1.4", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”"}, {"key": "sn15.1:1.5", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied."}, {"key": "sn15.1:1.6", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}, {"key": "sn15.1:1.7", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.1:1.8", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.1:1.9", "pali": "Seyyathāpi, bhikkhave,\npuriso yaṁ imasmiṁ jambudīpe tiṇakaṭṭhasākhāpalāsaṁ taṁ chetvā ekajjhaṁ\nsaṁharitvā caturaṅgulaṁ caturaṅgulaṁ ghaṭikaṁ katvā nikkhipeyya:", "sujato": "Suppose a person was to strip all the grass, sticks, branches, and leaves in the Black Plum Tree Land,\ngather them together into one pile, and chop them each into four inch pieces.\nThey’d lay them down, saying:"}, {"key": "sn15.1:1.10", "pali": "‘ayaṁ me mātā, tassā me mātu ayaṁ mātā’ti, apariyādinnāva, bhikkhave, tassa purisassa mātumātaro assu,\natha imasmiṁ jambudīpe tiṇakaṭṭhasākhāpalāsaṁ parikkhayaṁ pariyādānaṁ gaccheyya.", "sujato": "‘This is my mother, this is my grandmother.’\nThe grass, sticks, branches,\nand leaves of the Black Plum Tree Land would run out before that person’s mothers and grandmothers."}, {"key": "sn15.1:1.11", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.1:1.12", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "This transmigration has no known beginning."}, {"key": "sn15.1:1.13", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.1:1.14", "pali": "Evaṁ dīgharattaṁ vo, bhikkhave, dukkhaṁ paccanubhūtaṁ tibbaṁ paccanubhūtaṁ byasanaṁ paccanubhūtaṁ, kaṭasī vaḍḍhitā.", "sujato": "For such a long time you have undergone suffering, agony, and disaster, swelling the cemeteries."}, {"key": "sn15.1:1.15", "pali": "Yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ alaṁ virajjituṁ alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.1:1.16", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn15.2", "label": "SN 15.2 · The Earth", "children": [{"id": "sn15.2/0", "label": "Linked Discourses 15.2", "rows": [{"key": "sn15.2:0.1", "pali": "Saṁyutta Nikāya 15.2", "sujato": "Linked Discourses 15.2"}, {"key": "sn15.2:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.2:0.3", "pali": "Pathavīsutta", "sujato": "The Earth"}]}, {"id": "sn15.2/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.2:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.2:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.2:1.3", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.2:1.4", "pali": "Seyyathāpi, bhikkhave, puriso imaṁ mahāpathaviṁ kolaṭṭhimattaṁ kolaṭṭhimattaṁ mattikāguḷikaṁ karitvā nikkhipeyya:", "sujato": "Suppose a person was to make the whole earth into clay balls the size of jujube seeds.\nThey’d lay them down, saying:"}, {"key": "sn15.2:1.5", "pali": "‘ayaṁ me pitā, tassa me pitu ayaṁ pitā’ti, apariyādinnāva bhikkhave,\ntassa purisassa pitupitaro assu, athāyaṁ mahāpathavī parikkhayaṁ pariyādānaṁ gaccheyya.", "sujato": "‘This is my father, this is my grandfather.’\nThe whole earth would run out before that person’s fathers and grandfathers."}, {"key": "sn15.2:1.6", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.2:1.7", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "This transmigration has no known beginning."}, {"key": "sn15.2:1.8", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.2:1.9", "pali": "Evaṁ dīgharattaṁ vo, bhikkhave, dukkhaṁ paccanubhūtaṁ tibbaṁ paccanubhūtaṁ byasanaṁ paccanubhūtaṁ, kaṭasī vaḍḍhitā.", "sujato": "For such a long time you have undergone suffering, agony, and disaster, swelling the cemeteries."}, {"key": "sn15.2:1.10", "pali": "Yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.2:1.11", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn15.3", "label": "SN 15.3 · Tears", "children": [{"id": "sn15.3/0", "label": "Linked Discourses 15.3", "rows": [{"key": "sn15.3:0.1", "pali": "Saṁyutta Nikāya 15.3", "sujato": "Linked Discourses 15.3"}, {"key": "sn15.3:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.3:0.3", "pali": "Assusutta", "sujato": "Tears"}]}, {"id": "sn15.3/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.3:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.3:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.3:1.3", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.3:1.4", "pali": "Taṁ kiṁ maññatha, bhikkhave, katamaṁ nu kho bahutaraṁ,\nyaṁ vā vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ amanāpasampayogā\nmanāpavippayogā kandantānaṁ rodantānaṁ assu passannaṁ paggharitaṁ,\nyaṁ vā catūsu mahāsamuddesu udakan”ti?", "sujato": "What do you think?\nWhich is more:\nthe flow of tears you’ve shed while roaming and transmigrating for such a very long time—weeping and\nwailing from being coupled with the unloved and separated from the loved—or the water in the four oceans?”"}, {"key": "sn15.3:1.5", "pali": "“Yathā kho mayaṁ, bhante, bhagavatā dhammaṁ desitaṁ ājānāma, etadeva, bhante,\nbahutaraṁ yaṁ no iminā dīghena addhunā sandhāvataṁ saṁsarataṁ amanāpasampayogā\nmanāpavippayogā kandantānaṁ rodantānaṁ assu passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakan”ti.", "sujato": "“As we understand the Buddha’s teaching,\nthe flow of tears we’ve shed while roaming and transmigrating is more than the water in the four oceans.”"}]}, {"id": "sn15.3/2", "label": "“Good, good, mendicants! It’s good that you…", "rows": [{"key": "sn15.3:2.1", "pali": "“Sādhu sādhu, bhikkhave, sādhu kho me tumhe, bhikkhave, evaṁ dhammaṁ desitaṁ ājānātha.", "sujato": "“Good, good, mendicants!\nIt’s good that you understand my teaching like this."}, {"key": "sn15.3:2.2", "pali": "Etadeva, bhikkhave, bahutaraṁ yaṁ vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ\namanāpasampayogā manāpavippayogā kandantānaṁ rodantānaṁ assu passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "The flow of tears you’ve shed while roaming and transmigrating is indeed more than the water in the four oceans."}, {"key": "sn15.3:2.3", "pali": "Dīgharattaṁ vo, bhikkhave, mātumaraṇaṁ paccanubhūtaṁ;", "sujato": "For a long time you’ve undergone the death of a mother …"}, {"key": "sn15.3:2.4", "pali": "tesaṁ vo mātumaraṇaṁ paccanubhontānaṁ amanāpasampayogā\nmanāpavippayogā kandantānaṁ rodantānaṁ assu passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": ""}, {"key": "sn15.3:2.5", "pali": "Dīgharattaṁ vo, bhikkhave, pitumaraṇaṁ paccanubhūtaṁ …pe…", "sujato": "father …"}, {"key": "sn15.3:2.6", "pali": "bhātumaraṇaṁ paccanubhūtaṁ …", "sujato": "brother …"}, {"key": "sn15.3:2.7", "pali": "bhaginimaraṇaṁ paccanubhūtaṁ …", "sujato": "sister …"}, {"key": "sn15.3:2.8", "pali": "puttamaraṇaṁ paccanubhūtaṁ …", "sujato": "son …"}, {"key": "sn15.3:2.9", "pali": "dhītumaraṇaṁ paccanubhūtaṁ …", "sujato": "daughter …"}, {"key": "sn15.3:2.10", "pali": "ñātibyasanaṁ paccanubhūtaṁ …", "sujato": "loss of relatives …"}, {"key": "sn15.3:2.11", "pali": "bhogabyasanaṁ paccanubhūtaṁ.", "sujato": "loss of wealth …"}, {"key": "sn15.3:2.12", "pali": "Dīgharattaṁ vo, bhikkhave, rogabyasanaṁ paccanubhūtaṁ,\ntesaṁ vo rogabyasanaṁ paccanubhontānaṁ amanāpasampayogā\nmanāpavippayogā kandantānaṁ rodantānaṁ assu passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "or loss through illness.\nFrom being coupled with the unloved and separated from the loved,\nthe flow of tears you’ve shed while roaming and transmigrating is indeed more than the water in the four oceans."}, {"key": "sn15.3:2.13", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.3:2.14", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.3:2.15", "pali": "yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.3:2.16", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn15.4", "label": "SN 15.4 · Mother’s Milk", "children": [{"id": "sn15.4/0", "label": "Linked Discourses 15.4", "rows": [{"key": "sn15.4:0.1", "pali": "Saṁyutta Nikāya 15.4", "sujato": "Linked Discourses 15.4"}, {"key": "sn15.4:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.4:0.3", "pali": "Khīrasutta", "sujato": "Mother’s Milk"}]}, {"id": "sn15.4/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.4:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.4:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.4:1.3", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.4:1.4", "pali": "Taṁ kiṁ maññatha, bhikkhave, katamaṁ nu kho bahutaraṁ,\nyaṁ vā vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ mātuthaññaṁ pītaṁ, yaṁ vā catūsu mahāsamuddesu udakan”ti?", "sujato": "What do you think?\nWhich is more:\nthe mother’s milk you’ve drunk while roaming and transmigrating for such a very long time,\nor the water in the four oceans?”"}, {"key": "sn15.4:1.5", "pali": "“Yathā kho mayaṁ, bhante, bhagavatā dhammaṁ desitaṁ ājānāma, etadeva, bhante,\nbahutaraṁ yaṁ no iminā dīghena addhunā sandhāvataṁ saṁsarataṁ mātuthaññaṁ pītaṁ,\nna tveva catūsu mahāsamuddesu udakan”ti.", "sujato": "“As we understand the Buddha’s teaching,\nthe mother’s milk we’ve drunk while roaming and transmigrating is more than the water in the four oceans.”"}]}, {"id": "sn15.4/2", "label": "“Good, good, mendicants! It’s good that you…", "rows": [{"key": "sn15.4:2.1", "pali": "“Sādhu sādhu, bhikkhave, sādhu kho me tumhe, bhikkhave, evaṁ dhammaṁ desitaṁ ājānātha.", "sujato": "“Good, good, mendicants!\nIt’s good that you understand my teaching like this."}, {"key": "sn15.4:2.2", "pali": "Etadeva, bhikkhave, bahutaraṁ yaṁ vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ mātuthaññaṁ pītaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "The mother’s milk you’ve drunk while roaming and transmigrating for\nsuch a very long time is more than the water in the four oceans."}, {"key": "sn15.4:2.3", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.4:2.4", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.4:2.5", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.4:2.6", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn15.5", "label": "SN 15.5 · A Mountain", "children": [{"id": "sn15.5/0", "label": "Linked Discourses 15.5", "rows": [{"key": "sn15.5:0.1", "pali": "Saṁyutta Nikāya 15.5", "sujato": "Linked Discourses 15.5"}, {"key": "sn15.5:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.5:0.3", "pali": "Pabbatasutta", "sujato": "A Mountain"}]}, {"id": "sn15.5/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.5:1.1", "pali": "Sāvatthiyaṁ viharati …pe… ārāme …pe….", "sujato": "At Sāvatthī."}, {"key": "sn15.5:1.2", "pali": "Atha kho aññataro bhikkhu yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho so bhikkhu bhagavantaṁ etadavoca:", "sujato": "Then a mendicant went up to the Buddha, bowed, sat down to one side, and asked him,"}, {"key": "sn15.5:1.3", "pali": "“kīvadīgho nu kho, bhante, kappo”ti?", "sujato": "“Sir, how long is an eon?”"}, {"key": "sn15.5:1.4", "pali": "“Dīgho kho, bhikkhu, kappo.", "sujato": "“Mendicant, an eon is long."}, {"key": "sn15.5:1.5", "pali": "So na sukaro saṅkhātuṁ ettakāni vassāni iti vā, ettakāni vassasatāni iti vā,\nettakāni vassasahassāni iti vā, ettakāni vassasatasahassāni iti vā”ti.", "sujato": "It’s not easy to calculate how many years, how many hundreds or thousands or hundreds of thousands of years it lasts.”"}]}, {"id": "sn15.5/2", "label": "“But sir, is it possible to give…", "rows": [{"key": "sn15.5:2.1", "pali": "“Sakkā pana, bhante, upamaṁ kātun”ti?", "sujato": "“But sir, is it possible to give a simile?”"}, {"key": "sn15.5:2.2", "pali": "“Sakkā, bhikkhū”ti bhagavā avoca.", "sujato": "“It’s possible,” said the Buddha."}, {"key": "sn15.5:2.3", "pali": "“Seyyathāpi, bhikkhu, mahāselo pabbato yojanaṁ āyāmena yojanaṁ vitthārena yojanaṁ ubbedhena acchinno asusiro ekagghano.", "sujato": "“Suppose there was a huge stone mountain, a league long, a league wide,\nand a league high, with no cracks or holes, one solid mass."}, {"key": "sn15.5:2.4", "pali": "Tamenaṁ puriso vassasatassa vassasatassa accayena kāsikena vatthena sakiṁ sakiṁ parimajjeyya.", "sujato": "And as each century passed someone would stroke it once with a fine cloth from Kāsi."}, {"key": "sn15.5:2.5", "pali": "Khippataraṁ kho so, bhikkhu, mahāselo pabbato iminā upakkamena parikkhayaṁ pariyādānaṁ gaccheyya, na tveva kappo.", "sujato": "By this means the huge stone mountain would be worn away before the eon comes to an end."}, {"key": "sn15.5:2.6", "pali": "Evaṁ dīgho, bhikkhu, kappo.", "sujato": "That’s how long an eon is."}, {"key": "sn15.5:2.7", "pali": "Evaṁ dīghānaṁ kho, bhikkhu, kappānaṁ neko kappo saṁsito, nekaṁ kappasataṁ saṁsitaṁ,\nnekaṁ kappasahassaṁ saṁsitaṁ, nekaṁ kappasatasahassaṁ saṁsitaṁ.", "sujato": "And we’ve transmigrated through many such eons, many hundreds, many thousands, many hundreds of thousands."}, {"key": "sn15.5:2.8", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.5:2.9", "pali": "Anamataggoyaṁ, bhikkhu, saṁsāro.", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.5:2.10", "pali": "Pubbā koṭi …pe…", "sujato": ""}, {"key": "sn15.5:2.11", "pali": "yāvañcidaṁ, bhikkhu, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.5:2.12", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn15.6", "label": "SN 15.6 · A Mustard Seed", "children": [{"id": "sn15.6/0", "label": "Linked Discourses 15.6", "rows": [{"key": "sn15.6:0.1", "pali": "Saṁyutta Nikāya 15.6", "sujato": "Linked Discourses 15.6"}, {"key": "sn15.6:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.6:0.3", "pali": "Sāsapasutta", "sujato": "A Mustard Seed"}]}, {"id": "sn15.6/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.6:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.6:1.2", "pali": "Atha kho aññataro bhikkhu yena bhagavā …pe… ekamantaṁ nisinno kho so bhikkhu bhagavantaṁ etadavoca:", "sujato": "Then a mendicant went up to the Buddha … and asked him,"}, {"key": "sn15.6:1.3", "pali": "“kīvadīgho nu kho, bhante, kappo”ti?", "sujato": "“Sir, how long is an eon?”"}, {"key": "sn15.6:1.4", "pali": "“Dīgho kho, bhikkhu, kappo.", "sujato": "“Mendicant, an eon is long."}, {"key": "sn15.6:1.5", "pali": "So na sukaro saṅkhātuṁ ettakāni vassāni iti vā …pe… ettakāni vassasatasahassāni iti vā”ti.", "sujato": "It’s not easy to calculate how many years, how many hundreds or thousands or hundreds of thousands of years it lasts.”"}]}, {"id": "sn15.6/2", "label": "“But sir, is it possible to give…", "rows": [{"key": "sn15.6:2.1", "pali": "“Sakkā pana, bhante, upamaṁ kātun”ti?", "sujato": "“But sir, is it possible to give a simile?”"}, {"key": "sn15.6:2.2", "pali": "“Sakkā, bhikkhū”ti bhagavā avoca.", "sujato": "“It’s possible,” said the Buddha."}, {"key": "sn15.6:2.3", "pali": "“Seyyathāpi, bhikkhu, āyasaṁ nagaraṁ yojanaṁ āyāmena yojanaṁ vitthārena yojanaṁ ubbedhena,\npuṇṇaṁ sāsapānaṁ guḷikābaddhaṁ.", "sujato": "“Suppose there was an iron citadel, a league long, a league wide,\nand a league high, full of mustard seeds pressed into balls."}, {"key": "sn15.6:2.4", "pali": "Tato puriso vassasatassa vassasatassa accayena ekamekaṁ sāsapaṁ uddhareyya.", "sujato": "And as each century passed someone would remove a single mustard seed."}, {"key": "sn15.6:2.5", "pali": "Khippataraṁ kho so, bhikkhu, mahāsāsaparāsi iminā upakkamena parikkhayaṁ pariyādānaṁ gaccheyya, na tveva kappo.", "sujato": "By this means the huge heap of mustard seeds would be used up before the eon comes to an end."}, {"key": "sn15.6:2.6", "pali": "Evaṁ dīgho kho, bhikkhu, kappo.", "sujato": "That’s how long an eon is."}, {"key": "sn15.6:2.7", "pali": "Evaṁ dīghānaṁ kho, bhikkhu, kappānaṁ neko kappo saṁsito, nekaṁ kappasataṁ saṁsitaṁ,\nnekaṁ kappasahassaṁ saṁsitaṁ, nekaṁ kappasatasahassaṁ saṁsitaṁ.", "sujato": "And we’ve transmigrated through many such eons, many hundreds, many thousands, many hundreds of thousands."}, {"key": "sn15.6:2.8", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.6:2.9", "pali": "Anamataggoyaṁ, bhikkhu, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.6:2.10", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.6:2.11", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn15.7", "label": "SN 15.7 · Disciples", "children": [{"id": "sn15.7/0", "label": "Linked Discourses 15.7", "rows": [{"key": "sn15.7:0.1", "pali": "Saṁyutta Nikāya 15.7", "sujato": "Linked Discourses 15.7"}, {"key": "sn15.7:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.7:0.3", "pali": "Sāvakasutta", "sujato": "Disciples"}]}, {"id": "sn15.7/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.7:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.7:1.2", "pali": "Atha kho sambahulā bhikkhū yena bhagavā …pe… ekamantaṁ nisinnā kho te bhikkhū bhagavantaṁ etadavocuṁ:", "sujato": "Then several mendicants went up to the Buddha … and asked him,"}, {"key": "sn15.7:1.3", "pali": "“kīvabahukā nu kho, bhante, kappā abbhatītā atikkantā”ti?", "sujato": "“Sir, how many eons have passed?”"}, {"key": "sn15.7:1.4", "pali": "“Bahukā kho, bhikkhave, kappā abbhatītā atikkantā.", "sujato": "“Mendicants, many eons have passed."}, {"key": "sn15.7:1.5", "pali": "Te na sukarā saṅkhātuṁ:", "sujato": "It’s not easy to calculate"}, {"key": "sn15.7:1.6", "pali": "‘ettakā kappā iti vā, ettakāni kappasatāni iti vā,\nettakāni kappasahassāni iti vā, ettakāni kappasatasahassāni iti vā’”ti.", "sujato": "how many eons have passed, how many hundreds or thousands or hundreds of thousands of eons.”"}]}, {"id": "sn15.7/2", "label": "“But sir, is it possible to give…", "rows": [{"key": "sn15.7:2.1", "pali": "“Sakkā pana, bhante, upamaṁ kātun”ti?", "sujato": "“But sir, is it possible to give a simile?”"}, {"key": "sn15.7:2.2", "pali": "“Sakkā, bhikkhave”ti bhagavā avoca.", "sujato": "“It’s possible,” said the Buddha."}, {"key": "sn15.7:2.3", "pali": "“Idhassu, bhikkhave, cattāro sāvakā vassasatāyukā vassasatajīvino.", "sujato": "“Suppose there were four disciples with a lifespan of a hundred years."}, {"key": "sn15.7:2.4", "pali": "Te divase divase kappasatasahassaṁ kappasatasahassaṁ anussareyyuṁ.", "sujato": "And each day they would each recollect a hundred thousand eons."}, {"key": "sn15.7:2.5", "pali": "Ananussaritāva, bhikkhave, tehi kappā assu,\natha kho te cattāro sāvakā vassasatāyukā vassasatajīvino vassasatassa accayena kālaṁ kareyyuṁ.", "sujato": "Those four disciples would pass away after a hundred years and there would still be eons that they haven’t recollected."}, {"key": "sn15.7:2.6", "pali": "Evaṁ bahukā kho, bhikkhave, kappā abbhatītā atikkantā.", "sujato": "That’s how many eons have passed."}, {"key": "sn15.7:2.7", "pali": "Te na sukarā saṅkhātuṁ:", "sujato": "It’s not easy to calculate"}, {"key": "sn15.7:2.8", "pali": "‘ettakā kappā iti vā, ettakāni kappasatāni iti vā,\nettakāni kappasahassāni iti vā, ettakāni kappasatasahassāni iti vā’ti.", "sujato": "how many eons have passed, how many hundreds or thousands or hundreds of thousands of eons."}, {"key": "sn15.7:2.9", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.7:2.10", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.7:2.11", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.7:2.12", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn15.8", "label": "SN 15.8 · The Ganges", "children": [{"id": "sn15.8/0", "label": "Linked Discourses 15.8", "rows": [{"key": "sn15.8:0.1", "pali": "Saṁyutta Nikāya 15.8", "sujato": "Linked Discourses 15.8"}, {"key": "sn15.8:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.8:0.3", "pali": "Gaṅgāsutta", "sujato": "The Ganges"}]}, {"id": "sn15.8/1", "label": "Near Rājagaha, in the Bamboo Grove.", "rows": [{"key": "sn15.8:1.1", "pali": "Rājagahe viharati veḷuvane.", "sujato": "Near Rājagaha, in the Bamboo Grove."}, {"key": "sn15.8:1.2", "pali": "Atha kho aññataro brāhmaṇo yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavatā saddhiṁ sammodi.", "sujato": "Then a certain brahmin went up to the Buddha, and exchanged greetings with him."}, {"key": "sn15.8:1.3", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho so brāhmaṇo bhagavantaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, he sat down to one side and asked the Buddha,"}, {"key": "sn15.8:1.4", "pali": "“kīvabahukā nu kho, bho gotama, kappā abbhatītā atikkantā”ti?", "sujato": "“Worthy Gotama, how many eons have passed?”"}, {"key": "sn15.8:1.5", "pali": "“Bahukā kho, brāhmaṇa, kappā abbhatītā atikkantā.", "sujato": "“Brahmin, many eons have passed."}, {"key": "sn15.8:1.6", "pali": "Te na sukarā saṅkhātuṁ:", "sujato": "It’s not easy to calculate"}, {"key": "sn15.8:1.7", "pali": "‘ettakā kappā iti vā, ettakāni kappasatāni iti vā,\nettakāni kappasahassāni iti vā, ettakāni kappasatasahassāni iti vā’”ti.", "sujato": "how many eons have passed, how many hundreds or thousands or hundreds of thousands of eons.”"}]}, {"id": "sn15.8/2", "label": "“But worthy Gotama, can you give a…", "rows": [{"key": "sn15.8:2.1", "pali": "“Sakkā pana, bho gotama, upamaṁ kātun”ti?", "sujato": "“But worthy Gotama, can you give a simile?”"}, {"key": "sn15.8:2.2", "pali": "“Sakkā, brāhmaṇā”ti bhagavā avoca.", "sujato": "“I can,” said the Buddha."}, {"key": "sn15.8:2.3", "pali": "“Seyyathāpi, brāhmaṇa, yato cāyaṁ gaṅgā nadī pabhavati yattha ca mahāsamuddaṁ appeti,\nyā etasmiṁ antare vālikā sā na sukarā saṅkhātuṁ:", "sujato": "“Consider the Ganges river from where it originates to where it meets the ocean.\nBetween these places it’s not easy to calculate"}, {"key": "sn15.8:2.4", "pali": "‘ettakā vālikā iti vā, ettakāni vālikasatāni iti vā,\nettakāni vālikasahassāni iti vā, ettakāni vālikasatasahassāni iti vā’ti.", "sujato": "how many grains of sand there are, how many hundreds or thousands or hundreds of thousands of grains of sand."}, {"key": "sn15.8:2.5", "pali": "Tato bahutarā kho, brāhmaṇa, kappā abbhatītā atikkantā.", "sujato": "The eons that have passed are more than this."}, {"key": "sn15.8:2.6", "pali": "Te na sukarā saṅkhātuṁ:", "sujato": "It’s not easy to calculate"}, {"key": "sn15.8:2.7", "pali": "‘ettakā kappā iti vā, ettakāni kappasatāni iti vā,\nettakāni kappasahassāni iti vā, ettakāni kappasatasahassāni iti vā’ti.", "sujato": "how many eons have passed, how many hundreds or thousands or hundreds of thousands of eons."}, {"key": "sn15.8:2.8", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.8:2.9", "pali": "Anamataggoyaṁ, brāhmaṇa, saṁsāro.", "sujato": "This transmigration has no known beginning."}, {"key": "sn15.8:2.10", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.8:2.11", "pali": "Evaṁ dīgharattaṁ kho, brāhmaṇa, dukkhaṁ paccanubhūtaṁ tibbaṁ paccanubhūtaṁ byasanaṁ paccanubhūtaṁ, kaṭasī vaḍḍhitā.", "sujato": "For such a long time you have undergone suffering, agony, and disaster, swelling the cemeteries."}, {"key": "sn15.8:2.12", "pali": "Yāvañcidaṁ, brāhmaṇa, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}]}, {"id": "sn15.8/3", "label": "When he said this, the brahmin said…", "rows": [{"key": "sn15.8:3.1", "pali": "Evaṁ vutte, so brāhmaṇo bhagavantaṁ etadavoca:", "sujato": "When he said this, the brahmin said to the Buddha,"}, {"key": "sn15.8:3.2", "pali": "“abhikkantaṁ, bho gotama, abhikkantaṁ, bho gotama …pe…", "sujato": "“Excellent, worthy Gotama!\nExcellent! …"}, {"key": "sn15.8:3.3", "pali": "upāsakaṁ maṁ bhavaṁ gotamo dhāretu ajjatagge pāṇupetaṁ saraṇaṁ gatan”ti.", "sujato": "From this day forth, may the worthy Gotama remember me as a lay follower who has gone for refuge for life.”"}, {"key": "sn15.8:3.4", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn15.9", "label": "SN 15.9 · A Stick", "children": [{"id": "sn15.9/0", "label": "Linked Discourses 15.9", "rows": [{"key": "sn15.9:0.1", "pali": "Saṁyutta Nikāya 15.9", "sujato": "Linked Discourses 15.9"}, {"key": "sn15.9:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.9:0.3", "pali": "Daṇḍasutta", "sujato": "A Stick"}]}, {"id": "sn15.9/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.9:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.9:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.9:1.3", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.9:1.4", "pali": "Seyyathāpi, bhikkhave, daṇḍo uparivehāsaṁ khitto sakimpi mūlena nipatati,\nsakimpi majjhena nipatati, sakimpi antena nipatati;", "sujato": "Suppose a stick was tossed up in the air.\nSometimes it’d fall on its bottom, sometimes the middle, and sometimes the end."}, {"key": "sn15.9:1.5", "pali": "evameva kho, bhikkhave,\navijjānīvaraṇā sattā taṇhāsaṁyojanā sandhāvantā saṁsarantā sakimpi asmā lokā paraṁ lokaṁ gacchanti,\nsakimpi parasmā lokā imaṁ lokaṁ āgacchanti.", "sujato": "It’s the same for sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving.\nSometimes they go from this world to the other world, and sometimes they come from the other world to this world."}, {"key": "sn15.9:1.6", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.9:1.7", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.9:1.8", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.9:1.9", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn15.10", "label": "SN 15.10 · A Single Individual", "children": [{"id": "sn15.10/0", "label": "Linked Discourses 15.10", "rows": [{"key": "sn15.10:0.1", "pali": "Saṁyutta Nikāya 15.10", "sujato": "Linked Discourses 15.10"}, {"key": "sn15.10:0.2", "pali": "1.\nPaṭhamavagga", "sujato": "Chapter One"}, {"key": "sn15.10:0.3", "pali": "Puggalasutta", "sujato": "A Single Individual"}]}, {"id": "sn15.10/1", "label": "At one time the Buddha was staying…", "rows": [{"key": "sn15.10:1.1", "pali": "Ekaṁ samayaṁ bhagavā rājagahe viharati gijjhakūṭe pabbate.", "sujato": "At one time the Buddha was staying near Rājagaha, on the Vulture’s Peak Mountain."}, {"key": "sn15.10:1.2", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,"}, {"key": "sn15.10:1.3", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”"}, {"key": "sn15.10:1.4", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied."}, {"key": "sn15.10:1.5", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}]}, {"id": "sn15.10/2", "label": "“Mendicants, this transmigration has no known beginning.…", "rows": [{"key": "sn15.10:2.1", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "“Mendicants, this transmigration has no known beginning. …"}, {"key": "sn15.10:2.2", "pali": "ekapuggalassa, bhikkhave,\nkappaṁ sandhāvato saṁsarato siyā evaṁ mahā aṭṭhikaṅkalo aṭṭhipuñjo aṭṭhirāsi yathāyaṁ vepullo pabbato,\nsace saṁhārako assa, sambhatañca na vinasseyya.", "sujato": "One individual roaming and transmigrating for an eon would amass a heap of bones the size of this Mount Vepulla,\nif they were gathered together and not lost."}, {"key": "sn15.10:2.3", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.10:2.4", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.10:2.5", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}]}, {"id": "sn15.10/3", "label": "That is what the Buddha said.", "rows": [{"key": "sn15.10:3.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn15.10:3.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn15.10/4", "label": "“If the bones of a single individual", "rows": [{"key": "sn15.10:4.1", "pali": "“Ekassekena kappena,", "sujato": "“If the bones of a single individual"}, {"key": "sn15.10:4.2", "pali": "puggalassaṭṭhisañcayo;", "sujato": "for a single eon were gathered up,"}, {"key": "sn15.10:4.3", "pali": "Siyā pabbatasamo rāsi,", "sujato": "they’d make a pile the size of a mountain:"}, {"key": "sn15.10:4.4", "pali": "iti vuttaṁ mahesinā.", "sujato": "so said the great seer."}]}, {"id": "sn15.10/5", "label": "And this is declared to be", "rows": [{"key": "sn15.10:5.1", "pali": "So kho panāyaṁ akkhāto,", "sujato": "And this is declared to be"}, {"key": "sn15.10:5.2", "pali": "vepullo pabbato mahā;", "sujato": "as huge as Mount Vepulla,"}, {"key": "sn15.10:5.3", "pali": "Uttaro gijjhakūṭassa,", "sujato": "higher than the Vulture’s Peak"}, {"key": "sn15.10:5.4", "pali": "magadhānaṁ giribbaje.", "sujato": "in the Magadhan mountain range."}]}, {"id": "sn15.10/6", "label": "But then, with right understanding,", "rows": [{"key": "sn15.10:6.1", "pali": "Yato ca ariyasaccāni,", "sujato": "But then, with right understanding,"}, {"key": "sn15.10:6.2", "pali": "sammappaññāya passati;", "sujato": "one sees the noble truths—"}, {"key": "sn15.10:6.3", "pali": "Dukkhaṁ dukkhasamuppādaṁ,", "sujato": "suffering, suffering’s origin,"}, {"key": "sn15.10:6.4", "pali": "dukkhassa ca atikkamaṁ;", "sujato": "suffering’s transcendence,"}, {"key": "sn15.10:6.5", "pali": "Ariyaṁ caṭṭhaṅgikaṁ maggaṁ,", "sujato": "and the noble eightfold path"}, {"key": "sn15.10:6.6", "pali": "dukkhūpasamagāminaṁ.", "sujato": "that leads to the stilling of suffering."}]}, {"id": "sn15.10/7", "label": "After roaming on seven times at most,", "rows": [{"key": "sn15.10:7.1", "pali": "Sa sattakkhattuṁparamaṁ,", "sujato": "After roaming on seven times at most,"}, {"key": "sn15.10:7.2", "pali": "sandhāvitvāna puggalo;", "sujato": "that individual"}, {"key": "sn15.10:7.3", "pali": "Dukkhassantakaro hoti,", "sujato": "makes an end of suffering,"}, {"key": "sn15.10:7.4", "pali": "sabbasaṁyojanakkhayā”ti.", "sujato": "with the ending of all fetters.”"}, {"key": "sn15.10:7.5", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn15.10:7.6", "pali": "Paṭhamo vaggo.", "sujato": ""}]}, {"id": "sn15.10/8", "label": "Tassuddānaṁ", "rows": [{"key": "sn15.10:8.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn15.10:8.1", "pali": "Tiṇakaṭṭhañca pathavī,", "sujato": ""}, {"key": "sn15.10:8.2", "pali": "assu khīrañca pabbataṁ;", "sujato": ""}, {"key": "sn15.10:8.3", "pali": "Sāsapā sāvakā gaṅgā,", "sujato": ""}, {"key": "sn15.10:8.4", "pali": "daṇḍo ca puggalena cāti.", "sujato": ""}]}]}]}, {"id": "sn15-dutiyavagga", "label": "Dutiyavagga — Chapter Two", "children": [{"id": "sn15.11", "label": "SN 15.11 · In a Sorry State", "children": [{"id": "sn15.11/0", "label": "Linked Discourses 15.11", "rows": [{"key": "sn15.11:0.1", "pali": "Saṁyutta Nikāya 15.11", "sujato": "Linked Discourses 15.11"}, {"key": "sn15.11:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.11:0.3", "pali": "Duggatasutta", "sujato": "In a Sorry State"}]}, {"id": "sn15.11/1", "label": "At one time the Buddha was staying…", "rows": [{"key": "sn15.11:1.1", "pali": "Ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati.", "sujato": "At one time the Buddha was staying near Sāvatthī."}, {"key": "sn15.11:1.2", "pali": "Tatra kho …pe…", "sujato": ""}, {"key": "sn15.11:1.3", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.11:1.4", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.11:1.5", "pali": "Yaṁ, bhikkhave, passeyyātha duggataṁ durūpetaṁ niṭṭhamettha gantabbaṁ:", "sujato": "When you see someone in a sorry state, in distress, you should conclude:"}, {"key": "sn15.11:1.6", "pali": "‘amhehipi evarūpaṁ paccanubhūtaṁ iminā dīghena addhunā’ti.", "sujato": "‘In all this long time, we too have undergone the same thing.’"}, {"key": "sn15.11:1.7", "pali": "Taṁ kissa hetu …pe…", "sujato": "Why is that?\nThis transmigration has no known beginning. …"}, {"key": "sn15.11:1.8", "pali": "yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ alaṁ virajjituṁ alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.11:1.9", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn15.12", "label": "SN 15.12 · In a Good Way", "children": [{"id": "sn15.12/0", "label": "Linked Discourses 15.12", "rows": [{"key": "sn15.12:0.1", "pali": "Saṁyutta Nikāya 15.12", "sujato": "Linked Discourses 15.12"}, {"key": "sn15.12:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.12:0.3", "pali": "Sukhitasutta", "sujato": "In a Good Way"}]}, {"id": "sn15.12/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.12:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.12:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "“Mendicants, this transmigration has no known beginning. …"}, {"key": "sn15.12:1.3", "pali": "yaṁ, bhikkhave, passeyyātha sukhitaṁ susajjitaṁ, niṭṭhamettha gantabbaṁ:", "sujato": "When you see someone in a good way, in a happy state, you should conclude:"}, {"key": "sn15.12:1.4", "pali": "‘amhehipi evarūpaṁ paccanubhūtaṁ iminā dīghena addhunā’ti.", "sujato": "‘In all this long time, we too have undergone the same thing.’"}, {"key": "sn15.12:1.5", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.12:1.6", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.12:1.7", "pali": "Pubbā koṭi na paññāyati …pe…", "sujato": ""}, {"key": "sn15.12:1.8", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.12:1.9", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn15.13", "label": "SN 15.13 · Thirty Mendicants", "children": [{"id": "sn15.13/0", "label": "Linked Discourses 15.13", "rows": [{"key": "sn15.13:0.1", "pali": "Saṁyutta Nikāya 15.13", "sujato": "Linked Discourses 15.13"}, {"key": "sn15.13:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.13:0.3", "pali": "Tiṁsamattasutta", "sujato": "Thirty Mendicants"}]}, {"id": "sn15.13/1", "label": "Near Rājagaha, in the Bamboo Grove.", "rows": [{"key": "sn15.13:1.1", "pali": "Rājagahe viharati veḷuvane.", "sujato": "Near Rājagaha, in the Bamboo Grove."}, {"key": "sn15.13:1.2", "pali": "Atha kho tiṁsamattā pāveyyakā bhikkhū sabbe āraññikā sabbe piṇḍapātikā sabbe\npaṁsukūlikā sabbe tecīvarikā sabbe sasaṁyojanā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdiṁsu.", "sujato": "Then thirty mendicants from Pāvā went to the Buddha.\nAll of them lived in the wilderness, ate only almsfood, wore rag robes, and owned just three robes;\nyet they all still had fetters.\nThey bowed to the Buddha and sat down to one side."}, {"key": "sn15.13:1.3", "pali": "Atha kho bhagavato etadahosi:", "sujato": "Then it occurred to the Buddha,"}, {"key": "sn15.13:1.4", "pali": "“ime kho tiṁsamattā pāveyyakā bhikkhū sabbe āraññikā sabbe\npiṇḍapātikā sabbe paṁsukūlikā sabbe tecīvarikā sabbe sasaṁyojanā.", "sujato": "“These thirty mendicants from Pāvā live in the wilderness, eat only almsfood, wear rag robes, and own just three robes;\nyet they all still have fetters."}, {"key": "sn15.13:1.5", "pali": "Yannūnāhaṁ imesaṁ tathā dhammaṁ deseyyaṁ yathā nesaṁ imasmiṁyeva āsane anupādāya āsavehi cittāni vimucceyyun”ti.", "sujato": "Why don’t I teach them the Dhamma in such a way that their minds are\nfreed from defilements by not grasping while sitting in this very seat?”"}, {"key": "sn15.13:1.6", "pali": "Atha kho bhagavā bhikkhū āmantesi:", "sujato": "Then the Buddha said to the mendicants,"}, {"key": "sn15.13:1.7", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”"}, {"key": "sn15.13:1.8", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied."}, {"key": "sn15.13:1.9", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}]}, {"id": "sn15.13/2", "label": "“Mendicants, this transmigration has no known beginning.", "rows": [{"key": "sn15.13:2.1", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.13:2.2", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.13:2.3", "pali": "Taṁ kiṁ maññatha, bhikkhave, katamaṁ nu kho bahutaraṁ,\nyaṁ vā vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ,\nyaṁ vā catūsu mahāsamuddesu udakan”ti?", "sujato": "What do you think?\nWhich is more:\nthe flow of blood you’ve shed when your head was chopped off while roaming and transmigrating for such a very long time,\nor the water in the four oceans?”"}, {"key": "sn15.13:2.4", "pali": "“Yathā kho mayaṁ, bhante, bhagavatā dhammaṁ desitaṁ ājānāma, etadeva, bhante, bahutaraṁ,\nyaṁ no iminā dīghena addhunā sandhāvataṁ saṁsarataṁ sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakan”ti.", "sujato": "“As we understand the Buddha’s teaching,\nthe flow of blood we’ve shed when our head was chopped off while\nroaming and transmigrating is more than the water in the four oceans.”"}]}, {"id": "sn15.13/3", "label": "“Good, good, mendicants! It’s good that you…", "rows": [{"key": "sn15.13:3.1", "pali": "“Sādhu sādhu, bhikkhave, sādhu kho me tumhe, bhikkhave, evaṁ dhammaṁ desitaṁ ājānātha.", "sujato": "“Good, good, mendicants!\nIt’s good that you understand my teaching like this."}, {"key": "sn15.13:3.2", "pali": "Etadeva, bhikkhave, bahutaraṁ,\nyaṁ vo iminā dīghena addhunā sandhāvataṁ saṁsarataṁ sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "The flow of blood you’ve shed when your head was chopped off while roaming\nand transmigrating is indeed more than the water in the four oceans."}, {"key": "sn15.13:3.3", "pali": "Dīgharattaṁ vo, bhikkhave, gunnaṁ sataṁ gobhūtānaṁ sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "For a long time you’ve been cows,\nand the flow of blood you’ve shed when your head was chopped off as a cow is more than the water in the four oceans."}, {"key": "sn15.13:3.4", "pali": "Dīgharattaṁ vo, bhikkhave, mahiṁsānaṁ sataṁ mahiṁsabhūtānaṁ sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ …pe…", "sujato": "For a long time you’ve been buffalo …"}, {"key": "sn15.13:3.5", "pali": "dīgharattaṁ vo, bhikkhave, urabbhānaṁ sataṁ urabbhabhūtānaṁ …pe…", "sujato": "sheep …"}, {"key": "sn15.13:3.6", "pali": "ajānaṁ sataṁ ajabhūtānaṁ …", "sujato": "goats …"}, {"key": "sn15.13:3.7", "pali": "migānaṁ sataṁ migabhūtānaṁ …", "sujato": "deer …"}, {"key": "sn15.13:3.8", "pali": "kukkuṭānaṁ sataṁ kukkuṭabhūtānaṁ …", "sujato": "chickens …"}, {"key": "sn15.13:3.9", "pali": "sūkarānaṁ sataṁ sūkarabhūtānaṁ …", "sujato": "pigs …"}, {"key": "sn15.13:3.10", "pali": "dīgharattaṁ vo, bhikkhave, corā gāmaghātāti gahetvā sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ.", "sujato": "For a long time you’ve been bandits, arrested for raiding villages,"}, {"key": "sn15.13:3.11", "pali": "Dīgharattaṁ vo, bhikkhave, corā pāripanthikāti gahetvā sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ.", "sujato": "highway robbery,"}, {"key": "sn15.13:3.12", "pali": "Dīgharattaṁ vo, bhikkhave, corā pāradārikāti gahetvā sīsacchinnānaṁ lohitaṁ passannaṁ paggharitaṁ,\nna tveva catūsu mahāsamuddesu udakaṁ.", "sujato": "or adultery.\nAnd the flow of blood you’ve shed when your head was chopped off as a bandit is more than the water in the four oceans."}, {"key": "sn15.13:3.13", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.13:3.14", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.13:3.15", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}]}, {"id": "sn15.13/4", "label": "That is what the Buddha said.", "rows": [{"key": "sn15.13:4.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn15.13:4.2", "pali": "Attamanā te bhikkhū bhagavato bhāsitaṁ abhinandunti.", "sujato": "Satisfied, the mendicants approved what the Buddha said."}, {"key": "sn15.13:4.3", "pali": "Imasmiñca pana veyyākaraṇasmiṁ bhaññamāne tiṁsamattānaṁ pāveyyakānaṁ bhikkhūnaṁ anupādāya āsavehi cittāni vimucciṁsūti.", "sujato": "And while this discourse was being spoken,\nthe minds of the thirty mendicants from Pāvā were freed from defilements by not grasping."}, {"key": "sn15.13:4.4", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn15.14", "label": "SN 15.14 · Mother", "children": [{"id": "sn15.14/0", "label": "Linked Discourses 15.14", "rows": [{"key": "sn15.14:0.1", "pali": "Saṁyutta Nikāya 15.14", "sujato": "Linked Discourses 15.14"}, {"key": "sn15.14:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.14:0.3", "pali": "Mātusutta", "sujato": "Mother"}]}, {"id": "sn15.14/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.14:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.14:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "“Mendicants, this transmigration has no known beginning. …"}, {"key": "sn15.14:1.3", "pali": "na so, bhikkhave, satto sulabharūpo yo namātābhūtapubbo iminā dīghena addhunā.", "sujato": "It’s not easy to find a sentient being who in all this long time has not previously been your mother."}, {"key": "sn15.14:1.4", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.14:1.5", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "This transmigration has no known beginning. …"}, {"key": "sn15.14:1.6", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.14:1.7", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn15.15", "label": "SN 15.15 · Father", "children": [{"id": "sn15.15/0", "label": "Linked Discourses 15.15", "rows": [{"key": "sn15.15:0.1", "pali": "Saṁyutta Nikāya 15.15", "sujato": "Linked Discourses 15.15"}, {"key": "sn15.15:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.15:0.3", "pali": "Pitusutta", "sujato": "Father"}]}, {"id": "sn15.15/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.15:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.15:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro …pe…", "sujato": "“Mendicants, this transmigration has no known beginning. …"}, {"key": "sn15.15:1.3", "pali": "na so, bhikkhave, satto sulabharūpo yo napitābhūtapubbo …pe…", "sujato": "It’s not easy to find a sentient being who in all this long time has not previously been your father. …"}, {"key": "sn15.15:1.4", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.15:1.5", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn15.16", "label": "SN 15.16 · Brother", "children": [{"id": "sn15.16/0", "label": "Linked Discourses 15.16", "rows": [{"key": "sn15.16:0.1", "pali": "Saṁyutta Nikāya 15.16", "sujato": "Linked Discourses 15.16"}, {"key": "sn15.16:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.16:0.3", "pali": "Bhātusutta", "sujato": "Brother"}]}, {"id": "sn15.16/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.16:1.1", "pali": "Sāvatthiyaṁ viharati …pe…", "sujato": "At Sāvatthī."}, {"key": "sn15.16:1.2", "pali": "“na so, bhikkhave, satto sulabharūpo yo nabhātābhūtapubbo …pe…", "sujato": "“It’s not easy to find a sentient being who in all this long time has not previously been your brother. …"}, {"key": "sn15.16:1.3", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.16:1.4", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn15.17", "label": "SN 15.17 · Sister", "children": [{"id": "sn15.17/0", "label": "Linked Discourses 15.17", "rows": [{"key": "sn15.17:0.1", "pali": "Saṁyutta Nikāya 15.17", "sujato": "Linked Discourses 15.17"}, {"key": "sn15.17:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.17:0.3", "pali": "Bhaginisutta", "sujato": "Sister"}]}, {"id": "sn15.17/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.17:1.1", "pali": "Sāvatthiyaṁ viharati …pe…", "sujato": "At Sāvatthī."}, {"key": "sn15.17:1.2", "pali": "“na so, bhikkhave, satto sulabharūpo yo nabhaginibhūtapubbo …pe…", "sujato": "“It’s not easy to find a sentient being who in all this long time has not previously been your sister. …"}, {"key": "sn15.17:1.3", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.17:1.4", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn15.18", "label": "SN 15.18 · Son", "children": [{"id": "sn15.18/0", "label": "Linked Discourses 15.18", "rows": [{"key": "sn15.18:0.1", "pali": "Saṁyutta Nikāya 15.18", "sujato": "Linked Discourses 15.18"}, {"key": "sn15.18:0.2", "pali": "2.\nDutiyavagga", "sujato": "Chapter Two"}, {"key": "sn15.18:0.3", "pali": "Puttasutta", "sujato": "Son"}]}, {"id": "sn15.18/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.18:1.1", "pali": "Sāvatthiyaṁ viharati …pe…", "sujato": "At Sāvatthī."}, {"key": "sn15.18:1.2", "pali": "“na so, bhikkhave, satto sulabharūpo yo naputtabhūtapubbo …pe…", "sujato": "“It’s not easy to find a sentient being who in all this long time has not previously been your son. …"}, {"key": "sn15.18:1.3", "pali": "alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.18:1.4", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn15.19", "label": "SN 15.19 · Daughter", "children": [{"id": "sn15.19/0", "label": "Linked Discourses 15.19", "rows": [{"key": "sn15.19:0.1", "pali": "Saṁyutta Nikāya 15.19", "sujato": "Linked Discourses 15.19"}, {"key": "sn15.19:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nChapter Two"}, {"key": "sn15.19:0.3", "pali": "Dhītusutta", "sujato": "Daughter"}]}, {"id": "sn15.19/1", "label": "At Sāvatthī.", "rows": [{"key": "sn15.19:1.1", "pali": "Sāvatthiyaṁ viharati.", "sujato": "At Sāvatthī."}, {"key": "sn15.19:1.2", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.19:1.3", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.19:1.4", "pali": "Na so, bhikkhave, satto sulabharūpo yo na dhītābhūtapubbo iminā dīghena addhunā.", "sujato": "It’s not easy to find a sentient being who in all this long time has not previously been your daughter."}, {"key": "sn15.19:1.5", "pali": "Taṁ kissa hetu?", "sujato": "Why is that?"}, {"key": "sn15.19:1.6", "pali": "Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "This transmigration has no known beginning."}, {"key": "sn15.19:1.7", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.19:1.8", "pali": "Evaṁ dīgharattaṁ vo, bhikkhave, dukkhaṁ paccanubhūtaṁ tibbaṁ paccanubhūtaṁ byasanaṁ paccanubhūtaṁ, kaṭasī vaḍḍhitā.", "sujato": "For such a long time you have undergone suffering, agony, and disaster, swelling the cemeteries."}, {"key": "sn15.19:1.9", "pali": "Yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}, {"key": "sn15.19:1.10", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn15.20", "label": "SN 15.20 · Mount Vepulla", "children": [{"id": "sn15.20/0", "label": "Linked Discourses 15.20", "rows": [{"key": "sn15.20:0.1", "pali": "Saṁyutta Nikāya 15.20", "sujato": "Linked Discourses 15.20"}, {"key": "sn15.20:0.2", "pali": "2.\nDutiyavagga", "sujato": "2.\nChapter Two"}, {"key": "sn15.20:0.3", "pali": "Vepullapabbatasutta", "sujato": "Mount Vepulla"}]}, {"id": "sn15.20/1", "label": "At one time the Buddha was staying…", "rows": [{"key": "sn15.20:1.1", "pali": "Ekaṁ samayaṁ bhagavā rājagahe viharati gijjhakūṭe pabbate.", "sujato": "At one time the Buddha was staying near Rājagaha, on the Vulture’s Peak Mountain."}, {"key": "sn15.20:1.2", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato": "There the Buddha addressed the mendicants,"}, {"key": "sn15.20:1.3", "pali": "“bhikkhavo”ti.", "sujato": "“Mendicants!”"}, {"key": "sn15.20:1.4", "pali": "“Bhadante”ti te bhikkhū bhagavato paccassosuṁ.", "sujato": "“Venerable sir,” they replied."}, {"key": "sn15.20:1.5", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}]}, {"id": "sn15.20/2", "label": "“Mendicants, this transmigration has no known beginning.", "rows": [{"key": "sn15.20:2.1", "pali": "“Anamataggoyaṁ, bhikkhave, saṁsāro.", "sujato": "“Mendicants, this transmigration has no known beginning."}, {"key": "sn15.20:2.2", "pali": "Pubbā koṭi na paññāyati avijjānīvaraṇānaṁ sattānaṁ taṇhāsaṁyojanānaṁ sandhāvataṁ saṁsarataṁ.", "sujato": "No first point is found of sentient beings roaming and transmigrating, shrouded by ignorance and fettered by craving."}, {"key": "sn15.20:2.3", "pali": "Bhūtapubbaṁ, bhikkhave, imassa vepullassa pabbatassa ‘pācīnavaṁso’tveva samaññā udapādi.", "sujato": "Once upon a time, mendicants, this Mount Vepulla was known as Pācīnavaṁsa."}, {"key": "sn15.20:2.4", "pali": "Tena kho pana, bhikkhave, samayena manussānaṁ ‘tivarā’tveva samaññā udapādi.", "sujato": "And at that time people were known as Tivaras."}, {"key": "sn15.20:2.5", "pali": "Tivarānaṁ, bhikkhave, manussānaṁ cattārīsa vassasahassāni āyuppamāṇaṁ ahosi.", "sujato": "The lifespan of the Tivaras was 40,000 years."}, {"key": "sn15.20:2.6", "pali": "Tivarā, bhikkhave, manussā pācīnavaṁsaṁ pabbataṁ catūhena ārohanti, catūhena orohanti.", "sujato": "It took them four days to climb Mount Vepulla, and four days to descend."}, {"key": "sn15.20:2.7", "pali": "Tena kho pana, bhikkhave, samayena kakusandho bhagavā arahaṁ sammāsambuddho loke uppanno hoti.", "sujato": "At that time Kakusandha, the Blessed One, the perfected one, the fully awakened Buddha arose in the world."}, {"key": "sn15.20:2.8", "pali": "Kakusandhassa, bhikkhave, bhagavato arahato sammāsambuddhassa vidhurasañjīvaṁ nāma sāvakayugaṁ ahosi aggaṁ bhaddayugaṁ.", "sujato": "Kakusandha had a fine pair of chief disciples named Vidhura and Sañjīva."}, {"key": "sn15.20:2.9", "pali": "Passatha, bhikkhave, sā cevimassa pabbatassa samaññā antarahitā, te ca manussā kālaṅkatā, so ca bhagavā parinibbuto.", "sujato": "See, mendicants!\nThis mountain’s name has vanished, those people have passed away, and that Buddha has become fully quenched."}, {"key": "sn15.20:2.10", "pali": "Evaṁ aniccā, bhikkhave, saṅkhārā;", "sujato": "So impermanent are conditions,"}, {"key": "sn15.20:2.11", "pali": "evaṁ addhuvā, bhikkhave, saṅkhārā;", "sujato": "so unstable are conditions,"}, {"key": "sn15.20:2.12", "pali": "evaṁ anassāsikā, bhikkhave, saṅkhārā.", "sujato": "so unreliable are conditions."}, {"key": "sn15.20:2.13", "pali": "Yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccituṁ.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions."}]}, {"id": "sn15.20/3", "label": "Once upon a time this Mount Vepulla…", "rows": [{"key": "sn15.20:3.1", "pali": "Bhūtapubbaṁ, bhikkhave, imassa vepullassa pabbatassa ‘vaṅkako’tveva samaññā udapādi.", "sujato": "Once upon a time this Mount Vepulla was known as Vaṅkaka."}, {"key": "sn15.20:3.2", "pali": "Tena kho pana, bhikkhave, samayena manussānaṁ ‘rohitassā’tveva samaññā udapādi.", "sujato": "And at that time people were known as Rohitassas."}, {"key": "sn15.20:3.3", "pali": "Rohitassānaṁ, bhikkhave, manussānaṁ tiṁsavassasahassāni āyuppamāṇaṁ ahosi.", "sujato": "The lifespan of the Rohitassas was 30,000 years."}, {"key": "sn15.20:3.4", "pali": "Rohitassā, bhikkhave, manussā vaṅkakaṁ pabbataṁ tīhena ārohanti, tīhena orohanti.", "sujato": "It took them three days to climb Mount Vepulla, and three days to descend."}, {"key": "sn15.20:3.5", "pali": "Tena kho pana, bhikkhave, samayena koṇāgamano bhagavā arahaṁ sammāsambuddho loke uppanno hoti.", "sujato": "At that time Koṇāgamana, the Blessed One, the perfected one, the fully awakened Buddha arose in the world."}, {"key": "sn15.20:3.6", "pali": "Koṇāgamanassa, bhikkhave, bhagavato arahato sammāsambuddhassa bhiyyosuttaraṁ nāma sāvakayugaṁ ahosi aggaṁ bhaddayugaṁ.", "sujato": "Koṇāgamana had a fine pair of chief disciples named Bhiyyosa and Uttara."}, {"key": "sn15.20:3.7", "pali": "Passatha, bhikkhave, sā cevimassa pabbatassa samaññā antarahitā, te ca manussā kālaṅkatā, so ca bhagavā parinibbuto.", "sujato": "See, mendicants!\nThis mountain’s name has vanished, those people have passed away, and that Buddha has become fully quenched."}, {"key": "sn15.20:3.8", "pali": "Evaṁ aniccā, bhikkhave, saṅkhārā …pe…", "sujato": "So impermanent are conditions …"}, {"key": "sn15.20:3.9", "pali": "alaṁ vimuccituṁ.", "sujato": ""}]}, {"id": "sn15.20/4", "label": "Once upon a time this Mount Vepulla…", "rows": [{"key": "sn15.20:4.1", "pali": "Bhūtapubbaṁ, bhikkhave, imassa vepullassa pabbatassa ‘supasso’tveva samaññā udapādi.", "sujato": "Once upon a time this Mount Vepulla was known as Supassa."}, {"key": "sn15.20:4.2", "pali": "Tena kho pana, bhikkhave, samayena manussānaṁ ‘suppiyā’tveva samaññā udapādi.", "sujato": "And at that time people were known as Suppiyas."}, {"key": "sn15.20:4.3", "pali": "Suppiyānaṁ, bhikkhave, manussānaṁ vīsativassasahassāni āyuppamāṇaṁ ahosi.", "sujato": "The lifespan of the Suppiyas was 20,000 years."}, {"key": "sn15.20:4.4", "pali": "Suppiyā, bhikkhave, manussā supassaṁ pabbataṁ dvīhena ārohanti, dvīhena orohanti.", "sujato": "It took them two days to climb Mount Vepulla, and two days to descend."}, {"key": "sn15.20:4.5", "pali": "Tena kho pana, bhikkhave, samayena kassapo bhagavā arahaṁ sammāsambuddho loke uppanno hoti.", "sujato": "At that time Kassapa, the Blessed One, the perfected one, the fully awakened Buddha arose in the world."}, {"key": "sn15.20:4.6", "pali": "Kassapassa, bhikkhave, bhagavato arahato sammāsambuddhassa tissabhāradvājaṁ nāma sāvakayugaṁ ahosi aggaṁ bhaddayugaṁ.", "sujato": "Kassapa had a fine pair of chief disciples named Tissa and Bhāradvāja."}, {"key": "sn15.20:4.7", "pali": "Passatha, bhikkhave, sā cevimassa pabbatassa samaññā antarahitā, te ca manussā kālaṅkatā, so ca bhagavā parinibbuto.", "sujato": "See, mendicants!\nThis mountain’s name has vanished, those people have passed away, and that Buddha has become fully quenched."}, {"key": "sn15.20:4.8", "pali": "Evaṁ aniccā, bhikkhave, saṅkhārā;", "sujato": "So impermanent are conditions …"}, {"key": "sn15.20:4.9", "pali": "evaṁ addhuvā, bhikkhave, saṅkhārā …pe…", "sujato": ""}, {"key": "sn15.20:4.10", "pali": "alaṁ vimuccituṁ.", "sujato": ""}]}, {"id": "sn15.20/5", "label": "These days this Mount Vepulla is known…", "rows": [{"key": "sn15.20:5.1", "pali": "Etarahi kho pana, bhikkhave, imassa vepullassa pabbatassa ‘vepullo’tveva samaññā udapādi.", "sujato": "These days this Mount Vepulla is known as Vepulla."}, {"key": "sn15.20:5.2", "pali": "Etarahi kho pana, bhikkhave, imesaṁ manussānaṁ ‘māgadhakā’tveva samaññā udapādi.", "sujato": "And these people are known as Magadhans."}, {"key": "sn15.20:5.3", "pali": "Māgadhakānaṁ, bhikkhave, manussānaṁ appakaṁ āyuppamāṇaṁ parittaṁ lahukaṁ;", "sujato": "The lifespan of the Magadhans is short, brief, and fleeting."}, {"key": "sn15.20:5.4", "pali": "yo ciraṁ jīvati so vassasataṁ appaṁ vā bhiyyo.", "sujato": "A long life is a hundred years or a little more."}, {"key": "sn15.20:5.5", "pali": "Māgadhakā, bhikkhave, manussā vepullaṁ pabbataṁ muhuttena ārohanti muhuttena orohanti.", "sujato": "It takes the Magadhans an hour to climb Mount Vepulla, and an hour to descend."}, {"key": "sn15.20:5.6", "pali": "Etarahi kho panāhaṁ, bhikkhave, arahaṁ sammāsambuddho loke uppanno.", "sujato": "And now I am the Blessed One, the perfected one, the fully awakened Buddha who has arisen in the world."}, {"key": "sn15.20:5.7", "pali": "Mayhaṁ kho pana, bhikkhave, sāriputtamoggallānaṁ nāma sāvakayugaṁ aggaṁ bhaddayugaṁ.", "sujato": "I have a fine pair of chief disciples named Sāriputta and Moggallāna."}, {"key": "sn15.20:5.8", "pali": "Bhavissati, bhikkhave, so samayo yā ayañcevimassa pabbatassa samaññā antaradhāyissati,\nime ca manussā kālaṁ karissanti, ahañca parinibbāyissāmi.", "sujato": "There will come a time when this mountain’s name will vanish, those people will die, and I will be fully extinguished."}, {"key": "sn15.20:5.9", "pali": "Evaṁ aniccā, bhikkhave, saṅkhārā;", "sujato": "So impermanent are conditions,"}, {"key": "sn15.20:5.10", "pali": "evaṁ addhuvā, bhikkhave, saṅkhārā;", "sujato": "so unstable are conditions,"}, {"key": "sn15.20:5.11", "pali": "evaṁ anassāsikā, bhikkhave, saṅkhārā.", "sujato": "so unreliable are conditions."}, {"key": "sn15.20:5.12", "pali": "Yāvañcidaṁ, bhikkhave, alameva sabbasaṅkhāresu nibbindituṁ, alaṁ virajjituṁ, alaṁ vimuccitun”ti.", "sujato": "This is quite enough for you to become disillusioned, dispassionate, and freed regarding all conditions.”"}]}, {"id": "sn15.20/6", "label": "That is what the Buddha said.", "rows": [{"key": "sn15.20:6.1", "pali": "Idamavoca bhagavā.", "sujato": "That is what the Buddha said."}, {"key": "sn15.20:6.2", "pali": "Idaṁ vatvāna sugato athāparaṁ etadavoca satthā:", "sujato": "Then the Holy One, the Teacher, went on to say:"}]}, {"id": "sn15.20/7", "label": "“For the Tivaras it was Pācīnavaṁsa,", "rows": [{"key": "sn15.20:7.1", "pali": "“Pācīnavaṁso tivarānaṁ,", "sujato": "“For the Tivaras it was Pācīnavaṁsa,"}, {"key": "sn15.20:7.2", "pali": "rohitassāna vaṅkako;", "sujato": "for the Rohitassas, Vaṅkaka,"}, {"key": "sn15.20:7.3", "pali": "Suppiyānaṁ supassoti,", "sujato": "Supassa for the Suppiyas,"}, {"key": "sn15.20:7.4", "pali": "māgadhānañca vepullo.", "sujato": "and Vepulla for the Magadhans."}]}, {"id": "sn15.20/8", "label": "Oh! Conditions are impermanent,", "rows": [{"key": "sn15.20:8.1", "pali": "Aniccā vata saṅkhārā,", "sujato": "Oh!\nConditions are impermanent,"}, {"key": "sn15.20:8.2", "pali": "uppādavayadhammino;", "sujato": "their nature is to rise and fall;"}, {"key": "sn15.20:8.3", "pali": "Uppajjitvā nirujjhanti,", "sujato": "having arisen, they cease;"}, {"key": "sn15.20:8.4", "pali": "tesaṁ vūpasamo sukho”ti.", "sujato": "their settling is such bliss.”"}, {"key": "sn15.20:8.5", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn15.20:8.6", "pali": "Dutiyo vaggo.", "sujato": ""}]}, {"id": "sn15.20/9", "label": "Tassuddānaṁ", "rows": [{"key": "sn15.20:9.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn15.20:9.1", "pali": "Duggataṁ sukhitañceva,", "sujato": ""}, {"key": "sn15.20:9.2", "pali": "tiṁsa mātāpitena ca;", "sujato": ""}, {"key": "sn15.20:9.3", "pali": "Bhātā bhaginī putto ca,", "sujato": ""}, {"key": "sn15.20:9.4", "pali": "dhītā vepullapabbataṁ.", "sujato": ""}, {"key": "sn15.20:9.5", "pali": "Anamataggasaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses on the unknown beginning are complete."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn15.1:1.1": ["This chapter links to the Nidānas
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

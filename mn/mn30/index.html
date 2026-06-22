@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 30", "rows": [{"key": "mn30:0.1", "pali": "Majjhima Nikāya 30", "sujato": "Middle Discourses 30", "thanissaro": "", "pts": ""}, {"key": "mn30:0.2", "pali": "Cūḷasāropamasutta", "sujato": "The Shorter Simile of the Heartwood", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn30:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn30:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "thanissaro": "on one occasion the Blessed One was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery."}]}, {"id": "2", "label": "Then the brahmin Piṅgalakoccha went up to…", "rows": [{"key": "mn30:2.1", "pali": "Atha kho piṅgalakoccho brāhmaṇo yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavatā saddhiṁ sammodi.", "sujato": "Then the brahmin Piṅgalakoccha went up to the Buddha, and exchanged greetings with him.", "thanissaro": "Then Piṅgalakoccha the brahman went to the Blessed One and, on arrival, having bowed down to him, sat to one side.", "pts": "Then the brahman Piṇgalakoccha approached the Lord;\nhaving approached, he exchanged greetings with the Lord;\nhaving exchanged greetings of friendliness and courtesy, he sat down at a respectful distance."}, {"key": "mn30:2.2", "pali": "Sammodanīyaṁ kathaṁ sāraṇīyaṁ vītisāretvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho piṅgalakoccho brāhmaṇo bhagavantaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, he sat down to one side and said to the Buddha:", "thanissaro": "As he was sitting there, he said to the Blessed One,", "pts": "As he was sitting down at a respectful distance, the brahman Piṇgalakoccha spoke thus to the Lord:"}, {"key": "mn30:2.3", "pali": "“yeme, bho gotama, samaṇabrāhmaṇā saṅghino gaṇino gaṇācariyā ñātā yasassino titthakarā sādhusammatā, bahujanassa,", "sujato": "“Worthy Gotama, there are those ascetics and brahmins who lead an order and a community, and tutor a community.\nThey’re well-known and famous religious founders, deemed holy by many people.", "thanissaro": "“Master Gotama, these contemplatives & brahmans, each with his group,\neach with his community, each the teacher of his group, an honored leader,", "pts": "\"Good Gotama, those who are leaders in religious life, heads of companies, heads of groups,\nteachers of groups, well known, famous, founders of sects, much honoured by the many folk,"}, {"key": "mn30:2.4", "pali": "seyyathidaṁ—pūraṇo kassapo, makkhali gosālo, ajito kesakambalo,\npakudho kaccāyano, sañcayo belaṭṭhaputto, nigaṇṭho nāṭaputto,", "sujato": "Namely:\nPūraṇa Kassapa, the bamboo-staffed ascetic Gosāla, Ajita of the hair blanket,\nPakudha Kaccāyana, Sañjaya Belaṭṭhiputta, and the Jain ascetic of the Ñātika clan.", "thanissaro": "well-regarded by people at large—i.e., Pūraṇa Kassapa, Makkhali Gosāla,\nAjita Kesakambalin, Pakudha Kaccāyana, Sañjaya Velaṭṭhaputta, & the Nigaṇṭha Nāṭaputta:", "pts": "that is to say, Pūraṇa Kassapa, Makkhali of the Cowpen, Ajita of the Hair-blanket,\nPakudha Kaccāyana, Sañjaya Belaṭṭha's son, the Jain (Nigaṇṭha) Nātha's son - did all these,"}, {"key": "mn30:2.5", "pali": "sabbete sakāya paṭiññāya abbhaññaṁsu sabbeva nābbhaññaṁsu, udāhu ekacce abbhaññaṁsu ekacce nābbhaññaṁsū”ti?", "sujato": "According to their own claims, did all of them have direct knowledge, or none of them, or only some?”", "thanissaro": "Do they all have direct knowledge as they themselves claim, or do they all not have direct knowledge,\nor do some of them have direct knowledge and some of them not?”", "pts": "according to their own assertion, understand or did they not all understand,\nor did some understand, and did some not understand?\""}, {"key": "mn30:2.6", "pali": "“Alaṁ, brāhmaṇa, tiṭṭhatetaṁ—", "sujato": "“Enough, brahmin, let this be:", "thanissaro": "“Enough, brahman.\nPut this question aside.", "pts": "\"Enough, brahman, let this be:"}, {"key": "mn30:2.7", "pali": "sabbete sakāya paṭiññāya abbhaññaṁsu sabbeva nābbhaññaṁsu, udāhu ekacce abbhaññaṁsu ekacce nābbhaññaṁsūti.", "sujato": "‘According to their own claims, did all of them have direct knowledge, or none of them, or only some?’", "thanissaro": "", "pts": "'Did all these, according to their own assertion, understand or did they not all understand,\nor did some understand, and did some not understand?"}, {"key": "mn30:2.8", "pali": "Dhammaṁ te, brāhmaṇa, desessāmi,", "sujato": "I will teach you the Dhamma.", "thanissaro": "I will teach you the Dhamma.", "pts": "I will teach you Dhamma, brahman, listen to it, attend carefully, and I will speak.\""}, {"key": "mn30:2.9", "pali": "taṁ suṇāhi, sādhukaṁ manasi karohi, bhāsissāmī”ti.", "sujato": "Listen and apply your mind well, I will speak.”", "thanissaro": "Listen and pay close attention.\nI will speak.”", "pts": ""}, {"key": "mn30:2.10", "pali": "“Evaṁ, bho”ti kho piṅgalakoccho brāhmaṇo bhagavato paccassosi.", "sujato": "“Yes, worthy sir,” Piṅgalakoccha replied.", "thanissaro": "“Yes, sir,” Piṅgalakoccha the brahman responded to the Blessed One.", "pts": "\"Yes, Lord,\" the brahman Piṇgalakoccha answered the Lord in assent."}, {"key": "mn30:2.11", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:", "thanissaro": "The Blessed One said,", "pts": ""}]}, {"id": "3", "label": "“Suppose there was a person in need…", "rows": [{"key": "mn30:3.1", "pali": "“Seyyathāpi, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa tiṭṭhato\nsāravato atikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ atikkamma papaṭikaṁ,\nsākhāpalāsaṁ chetvā ādāya pakkameyya ‘sāran’ti maññamāno.", "sujato": "“Suppose there was a person in need of heartwood.\nAnd while wandering in search of heartwood he’d come across a large tree standing with heartwood.\nBut, passing over the heartwood, softwood, bark, and shoots,\nhe’d cut off the branches and leaves and leave imagining they were heartwood.", "thanissaro": "“Brahman, it’s as if a man in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark, passing over the outer bark—\ncutting away the twigs & leaves, were to go off carrying them, thinking,\n‘heartwood.’", "pts": "\"Brahman, it is like a man walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree, who passes by the pith itself,\npasses by the softwood, passes by the bark, passes by the young shoots, and who,\nhaving cut down the branches and foliage, might go away taking them with him thinking they were the pith."}, {"key": "mn30:3.2", "pali": "Tamenaṁ cakkhumā puriso disvā evaṁ vadeyya:", "sujato": "If a person with clear eyes saw him they’d say:", "thanissaro": "A man with good eyesight, seeing him, would say,", "pts": "A man with vision, having seen him, might say:"}, {"key": "mn30:3.3", "pali": "‘na vatāyaṁ bhavaṁ puriso aññāsi sāraṁ, na aññāsi phegguṁ, na aññāsi tacaṁ, na aññāsi papaṭikaṁ, na aññāsi sākhāpalāsaṁ.", "sujato": "‘This gentleman doesn’t know what heartwood, softwood, bark, shoots, or branches and leaves are.", "thanissaro": "‘Ah, how this good man didn’t know heartwood, didn’t know sapwood,\ndidn’t know inner bark, didn’t know outer bark, didn’t know twigs & leaves!", "pts": "'Indeed this good man does not know the pith, he does not know the softwood, he does not know the bark,\nhe does not know the young shoots, he does not know the branches and foliage, inasmuch as this good man,"}, {"key": "mn30:3.4", "pali": "Tathā hayaṁ bhavaṁ puriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa\ntiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ atikkamma papaṭikaṁ,\nsākhāpalāsaṁ chetvā ādāya pakkanto “sāran”ti maññamāno.", "sujato": "That’s why he passed them over, cut off the branches and leaves, and left imagining they were heartwood.", "thanissaro": "That’s why he, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark, passing over the outer bark—\ncutting away the twigs & leaves, went off carrying them, thinking,\n“heartwood.”", "pts": "walking about aiming at the pith, seeking for the pith, looking about for the pith of a great,\nstable and pithy tree, passes by the pith itself, passes by the softwood,\npasses by the bark, passes by the young shoots, and having cut down the branches and foliage,\nis going away taking them with him thinking they are the pith."}, {"key": "mn30:3.5", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissatī’ti.", "sujato": "Whatever he needs to make from heartwood, he won’t succeed.’", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.’", "pts": "So will he not get the good that could be done by the pith because it is the pith.' ■"}]}, {"id": "4", "label": "Suppose there was another person in need…", "rows": [{"key": "mn30:4.1", "pali": "Seyyathāpi vā pana, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa\ntiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ,\npapaṭikaṁ chetvā ādāya pakkameyya ‘sāran’ti maññamāno.", "sujato": "Suppose there was another person in need of heartwood …\nhe’d cut off the shoots and leave imagining they were heartwood …", "thanissaro": "“Or, brahman, it’s as if a man in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark—cutting away the outer bark, were to go off carrying it, thinking,\n‘heartwood.’", "pts": "Or, Brahman, it is like a man walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree, who passes by the pith itself,\npasses by the softwood, passes by the bark, and who, having cut off the young shoots,\nmight go away taking them with him thinking they were the pith."}, {"key": "mn30:4.2", "pali": "Tamenaṁ cakkhumā puriso disvā evaṁ vadeyya:", "sujato": "", "thanissaro": "A man with good eyesight, seeing him, would say,", "pts": "A man with vision, having seen him, might say:"}, {"key": "mn30:4.3", "pali": "‘na vatāyaṁ bhavaṁ puriso aññāsi sāraṁ, na aññāsi phegguṁ, na aññāsi tacaṁ, na aññāsi papaṭikaṁ, na aññāsi sākhāpalāsaṁ.", "sujato": "", "thanissaro": "‘Ah, how this good man didn’t know heartwood, didn’t know sapwood,\ndidn’t know inner bark, didn’t know outer bark, didn’t know twigs & leaves!", "pts": "'Indeed this good man does not know the pith, he does not know the softwood, he does not know the bark,\nhe does not know the young shoots, he does not know the branches and foliage,"}, {"key": "mn30:4.4", "pali": "Tathā hayaṁ bhavaṁ puriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa tiṭṭhato sāravato\natikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ papaṭikaṁ chetvā ādāya pakkanto “sāran”ti maññamāno.", "sujato": "", "thanissaro": "That’s why he, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark—cutting away the outer bark, went off carrying it, thinking,\n“heartwood.”", "pts": "inasmuch as this good man, walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree, passes by the pith itself,\npasses by the softwood, passes by the bark, and having cut down the young shoots,\nis going away taking them with him thinking they are the pith."}, {"key": "mn30:4.5", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissatī’ti.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.’", "pts": "So will he not get the good that could be done by the pith because it is the pith.' ■"}]}, {"id": "5", "label": "Suppose there was another person in need…", "rows": [{"key": "mn30:5.1", "pali": "Seyyathāpi vā pana, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato\nrukkhassa tiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ,\ntacaṁ chetvā ādāya pakkameyya ‘sāran’ti maññamāno.", "sujato": "Suppose there was another person in need of heartwood … he’d cut off the bark and leave imagining it was heartwood …", "thanissaro": "“Or, brahman, it’s as if a man in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood—cutting away the inner bark, were to go off carrying it, thinking,\n‘heartwood.’", "pts": "Or, Brahman, it is like a man walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great, stable and pithy tree,\nwho passes by the pith itself, passes by the softwood, and who,\nhaving cut off the bark, might go away taking it with him thinking it was the pith."}, {"key": "mn30:5.2", "pali": "Tamenaṁ cakkhumā puriso disvā evaṁ vadeyya:", "sujato": "", "thanissaro": "A man with good eyesight, seeing him, would say,", "pts": "A man with vision, having seen him, might say:"}, {"key": "mn30:5.3", "pali": "‘na vatāyaṁ bhavaṁ puriso aññāsi sāraṁ, na aññāsi phegguṁ, na aññāsi tacaṁ, na aññāsi papaṭikaṁ, na aññāsi sākhāpalāsaṁ.", "sujato": "", "thanissaro": "‘Ah, how this good man didn’t know heartwood, didn’t know sapwood,\ndidn’t know inner bark, didn’t know outer bark, didn’t know twigs & leaves!", "pts": "'Indeed this good man does not know the pith, he does not know the softwood, he does not know the bark,\nhe does not know the young shoots, he does not know the branches and foliage,"}, {"key": "mn30:5.4", "pali": "Tathā hayaṁ bhavaṁ puriso sāratthiko sāragavesī sārapariyesanaṁ caramāno\nmahato rukkhassa tiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ,\ntacaṁ chetvā ādāya pakkanto “sāran”ti maññamāno.", "sujato": "", "thanissaro": "That’s why he, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood—cutting away the inner bark, went off carrying it, thinking,\n“heartwood.”", "pts": "inasmuch as this good man, walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree,\npasses by the pith itself, passes by the softwood, and having cut off the bark,\nis going away taking it with him thinking it is the pith."}, {"key": "mn30:5.5", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissatī’ti.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.’", "pts": "So will he not get the good that could be done by the pith because it is the pith.' ■"}]}, {"id": "6", "label": "Suppose there was another person in need…", "rows": [{"key": "mn30:6.1", "pali": "Seyyathāpi vā pana, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa tiṭṭhato sāravato atikkammeva sāraṁ,\nphegguṁ chetvā ādāya pakkameyya ‘sāran’ti maññamāno.", "sujato": "Suppose there was another person in need of heartwood … he’d cut out the softwood and leave imagining it was heartwood …", "thanissaro": "“Or, brahman, it’s as if a man in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood—\ncutting away the sapwood, were to go off carrying it, thinking,\n‘heartwood.’", "pts": "Or, Brahman, it is like a man walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great,\nstable and pithy tree, who passes by the pith itself,\nhaving cut out the softwood might go away taking it with him thinking it was the pith."}, {"key": "mn30:6.2", "pali": "Tamenaṁ cakkhumā puriso disvā evaṁ vadeyya:", "sujato": "", "thanissaro": "A man with good eyesight, seeing him, would say,", "pts": "A man with vision, having seen him, might say:"}, {"key": "mn30:6.3", "pali": "‘na vatāyaṁ bhavaṁ puriso aññāsi sāraṁ, na aññāsi phegguṁ, na aññāsi tacaṁ, na aññāsi papaṭikaṁ, na aññāsi sākhāpalāsaṁ.", "sujato": "", "thanissaro": "‘Ah, how this good man didn’t know heartwood, didn’t know sapwood,\ndidn’t know inner bark, didn’t know outer bark, didn’t know twigs & leaves!", "pts": "'Indeed this good man does not know the pith, he does not know the softwood, he does not know the bark,\nhe does not know the young shoots, he does not know the branches and foliage, inasmuch as this good man,"}, {"key": "mn30:6.4", "pali": "Tathā hayaṁ bhavaṁ puriso sāratthiko sāragavesī sārapariyesanaṁ\ncaramāno mahato rukkhassa tiṭṭhato sāravato atikkammeva sāraṁ,\nphegguṁ chetvā ādāya pakkanto “sāran”ti maññamāno.", "sujato": "", "thanissaro": "That’s why he, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood—\ncutting away the sapwood, went off carrying it, thinking,\n“heartwood.”", "pts": "walking about aiming at the pith, seeking for the pith, looking about for the pith of a great, stable and pithy tree,\npasses by the pith itself, and having cut out of the softwood, goes away taking it with him thinking it is the pith."}, {"key": "mn30:6.5", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissatī’ti.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.’", "pts": "So will he not get the good that could be done by the pith because it is the pith.' ■"}]}, {"id": "7", "label": "Suppose there was another person in need…", "rows": [{"key": "mn30:7.1", "pali": "Seyyathāpi vā pana, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa\ntiṭṭhato sāravato sāraññeva chetvā ādāya pakkameyya ‘sāran’ti jānamāno.", "sujato": "Suppose there was another person in need of heartwood.\nAnd while wandering in search of heartwood he’d come across a large tree standing with heartwood.\nHe’d cut out just the heartwood and leave knowing it was heartwood.", "thanissaro": "“Or, brahman, it’s as if a man in need of heartwood, seeking heartwood, wandering in search of heartwood,\ncutting away just the heartwood of a great standing tree possessed of heartwood, were to go off carrying it, knowing,\n‘heartwood.’", "pts": "Or, Brahman, it is like a man walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great,\nstable and pithy tree, and who, having cut out the pith itself,\nmight go away taking it with him, knowing it to be the pith."}, {"key": "mn30:7.2", "pali": "Tamenaṁ cakkhumā puriso disvā evaṁ vadeyya:", "sujato": "If a person with clear eyes saw him they’d say:", "thanissaro": "A man with good eyesight, seeing him, would say,", "pts": "A man with vision, having seen him, might say:"}, {"key": "mn30:7.3", "pali": "‘aññāsi vatāyaṁ bhavaṁ puriso sāraṁ, aññāsi phegguṁ, aññāsi tacaṁ, aññāsi papaṭikaṁ, aññāsi sākhāpalāsaṁ.", "sujato": "‘This gentleman knows what heartwood, softwood, bark, shoots, or branches and leaves are.", "thanissaro": "‘Ah, how this good man did know heartwood, did know sapwood,\ndid know inner bark, did know outer bark, did know twigs & leaves!", "pts": "'Indeed this good man knows the pith, he knows the softwood, he knows the bark, he knows the young shoots,\nhe knows the branches and foliage, inasmuch as this good man walking about aiming at the pith,"}, {"key": "mn30:7.4", "pali": "Tathā hayaṁ bhavaṁ puriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato\nrukkhassa tiṭṭhato sāravato sāraññeva chetvā ādāya pakkanto “sāran”ti jānamāno.", "sujato": "That’s why he cut out just the heartwood and left knowing it was heartwood.", "thanissaro": "That’s why he, in need of heartwood, seeking heartwood, wandering in search of heartwood,\ncutting away just the heartwood of a great standing tree possessed of heartwood, went off carrying it, knowing,\n“heartwood.”", "pts": "seeking for the pith, looking about for the pith of a great, stable and pithy tree,\nhaving cut out the pith itself, is going away taking it with him, knowing it to be the pith."}, {"key": "mn30:7.5", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ anubhavissatī’ti.", "sujato": "Whatever he needs to make from heartwood, he will succeed.’", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose will be served.’", "pts": "So will he get the good that could be done by the pith because it is the pith.'"}]}, {"id": "8", "label": "In the same way, take a certain…", "rows": [{"key": "mn30:8.1", "pali": "Evameva kho, brāhmaṇa, idhekacco puggalo saddhā agārasmā anagāriyaṁ pabbajito hoti:", "sujato": "In the same way, take a certain individual who goes forth from the lay life to homelessness, thinking:", "thanissaro": "“In the same way, brahman, there is the case where a certain son of good family,\nout of conviction, goes forth from the home life into homelessness,", "pts": "\"Even so, brahman, some person here has gone forth from home into homelessness through faith and thinks:"}, {"key": "mn30:8.2", "pali": "‘otiṇṇomhi jātiyā jarāya maraṇena sokehi paridevehi dukkhehi domanassehi upāyāsehi, dukkhotiṇṇo dukkhapareto,", "sujato": "‘I’m swamped by rebirth, old age, and death;\nby sorrow, lamentation, pain, sadness, and distress.\nI’m swamped by suffering, mired in suffering.", "thanissaro": "(thinking,) ‘I am beset by birth, by aging-&-death, by sorrows, lamentations,\npains, distresses, & despairs, beset by stress, overcome with stress.", "pts": "'I am beset by birth, ageing and dying, by grief, sorrow, suffering, lamentation and despair.\nI am beset by anguish, overwhelmed by anguish."}, {"key": "mn30:8.3", "pali": "appeva nāma imassa kevalassa dukkhakkhandhassa antakiriyā paññāyethā’ti.", "sujato": "Hopefully I can make an end to this entire mass of suffering.’", "thanissaro": "Perhaps the end of this entire mass of stress might be discerned!’", "pts": "But perhaps the annihilation of this whole mass of anguish can be shown.'"}, {"key": "mn30:8.4", "pali": "So evaṁ pabbajito samāno lābhasakkārasilokaṁ abhinibbatteti.", "sujato": "When they’ve gone forth they generate possessions, honor, and popularity.", "thanissaro": "Having thus gone forth, he encounters gain, offerings, & fame.", "pts": "He, gone forth thus, receives gains, honours, fame."}, {"key": "mn30:8.5", "pali": "So tena lābhasakkārasilokena attamano hoti paripuṇṇasaṅkappo.", "sujato": "They’re happy with that, and they’ve got all they wished for.", "thanissaro": "He is gratified with that gain, offerings, & fame, his resolve fulfilled.", "pts": "Because of the gains, honours, fame, he is satisfied, his purpose is fulfilled."}, {"key": "mn30:8.6", "pali": "So tena lābhasakkārasilokena attānukkaṁseti, paraṁ vambheti:", "sujato": "And they glorify themselves and put others down on account of that:", "thanissaro": "Because of that gain, offerings, & fame he exalts himself and disparages others:", "pts": "Because of the gains, honours, fame, he exalts himself disparages others, saying:"}, {"key": "mn30:8.7", "pali": "‘ahamasmi lābhasakkārasilokavā, ime panaññe bhikkhū appaññātā appesakkhā’ti.", "sujato": "‘I’m the one with possessions, honor, and popularity.\nThese other mendicants are obscure and insignificant.’", "thanissaro": "‘I am a person with gain, offerings, & fame, but these other monks are unknown & of little influence.’", "pts": "'It is I who am a recipient, being famous, but those other monks are little known, of little esteem.'"}, {"key": "mn30:8.8", "pali": "Lābhasakkārasilokena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya na chandaṁ janeti,\nna vāyamati, olīnavuttiko ca hoti sāthaliko.", "sujato": "They become lazy and slack on account of their possessions, honor, and popularity,\nnot generating enthusiasm or trying to realize those things that are better and finer. …", "thanissaro": "He doesn’t generate desire or exert himself for the realization of those\nqualities that are higher & more sublime than gain, offerings, & fame.\nHe is drooping & lax.", "pts": "And he does not develop the desie for nor does he strive for realising those\nother things which are higher and more excellent than gains honours, fame.\nHe becomes remiss and lax."}, {"key": "mn30:8.9", "pali": "Seyyathāpi so, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa tiṭṭhato\nsāravato atikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ atikkamma papaṭikaṁ,\nsākhāpalāsaṁ chetvā ādāya pakkanto ‘sāran’ti maññamāno.", "sujato": "", "thanissaro": "“Just like the man who, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark, passing over the outer bark—\ncutting away the twigs & leaves, went off carrying them, thinking,\n‘heartwood’:", "pts": "Brahman, it is like a man walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree, who passes by the pith itself,\npasses by the softwood, passes by the bark, passes by the young shoots, and who,\nhaving cut down the branches and foliage, might go away taking them with him thinking they were the pith.\nA man with vision, having seen him, might say:\n'Indeed this good man does not know the pith, he does not know the softwood,\nhe does not know the bark, he does not know the young shoots,\nhe does not know the branches and foliage, inasmuch as this good man,\nwalking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree,\npasses by the pith itself, passes by the softwood, passes by the bark,\npasses by the young shoots, and having cut down the branches and foliage,\nis going away taking them with him thinking they are the pith."}, {"key": "mn30:8.10", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissati.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.", "pts": "So will he not get the good that could be done by the pith because it is the pith.'"}, {"key": "mn30:8.11", "pali": "Tathūpamāhaṁ, brāhmaṇa, imaṁ puggalaṁ vadāmi.", "sujato": "They’re like the individual who mistakes branches and leaves for heartwood, I say.", "thanissaro": "This individual, I tell you, is similar to that.", "pts": "In accordance with this simile, brahman do I call this person."}]}, {"id": "9", "label": "Next, take an individual who has gone…", "rows": [{"key": "mn30:9.1", "pali": "Idha pana, brāhmaṇa, ekacco puggalo saddhā agārasmā anagāriyaṁ pabbajito hoti:", "sujato": "Next, take an individual who has gone forth out of faith from the lay life to homelessness …", "thanissaro": "“And further, there is the case where an individual, out of conviction, goes forth from the home life into homelessness,", "pts": "But, brahman, some person here comes to have gone forth from home into homelessness through faith, and thinks:"}, {"key": "mn30:9.2", "pali": "‘otiṇṇomhi jātiyā jarāya maraṇena sokehi paridevehi dukkhehi domanassehi upāyāsehi, dukkhotiṇṇo dukkhapareto,", "sujato": "", "thanissaro": "(thinking,) ‘…", "pts": "'I am beset by birth, ageing and dying, by grief, sorrow, suffering,\nlamentation and despair, I am beset by anguish, overwhelmed by anguish."}, {"key": "mn30:9.3", "pali": "appeva nāma imassa kevalassa dukkhakkhandhassa antakiriyā paññāyethā’ti.", "sujato": "", "thanissaro": "Perhaps the end of this entire mass of stress might be discerned!’", "pts": "But perhaps the annihilation of this whole mass of anguish can be shown.'"}, {"key": "mn30:9.4", "pali": "So evaṁ pabbajito samāno lābhasakkārasilokaṁ abhinibbatteti.", "sujato": "When they’ve gone forth they generate possessions, honor, and popularity.", "thanissaro": "Having thus gone forth, he encounters gain, offerings, & fame.", "pts": "He, gone forth thus, receives gains, honours, fame."}, {"key": "mn30:9.5", "pali": "So tena lābhasakkārasilokena na attamano hoti na paripuṇṇasaṅkappo.", "sujato": "They’re not happy with that, and haven’t got all they wished for.", "thanissaro": "He is not gratified with that gain, offerings, & fame, his resolve not fulfilled.", "pts": "He because of the gains, honours, fame, he does not become satisfied, his purpose is not fulfilled."}, {"key": "mn30:9.6", "pali": "So tena lābhasakkārasilokena na attānukkaṁseti, na paraṁ vambheti.", "sujato": "They don’t glorify themselves and put others down on account of that.", "thanissaro": "", "pts": "He because of the gains, honours, fame, he does not exalt himself, he does not disparage others."}, {"key": "mn30:9.7", "pali": "Lābhasakkārasilokena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "They don’t become lazy and slack regarding their possessions, honor, and popularity,\nbut generate enthusiasm and try to realize those things that are better and finer.", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than gain, offerings, & fame.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other\nthings which are higher and more elcellent than gains, honours, fame.\nHe does not become remiss or lax."}, {"key": "mn30:9.8", "pali": "So sīlasampadaṁ ārādheti.", "sujato": "They achieve accomplishment in ethics.", "thanissaro": "He achieves consummation in virtue.", "pts": "He attains success in moral habit."}, {"key": "mn30:9.9", "pali": "So tāya sīlasampadāya attamano hoti, paripuṇṇasaṅkappo.", "sujato": "They’re happy with that, and they’ve got all they wished for.", "thanissaro": "He is gratified with that consummation in virtue, his resolve fulfilled.", "pts": "He, because of this success in moral habit, becomes satisfied, his purpose is fulfilled."}, {"key": "mn30:9.10", "pali": "So tāya sīlasampadāya attānukkaṁseti, paraṁ vambheti:", "sujato": "And they glorify themselves and put others down on account of that:", "thanissaro": "Because of that consummation in virtue he exalts himself and disparages others:", "pts": "Because of this success in moral habit, he exalts himself, disparages others, thinking:"}, {"key": "mn30:9.11", "pali": "‘ahamasmi sīlavā kalyāṇadhammo, ime panaññe bhikkhū dussīlā pāpadhammā’ti.", "sujato": "‘I’m the one who is ethical, of good character.\nThese other mendicants are unethical, of bad character.’", "thanissaro": "‘I am a person of virtue, with fine qualities, but these other monks are unvirtuous, with evil qualities.’", "pts": "'It is I who am of (good) moral habit, lovely in character,\nbut these other monks are of wrong moral habit, evil in character.'"}, {"key": "mn30:9.12", "pali": "Sīlasampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya na chandaṁ janeti,\nna vāyamati, olīnavuttiko ca hoti sāthaliko.", "sujato": "They become lazy and slack regarding their accomplishment in ethics,\nnot generating enthusiasm or trying to realize those things that are better and finer. …", "thanissaro": "He doesn’t generate desire or exert himself for the realization of those\nqualities that are higher & more sublime than consummation in virtue.\nHe is drooping & lax.", "pts": "And he does not develop the desie for nor does he strive for realising those\nother things which are higher and more excellent than success in moral habit.\nHe becomes remiss and lax."}, {"key": "mn30:9.13", "pali": "Seyyathāpi so, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa\ntiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ atikkamma tacaṁ,\npapaṭikaṁ chetvā ādāya pakkanto ‘sāran’ti maññamāno.", "sujato": "", "thanissaro": "“Just like the man who, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood, passing over the inner bark—cutting away the outer bark, went off carrying it, thinking,\n‘heartwood’:", "pts": "Brahman, it is like a man walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree, who passes by the pith itself,\npasses by the softwood, passes by the bark, and who, having cut off the young shoots,\nmight go away taking them with him thinking they were the pith."}, {"key": "mn30:9.14", "pali": "Yañcassa sārena sārakaraṇīyaṁ, tañcassa atthaṁ nānubhavissati.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.", "pts": "A man with vision, having seen him, might say:\n'Indeed this good man does not know the pith, he does not know the softwood,\nhe does not know the bark, he does not know the young shoots,\nhe does not know the branches and foliage, inasmuch as this good man, walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great,\nstable and pithy tree, passes by the pith itself, passes by the softwood,\npasses by the bark, and having cut down the young shoots, is going away taking them with him thinking they are the pith.\nSo will he not get the good that could be done by the pith because it is the pith.'"}, {"key": "mn30:9.15", "pali": "Tathūpamāhaṁ, brāhmaṇa, imaṁ puggalaṁ vadāmi.", "sujato": "They’re like the individual who mistakes shoots for heartwood, I say.", "thanissaro": "This individual, I tell you, is similar to that.", "pts": "In accordance with this simile, brahman do I call this person."}]}, {"id": "10", "label": "Next, take an individual who has gone…", "rows": [{"key": "mn30:10.1", "pali": "Idha pana, brāhmaṇa, ekacco puggalo saddhā agārasmā anagāriyaṁ pabbajito hoti:", "sujato": "Next, take an individual who has gone forth out of faith from the lay life to homelessness …", "thanissaro": "“And further, there is the case where an individual, out of conviction, goes forth from the home life into homelessness,", "pts": "But, brahman, some person here comes to have gone forth from home into homelessness through faith, and thinks:"}, {"key": "mn30:10.2", "pali": "‘otiṇṇomhi jātiyā jarāya maraṇena sokehi paridevehi dukkhehi domanassehi upāyāsehi, dukkhotiṇṇo dukkhapareto,", "sujato": "", "thanissaro": "(thinking,) ‘…", "pts": "'I am beset by birth, ageing and dying, by grief, sorrow, suffering,\nlamentation and despair, I am beset by anguish, overwhelmed by anguish."}, {"key": "mn30:10.3", "pali": "appeva nāma imassa kevalassa dukkhakkhandhassa antakiriyā paññāyethā’ti.", "sujato": "", "thanissaro": "Perhaps the end of this entire mass of stress might be discerned!’", "pts": "But perhaps the annihilation of this whole mass of anguish can be shown.'"}, {"key": "mn30:10.4", "pali": "So evaṁ pabbajito samāno lābhasakkārasilokaṁ abhinibbatteti.", "sujato": "", "thanissaro": "Having thus gone forth, he encounters gain, offerings, & fame.", "pts": "He, gone forth thus, receives gains, honours, fame."}, {"key": "mn30:10.5", "pali": "So tena lābhasakkārasilokena na attamano hoti, na paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is not gratified with that gain, offerings, & fame, his resolve not fulfilled.", "pts": "He because of the gains, honours, fame, he does not become satisfied, his purpose is not fulfilled."}, {"key": "mn30:10.6", "pali": "So tena lābhasakkārasilokena na attānukkaṁseti, na paraṁ vambheti.", "sujato": "", "thanissaro": "Because of that gain, offerings, & fame he does not exalt himself or disparage others.", "pts": "He because of the gains, honours, fame, he does not exalt himself, he does not disparage others."}, {"key": "mn30:10.7", "pali": "Lābhasakkārasilokena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than gain, offerings, & fame.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other\nthings which are higher and more excellent than gains, honours, fame.\nHe does not become remiss or lax."}, {"key": "mn30:10.8", "pali": "So sīlasampadaṁ ārādheti.", "sujato": "They achieve accomplishment in ethics …", "thanissaro": "He achieves consummation in virtue.", "pts": "He attains success in moral habit."}, {"key": "mn30:10.9", "pali": "So tāya sīlasampadāya attamano hoti no ca kho paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is gratified with that consummation in virtue, but his resolve is not fulfilled.", "pts": "He, because of this success in moral habit, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:10.10", "pali": "So tāya sīlasampadāya na attānukkaṁseti, na paraṁ vambheti.", "sujato": "", "thanissaro": "Because of that consummation in virtue he does not exalt himself or disparage others.", "pts": "He, because of this success in moral habit, does not exalt himself,"}, {"key": "mn30:10.11", "pali": "Sīlasampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than consummation in virtue.\nHe is not drooping or lax.", "pts": "does not disparage others and he develops a desire for and strives for realising\nthose other things which are higher and more excellent than success in moral habit.\nHe does not become remiss or lax."}, {"key": "mn30:10.12", "pali": "So samādhisampadaṁ ārādheti.", "sujato": "and immersion. …", "thanissaro": "He achieves consummation in concentration.", "pts": "He attains success in concentration."}, {"key": "mn30:10.13", "pali": "So tāya samādhisampadāya attamano hoti, paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is gratified with that consummation in concentration, his resolve fulfilled.", "pts": "He, because of this success in concentration, becomes satisfied, his purpose is fulfilled."}, {"key": "mn30:10.14", "pali": "So tāya samādhisampadāya attānukkaṁseti, paraṁ vambheti:", "sujato": "", "thanissaro": "Because of that consummation in concentration he exalts himself and disparages others:", "pts": "He, because of this success in concentration, exalts himself, disparages others, saying:"}, {"key": "mn30:10.15", "pali": "‘ahamasmi samāhito ekaggacitto, ime panaññe bhikkhū asamāhitā vibbhantacittā’ti.", "sujato": "", "thanissaro": "‘I am concentrated, my mind at singleness, but these other monks are unconcentrated, their minds scattered.’", "pts": "'It is I who am concentrated, their minds are wandering.'"}, {"key": "mn30:10.16", "pali": "Samādhisampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca,\ntesaṁ dhammānaṁ sacchikiriyāya na chandaṁ janeti, na vāyamati, olīnavuttiko ca hoti sāthaliko.", "sujato": "They become lazy and slack regarding their accomplishment in immersion,\nnot generating enthusiasm or trying to realize those things that are better and finer. …", "thanissaro": "He doesn’t generate desire or exert himself for the realization of those\nqualities that are higher & more sublime than consummation in concentration.\nHe is drooping & lax.", "pts": "And he does not develop a desire for and strive for realising those other\nthings which are higher and more excellent than success in concentration.\nHe becomes remiss and lax."}, {"key": "mn30:10.17", "pali": "Seyyathāpi so, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato\nrukkhassa tiṭṭhato sāravato atikkammeva sāraṁ atikkamma phegguṁ,\ntacaṁ chetvā ādāya pakkanto ‘sāran’ti maññamāno.", "sujato": "", "thanissaro": "“Just like the man who, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood,\npassing over the sapwood—cutting away the inner bark, went off carrying it, thinking,\n‘heartwood’:", "pts": "Brahman, it is like a man walking about aiming at the pith, seeking for the pith,\nlooking about for the pith of a great, stable and pithy tree,\nwho passes by the pith itself, passes by the softwood, and who,\nhaving cut off the bark, might go away taking it with him thinking it was the pith."}, {"key": "mn30:10.18", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissati.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.", "pts": "A man with vision, having seen him, might say:\n'Indeed this good man does not know the pith, he does not know the softwood,\nhe does not know the bark, he does not know the young shoots,\nhe does not know the branches and foliage, inasmuch as this good man, walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great, stable and pithy tree, passes by the pith itself,\npasses by the softwood, and having cut off the bark, is going away taking it with him thinking it is the pith.\nSo will he not get the good that could be done by the pith because it is the pith.'"}, {"key": "mn30:10.19", "pali": "Tathūpamāhaṁ, brāhmaṇa, imaṁ puggalaṁ vadāmi.", "sujato": "They’re like the individual who mistakes bark for heartwood, I say.", "thanissaro": "This individual, I tell you, is similar to that.", "pts": "In accordance with this simile, brahman do I call this person."}]}, {"id": "11", "label": "Next, take an individual who has gone…", "rows": [{"key": "mn30:11.1", "pali": "Idha pana, brāhmaṇa, ekacco puggalo saddhā agārasmā anagāriyaṁ pabbajito hoti:", "sujato": "Next, take an individual who has gone forth out of faith from the lay life to homelessness …", "thanissaro": "“And further, there is the case where an individual, out of conviction, goes forth from the home life into homelessness,", "pts": "But, brahman, some person here comes to have gone forth from home into homelessness through faith, and thinks:"}, {"key": "mn30:11.2", "pali": "‘otiṇṇomhi jātiyā jarāya maraṇena …pe…", "sujato": "", "thanissaro": "(thinking,) ‘I am beset by birth, by aging-&-death, by sorrows, lamentations,\npains, distresses, & despairs, beset by stress, overcome with stress.", "pts": "'I am beset by birth, ageing and dying, by grief, sorrow, suffering,\nlamentation and despair, I am beset by anguish, overwhelmed by anguish."}, {"key": "mn30:11.3", "pali": "antakiriyā paññāyethā’ti.", "sujato": "", "thanissaro": "Perhaps the end of this entire mass of stress might be discerned!’", "pts": "But perhaps the annihilation of this whole mass of anguish can be shown.'"}, {"key": "mn30:11.4", "pali": "So evaṁ pabbajito samāno lābhasakkārasilokaṁ abhinibbatteti.", "sujato": "", "thanissaro": "Having thus gone forth, he encounters gain, offerings, & fame.", "pts": "He, gone forth thus, receives gains, honours, fame."}, {"key": "mn30:11.5", "pali": "So tena lābhasakkārasilokena na attamano hoti na paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is not gratified with that gain, offerings, & fame, his resolve not fulfilled.", "pts": "He because of the gains, honours, fame, he does not become satisfied, his purpose is not fulfilled."}, {"key": "mn30:11.6", "pali": "So tena lābhasakkārasilokena na attānukkaṁseti, na paraṁ vambheti.", "sujato": "", "thanissaro": "Because of that gain, offerings, & fame he does not exalt himself or disparage others.", "pts": "He because of the gains, honours, fame, he does not exalt himself, he does not disparage others."}, {"key": "mn30:11.7", "pali": "Lābhasakkārasilokena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than gain, offerings, & fame.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other\nthings which are higher and more excellent than gains, honours, fame.\nHe does not become remiss or lax."}, {"key": "mn30:11.8", "pali": "So sīlasampadaṁ ārādheti.", "sujato": "They achieve accomplishment in ethics …", "thanissaro": "He achieves consummation in virtue.", "pts": "He attains success in moral habit."}, {"key": "mn30:11.9", "pali": "So tāya sīlasampadāya attamano hoti, no ca kho paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is gratified with that consummation in virtue, but his resolve is not fulfilled.", "pts": "He, because of this success in moral habit, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:11.10", "pali": "So tāya sīlasampadāya na attānukkaṁseti, na paraṁ vambheti.", "sujato": "", "thanissaro": "Because of that consummation in virtue he does not exalt himself or disparage others.", "pts": "He, because of this success in moral habit, does not exalt himself,"}, {"key": "mn30:11.11", "pali": "Sīlasampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than consummation in virtue.\nHe is not drooping or lax.", "pts": "does not disparage others and he develops a desire for and strives for realising\nthose other things which are higher and more excellent than success in moral habit.\nHe does not become remiss or lax."}, {"key": "mn30:11.12", "pali": "So samādhisampadaṁ ārādheti.", "sujato": "immersion …", "thanissaro": "He achieves consummation in concentration.", "pts": "He attains success in concentration."}, {"key": "mn30:11.13", "pali": "So tāya samādhisampadāya attamano hoti, no ca kho paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is gratified with that consummation in concentration, but his resolve is not fulfilled.", "pts": "He, because of this success in concentration, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:11.14", "pali": "So tāya samādhisampadāya na attānukkaṁseti, na paraṁ vambheti.", "sujato": "", "thanissaro": "Because of that consummation in concentration he does not exalt himself or disparage others.", "pts": "He, because of this success in concentration, does not exalt himself, does not disparage others."}, {"key": "mn30:11.15", "pali": "Samādhisampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "", "thanissaro": "He generates desire & exerts himself for the realization of those qualities\nthat are higher & more sublime than consummation in concentration.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other things\nwhich are higher and more excellent than success in concentration.\nHe does not become remiss or lax."}, {"key": "mn30:11.16", "pali": "So ñāṇadassanaṁ ārādheti.", "sujato": "and knowledge and vision.", "thanissaro": "He achieves knowledge & vision.", "pts": "He attains knowledge and vision."}, {"key": "mn30:11.17", "pali": "So tena ñāṇadassanena attamano hoti, paripuṇṇasaṅkappo.", "sujato": "", "thanissaro": "He is gratified with that knowledge & vision, his resolve fulfilled.", "pts": "He, because of this knowledge and vision, becomes satisfied, his purpose is fulfilled."}, {"key": "mn30:11.18", "pali": "So tena ñāṇadassanena attānukkaṁseti, paraṁ vambheti:", "sujato": "", "thanissaro": "Because of that knowledge & vision he exalts himself and disparages others:", "pts": "Because of this knowledge and vision, he exalts himself, disparages others, saying:"}, {"key": "mn30:11.19", "pali": "‘ahamasmi jānaṁ passaṁ viharāmi, ime panaññe bhikkhū ajānaṁ apassaṁ viharantī’ti.", "sujato": "", "thanissaro": "‘I dwell knowing & seeing, but these other monks dwell not knowing & not seeing.’", "pts": "'It is I who dwell knowing, seeing, but these other monks dwell not knowing, not seeing.'"}, {"key": "mn30:11.20", "pali": "Ñāṇadassanena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya na chandaṁ janeti,\nna vāyamati, olīnavuttiko ca hoti sāthaliko.", "sujato": "They become lazy and slack regarding their knowledge and vision,\nnot generating enthusiasm or trying to realize those things that are better and finer. …", "thanissaro": "He doesn’t generate desire or exert himself for the realization of\nthose qualities that are higher & more sublime than knowledge & vision.\nHe is drooping & lax.", "pts": "And he does not develop a desire for and strive for realising those other\nthings which are higher and more excellent than knowledge and vision.\nHe becomes remiss and lax."}, {"key": "mn30:11.21", "pali": "Seyyathāpi so, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa tiṭṭhato sāravato atikkammeva sāraṁ,\nphegguṁ chetvā ādāya pakkanto ‘sāran’ti maññamāno.", "sujato": "", "thanissaro": "“Just like the man who, in need of heartwood, seeking heartwood, wandering in search of heartwood—\npassing over the heartwood of a great standing tree possessed of heartwood—\ncutting away the sapwood, went off carrying it, thinking,\n‘heartwood’:", "pts": "Brahman, it is like a man walking about aiming at the pith, seeking for the pith, looking about for the pith of a great,\nstable and pithy tree, who passes by the pith itself,\nhaving cut out the softwood might go away taking it with him thinking it was the pith."}, {"key": "mn30:11.22", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ nānubhavissati.", "sujato": "", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose won’t be served.", "pts": "A man with vision, having seen him, might say:\n'Indeed this good man does not know the pith, he does not know the softwood, he does not know the bark,\nhe does not know the young shoots, he does not know the branches and foliage, inasmuch as this good man,\nwalking about aiming at the pith, seeking for the pith, looking about for the pith of a great, stable and pithy tree,\npasses by the pith itself, and having cut out of the softwood, goes away taking it with him thinking it is the pith.\nSo will he not get the good that could be done by the pith because it is the pith.'"}, {"key": "mn30:11.23", "pali": "Tathūpamāhaṁ, brāhmaṇa, imaṁ puggalaṁ vadāmi.", "sujato": "They’re like the individual who mistakes softwood for heartwood, I say.", "thanissaro": "This individual, I tell you, is similar to that.", "pts": "In accordance with this simile, brahman do I call this person."}]}, {"id": "12", "label": "Next, take an individual who has gone…", "rows": [{"key": "mn30:12.1", "pali": "Idha pana, brāhmaṇa, ekacco puggalo saddhā agārasmā anagāriyaṁ pabbajito hoti:", "sujato": "Next, take an individual who has gone forth out of faith from the lay life to homelessness, thinking:", "thanissaro": "“And further, there is the case where an individual, out of conviction, goes forth from the home life into homelessness,", "pts": "But, brahman, some person here comes to have gone forth from home into homelessness through faith, and thinks:"}, {"key": "mn30:12.2", "pali": "‘otiṇṇomhi jātiyā jarāya maraṇena sokehi paridevehi dukkhehi domanassehi upāyāsehi, dukkhotiṇṇo dukkhapareto,", "sujato": "‘I’m swamped by rebirth, old age, and death;\nby sorrow, lamentation, pain, sadness, and distress.\nI’m swamped by suffering, mired in suffering.", "thanissaro": "(thinking,) ‘I am beset by birth, by aging-&-death, by sorrows, lamentations,\npains, distresses, & despairs, beset by stress, overcome with stress.", "pts": "'I am beset by birth, ageing and dying, by grief, sorrow, suffering,\nlamentation and despair, I am beset by anguish, overwhelmed by anguish."}, {"key": "mn30:12.3", "pali": "appeva nāma imassa kevalassa dukkhakkhandhassa antakiriyā paññāyethā’ti.", "sujato": "Hopefully I can find an end to this entire mass of suffering.’", "thanissaro": "Perhaps the end of this entire mass of stress might be discerned!’", "pts": "But perhaps the annihilation of this whole mass of anguish can be shown.'"}, {"key": "mn30:12.4", "pali": "So evaṁ pabbajito samāno lābhasakkārasilokaṁ abhinibbatteti.", "sujato": "When they’ve gone forth they generate possessions, honor, and popularity.", "thanissaro": "Having thus gone forth, he encounters gain, offerings, & fame.", "pts": "He, gone forth thus, receives gains, honours, fame."}, {"key": "mn30:12.5", "pali": "So tena lābhasakkārasilokena na attamano hoti, na paripuṇṇasaṅkappo.", "sujato": "They’re not happy with that, and haven’t got all they wished for.", "thanissaro": "He is not gratified with that gain, offerings, & fame, his resolve not fulfilled.", "pts": "He because of the gains, honours, fame, he does not become satisfied, his purpose is not fulfilled."}, {"key": "mn30:12.6", "pali": "So tena lābhasakkārasilokena na attānukkaṁseti, na paraṁ vambheti.", "sujato": "They don’t glorify themselves and put others down on account of that.", "thanissaro": "Because of that gain, offerings, & fame he does not exalt himself or disparage others.", "pts": "He because of the gains, honours, fame, does not exalt himself, does not disparage others."}, {"key": "mn30:12.7", "pali": "Lābhasakkārasilokena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "They don’t become lazy and slack on account of their possessions, honor, and popularity,\nbut generate enthusiasm and try to realize those things that are better and finer.", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than gain, offerings, & fame.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other\nthings which are higher and more excellent than gains, honours, fame.\nHe does not become remiss or lax."}, {"key": "mn30:12.8", "pali": "So sīlasampadaṁ ārādheti.", "sujato": "They become accomplished in ethics.", "thanissaro": "He achieves consummation in virtue.", "pts": "He attains success in moral habit."}, {"key": "mn30:12.9", "pali": "So tāya sīlasampadāya attamano hoti, no ca kho paripuṇṇasaṅkappo.", "sujato": "They’re happy with that, but they haven’t got all they wished for.", "thanissaro": "He is gratified with that consummation in virtue, but his resolve is not fulfilled.", "pts": "He, because of this success in moral habit, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:12.10", "pali": "So tāya sīlasampadāya na attānukkaṁseti, na paraṁ vambheti.", "sujato": "They don’t glorify themselves and put others down on account of that.", "thanissaro": "Because of that consummation in virtue does not exalt himself or disparage others.", "pts": "He, because of this success in moral habit, does not exalt himself,"}, {"key": "mn30:12.11", "pali": "Sīlasampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "They don’t become lazy and slack regarding their accomplishment in ethics,\nbut generate enthusiasm and try to realize those things that are better and finer.", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than consummation in virtue.\nHe is not drooping or lax.", "pts": "does not disparage others and he develops a desire for and strives for realising\nthose other things which are higher and more excellent than success in moral habit.\nHe does not become remiss or lax."}, {"key": "mn30:12.12", "pali": "So samādhisampadaṁ ārādheti.", "sujato": "They become accomplished in immersion.", "thanissaro": "He achieves consummation in concentration.", "pts": "He attains success in concentration."}, {"key": "mn30:12.13", "pali": "So tāya samādhisampadāya attamano hoti, no ca kho paripuṇṇasaṅkappo.", "sujato": "They’re happy with that, but they haven’t got all they wished for.", "thanissaro": "He is gratified with that consummation in concentration, but his resolve is not fulfilled.", "pts": "He, because of this success in concentration, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:12.14", "pali": "So tāya samādhisampadāya na attānukkaṁseti, na paraṁ vambheti.", "sujato": "They don’t glorify themselves and put others down on account of that.", "thanissaro": "Because of that consummation in concentration he does not exalt himself or disparage others.", "pts": "He, because of this success in concentration, does not exalt himself, does not disparage others."}, {"key": "mn30:12.15", "pali": "Samādhisampadāya ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "They don’t become lazy and slack regarding their accomplishment in immersion,\nbut generate enthusiasm and try to realize those things that are better and finer.", "thanissaro": "He generates desire & exerts himself for the realization of those qualities\nthat are higher & more sublime than consummation in concentration.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other things\nwhich are higher and more excellent than success in concentration.\nHe does not become remiss or lax."}, {"key": "mn30:12.16", "pali": "So ñāṇadassanaṁ ārādheti.", "sujato": "They achieve knowledge and vision.", "thanissaro": "He achieves knowledge & vision.", "pts": "He attains knowledge and vision."}, {"key": "mn30:12.17", "pali": "So tena ñāṇadassanena attamano hoti, no ca kho paripuṇṇasaṅkappo.", "sujato": "They’re happy with that, but they haven’t got all they wished for.", "thanissaro": "He is gratified with that knowledge & vision, but his resolve is not fulfilled.", "pts": "He, because of this knowledge and vision, becomes satisfied, but not yet is his purpose fulfilled."}, {"key": "mn30:12.18", "pali": "So tena ñāṇadassanena na attānukkaṁseti, na paraṁ vambheti.", "sujato": "They don’t glorify themselves and put others down on account of that.", "thanissaro": "Because of that knowledge & vision he does not exalt himself or disparage others.", "pts": "Because of this knowledge and vision he does not exalt himself, does not disparage others."}, {"key": "mn30:12.19", "pali": "Ñāṇadassanena ca ye aññe dhammā uttaritarā ca paṇītatarā ca tesaṁ dhammānaṁ sacchikiriyāya chandaṁ janeti,\nvāyamati, anolīnavuttiko ca hoti asāthaliko.", "sujato": "They don’t become lazy and slack regarding their knowledge and vision,\nbut generate enthusiasm and try to realize those things that are better and finer.", "thanissaro": "He generates desire & exerts himself for the realization of those\nqualities that are higher & more sublime than knowledge & vision.\nHe is not drooping or lax.", "pts": "And he develops a desire for and strives for realising those other\nthings which are higher and more excellent than knowledge and vision.\nHe does not become remiss or lax."}, {"key": "mn30:12.20", "pali": "Katame ca, brāhmaṇa, dhammā ñāṇadassanena uttaritarā ca paṇītatarā ca?", "sujato": "And what are those things that are better and finer than knowledge and vision?", "thanissaro": "“And which, brahman, are the qualities that are higher & more sublime than knowledge & vision?", "pts": "And what, brahman, are the things that are higher and more excellent than knowledge and vision?"}]}, {"id": "13", "label": "Take a mendicant who, quite secluded from…", "rows": [{"key": "mn30:13.1", "pali": "Idha, brāhmaṇa, bhikkhu vivicceva kāmehi vivicca akusalehi dhammehi savitakkaṁ\nsavicāraṁ vivekajaṁ pītisukhaṁ paṭhamaṁ jhānaṁ upasampajja viharati.", "sujato": "Take a mendicant who, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, enters and remains in the first absorption,\nwhich has the rapture and bliss born of seclusion, while placing the mind and keeping it connected.", "thanissaro": "“There is the case where a monk—quite secluded from sensuality,\nsecluded from unskillful qualities—enters & remains in the first jhāna:\nrapture & pleasure born of seclusion, accompanied by directed thought & evaluation.", "pts": "Brahman, some monk here, aloof from the pleasures of the senses, aloof from unskilled states of mind,\nentering into the first meditation which is accompanied by initial thought and discursive thought,\nis born of aloofness, and is rapturous and joyful, abides in it."}, {"key": "mn30:13.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This is something better and finer than knowledge and vision.", "thanissaro": "This is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "14", "label": "Furthermore, as the placing of the mind…", "rows": [{"key": "mn30:14.1", "pali": "Puna caparaṁ, brāhmaṇa,\nbhikkhu vitakkavicārānaṁ vūpasamā ajjhattaṁ sampasādanaṁ cetaso ekodibhāvaṁ\navitakkaṁ avicāraṁ samādhijaṁ pītisukhaṁ dutiyaṁ jhānaṁ upasampajja viharati.", "sujato": "Furthermore, as the placing of the mind and keeping it connected are stilled,\na mendicant enters and remains in the second absorption,\nwhich has the rapture and bliss born of immersion, with internal clarity and mind at one,\nwithout placing the mind and keeping it connected.", "thanissaro": "“And further, with the stilling of directed thoughts & evaluations, he enters & remains in the second jhāna:\nrapture & pleasure born of concentration,\nunification of awareness free from directed thought & evaluation—internal assurance.", "pts": "And again, brahman, the monk, by allaying initial and discursive thought,\nwith the mind subjectively tranquillised and fixed on one point,\nenters into and abides in the second meditation, which is devoid of initial and discursive thought,\nis born of concentration, and is rapturous and joyful."}, {"key": "mn30:14.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "15", "label": "Furthermore, with the fading away of rapture,…", "rows": [{"key": "mn30:15.1", "pali": "Puna caparaṁ, brāhmaṇa, bhikkhu pītiyā ca virāgā upekkhako ca viharati,\nsato ca sampajāno sukhañca kāyena paṭisaṁvedeti, yaṁ taṁ ariyā ācikkhanti:\n‘upekkhako satimā sukhavihārī’ti tatiyaṁ jhānaṁ upasampajja viharati.", "sujato": "Furthermore, with the fading away of rapture, a mendicant enters and remains in the third absorption,\nwhere they meditate with equanimity, mindful and aware,\npersonally experiencing the bliss of which the noble ones declare,\n‘Equanimous and mindful, one meditates in bliss.’", "thanissaro": "“And further, with the fading of rapture, he remains equanimous, mindful, & alert, and senses pleasure with the body.\nHe enters & remains in the third jhāna, of which the noble ones declare,\n‘Equanimous & mindful, he has a pleasant abiding.’", "pts": "And again, brahman, the monk, by the fading out of rapture, dwells with equanimity, attentive and clearly conscious;\nand he experiences in his person that joy of which the ariyans say:\n'Joyful lives he who has equanimity and is mindful';\nand entering into the third meditation, he abides in it."}, {"key": "mn30:15.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "16", "label": "Furthermore, with the giving up of pleasure…", "rows": [{"key": "mn30:16.1", "pali": "Puna caparaṁ, brāhmaṇa,\nbhikkhu sukhassa ca pahānā dukkhassa ca pahānā pubbeva somanassadomanassānaṁ atthaṅgamā\nadukkhamasukhaṁ upekkhāsatipārisuddhiṁ catutthaṁ jhānaṁ upasampajja viharati.", "sujato": "Furthermore, with the giving up of pleasure and pain and the disappearance of former happiness and sadness,\na mendicant enters and remains in the fourth absorption, without pleasure or pain, with pure equanimity and mindfulness.", "thanissaro": "“And further, with the abandoning of pleasure & stress—\nas with the earlier disappearance of joys & distresses—he enters & remains in the fourth jhāna:\npurity of equanimity & mindfulness, neither-pleasure-nor-pain.", "pts": "And again, brahman, the monk by getting rid of joy, by getting rid of anguish,\nand by the going down of his former pleasures and sorrows,\nentering into the fourth meditation, which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness, abides in it."}, {"key": "mn30:16.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "17", "label": "Furthermore, a mendicant, going totally beyond perceptions…", "rows": [{"key": "mn30:17.1", "pali": "Puna caparaṁ, brāhmaṇa,\nbhikkhu sabbaso rūpasaññānaṁ samatikkamā paṭighasaññānaṁ atthaṅgamā nānattasaññānaṁ\namanasikārā ‘ananto ākāso’ti ākāsānañcāyatanaṁ upasampajja viharati.", "sujato": "Furthermore, a mendicant, going totally beyond perceptions of form,\nwith the disappearance of perceptions of impingement,\nnot focusing on perceptions of diversity, aware that ‘space is infinite’,\nenters and remains in the dimension of infinite space.", "thanissaro": "“And further, with the complete transcending of perceptions of (physical) form,\nwith the disappearance of perceptions of resistance, and not attending to perceptions of multiplicity,\n(perceiving,) ‘Infinite space,’ he enters & remains in the dimension of the infinitude of space.", "pts": "And again, brahman, a monk, by passing quite beyond all perception of material shapes,\nby the going down of perception of sensory reactions, by not attending to perceptions of variety, thinking:\n'Ether is unending,' entering on the plane of infinite ether, abides in it."}, {"key": "mn30:17.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "18", "label": "Furthermore, a mendicant, going totally beyond the…", "rows": [{"key": "mn30:18.1", "pali": "Puna caparaṁ, brāhmaṇa,\nbhikkhu sabbaso ākāsānañcāyatanaṁ samatikkamma ‘anantaṁ viññāṇan’ti viññāṇañcāyatanaṁ upasampajja viharati.", "sujato": "Furthermore, a mendicant, going totally beyond the dimension of infinite space,\naware that ‘consciousness is infinite’, enters and remains in the dimension of infinite consciousness.", "thanissaro": "“And further, with the complete transcending of the dimension of the infinitude of space,\n(perceiving,) ‘Infinite consciousness,’ he enters & remains in the dimension of the infinitude of consciousness.", "pts": "And again, brahman, a monk, by passing quite beyond the plane of infinite ether, thinking:\n'Consciousness is unending,' entering on the plane of infinite consciousness, abides in it."}, {"key": "mn30:18.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "19", "label": "Furthermore, a mendicant, going totally beyond the…", "rows": [{"key": "mn30:19.1", "pali": "Puna caparaṁ, brāhmaṇa,\nbhikkhu sabbaso viññāṇañcāyatanaṁ samatikkamma ‘natthi kiñcī’ti ākiñcaññāyatanaṁ upasampajja viharati.", "sujato": "Furthermore, a mendicant, going totally beyond the dimension of infinite consciousness,\naware that ‘there is nothing at all’, enters and remains in the dimension of nothingness.", "thanissaro": "“And further, with the complete transcending of the dimension of the infinitude of consciousness,\n(perceiving,) ‘There is nothing,’ he enters & remains in the dimension of nothingness.", "pts": "And again, brahman, a monk, by passing quite beyond the plane of infinite consciousness, thinking,\n'There is not anything,' entering on the plane of no-thing, abides in it."}, {"key": "mn30:19.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "20", "label": "Furthermore, take a mendicant who, going totally…", "rows": [{"key": "mn30:20.1", "pali": "Puna caparaṁ, brāhmaṇa, bhikkhu sabbaso ākiñcaññāyatanaṁ samatikkamma nevasaññānāsaññāyatanaṁ upasampajja viharati.", "sujato": "Furthermore, take a mendicant who, going totally beyond the dimension of nothingness,\nenters and remains in the dimension of neither perception nor non-perception.", "thanissaro": "“And further, with the complete transcending of the dimension of nothingness,\nhe enters & remains in the dimension of neither perception nor non-perception.", "pts": "And again, brahman, a monk, by passing quite beyond the plane of no-thing,\nentering on the plane of neither-perception-nor-non-perception, abides in it."}, {"key": "mn30:20.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This, brahman, is a state that is higher and more excellent than knowledge and vision."}]}, {"id": "21", "label": "Furthermore, take a mendicant who, going totally…", "rows": [{"key": "mn30:21.1", "pali": "Puna caparaṁ, brāhmaṇa, bhikkhu sabbaso nevasaññānāsaññāyatanaṁ samatikkamma saññāvedayitanirodhaṁ upasampajja viharati,\npaññāya cassa disvā āsavā parikkhīṇā honti.", "sujato": "Furthermore, take a mendicant who, going totally beyond the dimension of neither perception nor non-perception,\nenters and remains in the cessation of perception and feeling.\nAnd, having seen with wisdom, their defilements come to an end.", "thanissaro": "“And further, with the complete transcending of the dimension of neither perception nor non-perception,\nhe enters & remains in the cessation of perception & feeling.\nAnd, having seen (that) with discernment, his effluents are completely ended.", "pts": "And again, brahman, a monk, by passing quite beyond the plane of neither-perception-nor-non-perception,\nentering on the stopping of perception and feeling, abides in it.\nAnd having seen by intuitive wisdom his cankers are utterly destroyed."}, {"key": "mn30:21.2", "pali": "Ayampi kho, brāhmaṇa, dhammo ñāṇadassanena uttaritaro ca paṇītataro ca.", "sujato": "This too is something better and finer than knowledge and vision.", "thanissaro": "This too is a quality higher & more sublime than knowledge & vision.", "pts": "This too, brahman, is a state that is higher and more excellent than knowledge and vision."}, {"key": "mn30:21.3", "pali": "Ime kho, brāhmaṇa, dhammā ñāṇadassanena uttaritarā ca paṇītatarā ca.", "sujato": "These are the things that are better and finer than knowledge and vision.", "thanissaro": "“These are the qualities higher & more sublime than knowledge & vision.", "pts": "These, brahman, are the states that are higher and more excellent than knowledge and vision."}]}, {"id": "22", "label": "Suppose there was a person in need…", "rows": [{"key": "mn30:22.1", "pali": "Seyyathāpi so, brāhmaṇa,\npuriso sāratthiko sāragavesī sārapariyesanaṁ caramāno mahato rukkhassa\ntiṭṭhato sāravato sāraṁyeva chetvā ādāya pakkanto ‘sāran’ti jānamāno.", "sujato": "Suppose there was a person in need of heartwood.\nAnd while wandering in search of heartwood he’d come across a large tree standing with heartwood.\nHe’d cut out just the heartwood and leave knowing it was heartwood.", "thanissaro": "“Just like the man who, in need of heartwood, seeking heartwood, wandering in search of heartwood,\ncutting away just the heartwood of a great standing tree possessed of heartwood, went off carrying it, knowing,\n‘heartwood’:", "pts": "Brahman, it is like a man walking about aiming at the pith, seeking for the pith, looking about for the pith of a great,\nstable and pithy tree, and who, having cut out the pith itself,\nmight go away taking it with him, knowing it to be the pith."}, {"key": "mn30:22.2", "pali": "Yañcassa sārena sārakaraṇīyaṁ tañcassa atthaṁ anubhavissati.", "sujato": "Whatever he needs to make from heartwood, he will succeed.", "thanissaro": "Whatever heartwood-business he had with heartwood, his purpose will be served.", "pts": "A man with vision, having seen him, might say:\n'Indeed this good man knows the pith, he knows the softwood, he knows the bark, he knows the young shoots,\nhe knows the branches and foliage, inasmuch as this good man walking about aiming at the pith,\nseeking for the pith, looking about for the pith of a great, stable and pithy tree,\nhaving cut out the pith itself, is going away taking it with him, knowing it to be the pith.\nSo will he get the good that could be done by the pith because it is the pith.'"}, {"key": "mn30:22.3", "pali": "Tathūpamāhaṁ, brāhmaṇa, imaṁ puggalaṁ vadāmi.", "sujato": "That’s what this individual is like, I say.", "thanissaro": "This individual, I tell you, is similar to that.", "pts": "In accordance with this simile, brahman, do I call this person."}]}, {"id": "23", "label": "And so, brahmin, this spiritual life is…", "rows": [{"key": "mn30:23.1", "pali": "Iti kho, brāhmaṇa, nayidaṁ brahmacariyaṁ lābhasakkārasilokānisaṁsaṁ,\nna sīlasampadānisaṁsaṁ, na samādhisampadānisaṁsaṁ, na ñāṇadassanānisaṁsaṁ.", "sujato": "And so, brahmin, this spiritual life is not lived for the sake of possessions, honor, and popularity,\nor for accomplishment in ethics, or for accomplishment in immersion, or for knowledge and vision.", "thanissaro": "“Brahman, this holy life doesn’t have as its reward gain, offerings, & fame,\ndoesn’t have as its reward consummation of virtue, doesn’t have as its reward consummation of concentration,", "pts": "So it is, brahman, that this Brahma-faring is not for advantage in gains,\nhonours, fame, it is not for advantage in moral habit,\nit is not for advantage in concentration, it is not for advantage in knowledge and vision."}, {"key": "mn30:23.2", "pali": "Yā ca kho ayaṁ, brāhmaṇa, akuppā cetovimutti—", "sujato": "It is this unshakable freedom of heart", "thanissaro": "doesn’t have as its reward knowledge & vision, but the unprovoked awareness-release:", "pts": "That, brahman, which is unshakable freedom of mind, this is the goal,"}, {"key": "mn30:23.3", "pali": "etadatthamidaṁ, brāhmaṇa, brahmacariyaṁ, etaṁ sāraṁ etaṁ pariyosānan”ti.", "sujato": "that is the goal of the spiritual life, the core and the final end.”", "thanissaro": "That is the purpose of this holy life, that is its heartwood, that its final end.”", "pts": "brahman, of this Brahma-faring, this the pith, this the culmination.\""}]}, {"id": "24", "label": "When he had spoken, the brahmin Piṅgalakoccha…", "rows": [{"key": "mn30:24.1", "pali": "Evaṁ vutte, piṅgalakoccho brāhmaṇo bhagavantaṁ etadavoca:", "sujato": "When he had spoken, the brahmin Piṅgalakoccha said to the Buddha,", "thanissaro": "When this was said, Piṅgalakoccha the brahman said to the Blessed One:", "pts": "When this had been said, Piṇgalakoccha the brahman spoke thus to the Lord:"}, {"key": "mn30:24.2", "pali": "“abhikkantaṁ, bho gotama, abhikkantaṁ, bho gotama …pe…", "sujato": "“Excellent, worthy Gotama!\nExcellent! …", "thanissaro": "“Magnificent, lord!\nMagnificent!\nJust as if he were to place upright what was overturned, to reveal what was hidden, to show the way to one who was lost,\nor to carry a lamp into the dark so that those with eyes could see forms,\nin the same way has the Blessed One—through many lines of reasoning—made the Dhamma clear.", "pts": "\"It is wonderful, good Gotama, good Gotama it is wonderful.\nIt is as if, good Gotama, one might set upright what had been upset,\nor might disclose what was covered, or point out the way to one who had gone astray,\nor might bring an oil-lamp into the darkness so that those with vision might see\nmaterial shapes - even so is Dhamma made clear in many a figure by the good Gotama."}, {"key": "mn30:24.3", "pali": "upāsakaṁ maṁ bhavaṁ gotamo dhāretu ajjatagge pāṇupetaṁ saraṇaṁ gatan”ti.", "sujato": "From this day forth, may the worthy Gotama remember me as a lay follower who has gone for refuge for life.”", "thanissaro": "I go to the Blessed One for refuge, to the Dhamma, and to the Saṅgha of monks.\nMay the Blessed One remember me as a lay follower who has gone to him for refuge, from this day forward, for life.”", "pts": "I am going to the revered Gotama for refuge, and to Dhamma and to the Order of monks.\nMay the good Gotama accept me as a lay-follower, one gone for refuge from today forth for as long as life lasts.\""}, {"key": "mn30:24.4", "pali": "Cūḷasāropamasuttaṁ niṭṭhitaṁ dasamaṁ.", "sujato": "", "thanissaro": "", "pts": "Lesser Discourse on the Simile of the Pith:"}, {"key": "mn30:24.5", "pali": "Opammavaggo niṭṭhito tatiyo.", "sujato": "", "thanissaro": "", "pts": "the Tenth"}]}, {"id": "25", "label": "Tassuddānaṁ", "rows": [{"key": "mn30:25.0", "pali": "Tassuddānaṁ", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn30:25.1", "pali": "Moḷiyaphaggunariṭṭhañca nāmo,", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn30:25.2", "pali": "Andhavane kathipuṇṇaṁ nivāpo;", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn30:25.3", "pali": "Rāsikaṇerumahāgajanāmo,", "sujato": "", "thanissaro": "", "pts": ""}, {"key": "mn30:25.4", "pali": "Sārūpamo puna piṅgalakoccho.", "sujato": "", "thanissaro": "", "pts": ""}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn30:2.1": ["Not mentioned elsewhere in the Pali,
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

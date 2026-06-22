@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,25 +638,35 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "sn23-pathamamaravagga", "label": "Paṭhamamāravagga — First Chapter About Māra", "children": [{"id": "sn23.1", "label": "SN 23.1 · About Māra", "children": [{"id": "sn23.1/0", "label": "Linked Discourses 23.1", "rows": [{"key": "sn23.1:0.1", "pali": "Saṁyutta Nikāya 23.1", "sujato": "Linked Discourses 23.1"}, {"key": "sn23.1:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.1:0.3", "pali": "Mārasutta", "sujato": "About Māra"}]}, {"id": "sn23.1/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.1:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.1:1.2", "pali": "Atha kho āyasmā rādho yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Then Venerable Rādha went up to the Buddha, bowed, sat down to one side, and said to him:"}]}, {"id": "sn23.1/2", "label": "“Sir, they speak of this thing called…", "rows": [{"key": "sn23.1:2.1", "pali": "“‘Māro, māro’ti, bhante, vuccati.", "sujato": "“Sir, they speak of this thing called ‘Māra’."}, {"key": "sn23.1:2.2", "pali": "Kittāvatā nu kho, bhante, māro”ti?", "sujato": "How is Māra defined?”"}, {"key": "sn23.1:2.3", "pali": "“Rūpe kho, rādha, sati māro vā assa māretā vā yo vā pana mīyati.", "sujato": "“When there is form, Rādha, there would be Māra, or the murderer, or the murdered."}, {"key": "sn23.1:2.4", "pali": "Tasmātiha tvaṁ, rādha, rūpaṁ māroti passa, māretāti passa, mīyatīti passa,\nrogoti passa, gaṇḍoti passa, sallanti passa, aghanti passa, aghabhūtanti passa.", "sujato": "So you should see form as Māra, the murderer, the murdered, the diseased, the boil, the dart, the gloom, the gloominess."}, {"key": "sn23.1:2.5", "pali": "Ye naṁ evaṁ passanti te sammā passanti.", "sujato": "Those who see it like this see rightly."}, {"key": "sn23.1:2.6", "pali": "Vedanāya sati …", "sujato": "When there is feeling …"}, {"key": "sn23.1:2.7", "pali": "saññāya sati …", "sujato": "perception …"}, {"key": "sn23.1:2.8", "pali": "saṅkhāresu sati …", "sujato": "choices …"}, {"key": "sn23.1:2.9", "pali": "viññāṇe sati māro vā assa māretā vā yo vā pana mīyati.", "sujato": "consciousness, there may be Māra, or the murderer, or the murdered."}, {"key": "sn23.1:2.10", "pali": "Tasmātiha tvaṁ, rādha, viññāṇaṁ māroti passa, māretāti passa, mīyatīti passa,\nrogoti passa, gaṇḍoti passa, sallanti passa, aghanti passa, aghabhūtanti passa.", "sujato": "So you should see consciousness as Māra, the murderer, the murdered,\nthe diseased, the boil, the dart, the gloom, the gloominess."}, {"key": "sn23.1:2.11", "pali": "Ye naṁ evaṁ passanti, te sammā passantī”ti.", "sujato": "Those who see it like this see rightly.”"}]}, {"id": "sn23.1/3", "label": "“But sir, what’s the purpose of seeing…", "rows": [{"key": "sn23.1:3.1", "pali": "“Sammādassanaṁ pana, bhante, kimatthiyan”ti?", "sujato": "“But sir, what’s the purpose of seeing rightly?”"}, {"key": "sn23.1:3.2", "pali": "“Sammādassanaṁ kho, rādha, nibbidatthaṁ”.", "sujato": "“Disillusionment is the purpose of seeing rightly.”"}, {"key": "sn23.1:3.3", "pali": "“Nibbidā pana, bhante, kimatthiyā”ti?", "sujato": "“But what’s the purpose of disillusionment?”"}, {"key": "sn23.1:3.4", "pali": "“Nibbidā kho, rādha, virāgatthā”.", "sujato": "“Dispassion is the purpose of disillusionment.”"}, {"key": "sn23.1:3.5", "pali": "“Virāgo pana, bhante, kimatthiyo”ti?", "sujato": "“But what’s the purpose of dispassion?”"}, {"key": "sn23.1:3.6", "pali": "“Virāgo kho, rādha, vimuttattho”.", "sujato": "“Freedom is the purpose of dispassion.”"}, {"key": "sn23.1:3.7", "pali": "“Vimutti pana, bhante, kimatthiyā”ti?", "sujato": "“But what’s the purpose of freedom?”"}, {"key": "sn23.1:3.8", "pali": "“Vimutti kho, rādha, nibbānatthā”.", "sujato": "“Extinguishment is the purpose of freedom.”"}, {"key": "sn23.1:3.9", "pali": "“Nibbānaṁ pana, bhante, kimatthiyan”ti?", "sujato": "“But sir, what is the purpose of extinguishment?”"}, {"key": "sn23.1:3.10", "pali": "“Accayāsi, rādha, pañhaṁ, nāsakkhi pañhassa pariyantaṁ gahetuṁ.", "sujato": "“Your question goes too far, Rādha.\nYou weren’t able to grasp the limit of questioning."}, {"key": "sn23.1:3.11", "pali": "Nibbānogadhañhi, rādha, brahmacariyaṁ vussati, nibbānaparāyanaṁ nibbānapariyosānan”ti.", "sujato": "For extinguishment is the objective, destination, and culmination of the spiritual life.”"}, {"key": "sn23.1:3.12", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn23.2", "label": "SN 23.2 · Sentient Beings", "children": [{"id": "sn23.2/0", "label": "Linked Discourses 23.2", "rows": [{"key": "sn23.2:0.1", "pali": "Saṁyutta Nikāya 23.2", "sujato": "Linked Discourses 23.2"}, {"key": "sn23.2:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.2:0.3", "pali": "Sattasutta", "sujato": "Sentient Beings"}]}, {"id": "sn23.2/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.2:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.2:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.2:1.3", "pali": "“‘satto, satto’ti, bhante, vuccati.", "sujato": "“Sir, they speak of this thing called a ‘sentient being’."}, {"key": "sn23.2:1.4", "pali": "Kittāvatā nu kho, bhante, sattoti vuccatī”ti?", "sujato": "How is a sentient being defined?”"}, {"key": "sn23.2:1.5", "pali": "“Rūpe kho, rādha, yo chando yo rāgo yā nandī yā taṇhā, tatra satto, tatra visatto, tasmā sattoti vuccati.", "sujato": "“Rādha, when you cling, strongly cling, to desire, greed, relishing, and craving for form, then a being is spoken of."}, {"key": "sn23.2:1.6", "pali": "Vedanāya …", "sujato": "When you cling, strongly cling, to desire, greed, relishing, and craving for feeling …"}, {"key": "sn23.2:1.7", "pali": "saññāya …", "sujato": "perception …"}, {"key": "sn23.2:1.8", "pali": "saṅkhāresu …", "sujato": "choices …"}, {"key": "sn23.2:1.9", "pali": "viññāṇe yo chando yo rāgo yā nandī yā taṇhā, tatra satto, tatra visatto, tasmā sattoti vuccati.", "sujato": "consciousness, then a being is spoken of."}]}, {"id": "sn23.2/2", "label": "Suppose some boys or girls were playing…", "rows": [{"key": "sn23.2:2.1", "pali": "Seyyathāpi, rādha, kumārakā vā kumārikāyo vā paṁsvāgārakehi kīḷanti.", "sujato": "Suppose some boys or girls were playing with sandcastles."}, {"key": "sn23.2:2.2", "pali": "Yāvakīvañca tesu paṁsvāgārakesu avigatarāgā honti avigatacchandā avigatapemā avigatapipāsā avigatapariḷāhā avigatataṇhā,\ntāva tāni paṁsvāgārakāni allīyanti keḷāyanti dhanāyanti mamāyanti.", "sujato": "As long as they’re not rid of greed, desire, fondness, thirst, passion, and craving for those sandcastles,\nthey cling to them, dally with them, treasure them, and treat them as their own."}, {"key": "sn23.2:2.3", "pali": "Yato ca kho, rādha, kumārakā vā kumārikāyo vā tesu paṁsvāgārakesu vigatarāgā\nhonti vigatacchandā vigatapemā vigatapipāsā vigatapariḷāhā vigatataṇhā,\natha kho tāni paṁsvāgārakāni hatthehi ca pādehi ca vikiranti vidhamanti viddhaṁsenti vikīḷaniyaṁ karonti.", "sujato": "But when they are rid of greed, desire, fondness, thirst, passion, and craving for those sandcastles,\nthey scatter, smash, and destroy them with their hands and feet, making them unplayable."}, {"key": "sn23.2:2.4", "pali": "Evameva kho, rādha, tumhepi rūpaṁ vikiratha vidhamatha viddhaṁsetha vikīḷaniyaṁ karotha taṇhākkhayāya paṭipajjatha.", "sujato": "In the same way, you should scatter, smash, and destroy form, making it unplayable.\nAnd you should practice for the ending of craving."}, {"key": "sn23.2:2.5", "pali": "Vedanaṁ vikiratha vidhamatha viddhaṁsetha vikīḷaniyaṁ karotha taṇhākkhayāya paṭipajjatha.", "sujato": "You should scatter, smash, and destroy feeling …"}, {"key": "sn23.2:2.6", "pali": "Saññaṁ …", "sujato": "perception …"}, {"key": "sn23.2:2.7", "pali": "saṅkhāre vikiratha vidhamatha viddhaṁsetha vikīḷaniyaṁ karotha taṇhākkhayāya paṭipajjatha.", "sujato": "choices …"}, {"key": "sn23.2:2.8", "pali": "Viññāṇaṁ vikiratha vidhamatha viddhaṁsetha vikīḷaniyaṁ karotha taṇhākkhayāya paṭipajjatha.", "sujato": "consciousness, making it unplayable.\nAnd you should practice for the ending of craving."}, {"key": "sn23.2:2.9", "pali": "Taṇhākkhayo hi, rādha, nibbānan”ti.", "sujato": "For the ending of craving is extinguishment.”"}, {"key": "sn23.2:2.10", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn23.3", "label": "SN 23.3 · The Leash to Existence", "children": [{"id": "sn23.3/0", "label": "Linked Discourses 23.3", "rows": [{"key": "sn23.3:0.1", "pali": "Saṁyutta Nikāya 23.3", "sujato": "Linked Discourses 23.3"}, {"key": "sn23.3:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.3:0.3", "pali": "Bhavanettisutta", "sujato": "The Leash to Existence"}]}, {"id": "sn23.3/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.3:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.3:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.3:1.3", "pali": "“‘bhavanettinirodho, bhavanettinirodho’ti, bhante, vuccati.", "sujato": "“Sir, they speak of this thing called ‘the cessation of the leash to existence’."}, {"key": "sn23.3:1.4", "pali": "Katamā nu kho, bhante, bhavanetti, katamo bhavanettinirodho”ti?", "sujato": "What is the leash to existence?\nAnd what is the cessation of the leash to existence?”"}, {"key": "sn23.3:1.5", "pali": "“Rūpe kho, rādha, yo chando yo rāgo yā nandī yā taṇhā ye upayupādānā cetaso adhiṭṭhānābhinivesānusayā—", "sujato": "“Rādha, any desire, greed, relishing, and craving for form;\nand any attraction, grasping, mental fixation, insistence, and underlying tendencies—"}, {"key": "sn23.3:1.6", "pali": "ayaṁ vuccati bhavanetti.", "sujato": "this is called the leash to existence."}, {"key": "sn23.3:1.7", "pali": "Tesaṁ nirodho bhavanettinirodho.", "sujato": "Their cessation is the cessation of the leash to existence."}, {"key": "sn23.3:1.8", "pali": "Vedanāya …", "sujato": "Any desire, greed, relishing, and craving for feeling …"}, {"key": "sn23.3:1.9", "pali": "saññāya …", "sujato": "perception …"}, {"key": "sn23.3:1.10", "pali": "saṅkhāresu …", "sujato": "choices …"}, {"key": "sn23.3:1.11", "pali": "viññāṇe yo chando …pe… adhiṭṭhānābhinivesānusayā—", "sujato": "consciousness;\nand any attraction, grasping, mental fixation, insistence, and underlying tendencies—"}, {"key": "sn23.3:1.12", "pali": "ayaṁ vuccati bhavanetti.", "sujato": "this is called the leash to existence."}, {"key": "sn23.3:1.13", "pali": "Tesaṁ nirodho bhavanettinirodho”ti.", "sujato": "Their cessation is the cessation of the leash to existence.”"}, {"key": "sn23.3:1.14", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn23.4", "label": "SN 23.4 · Should Be Completely Understood", "children": [{"id": "sn23.4/0", "label": "Linked Discourses 23.4", "rows": [{"key": "sn23.4:0.1", "pali": "Saṁyutta Nikāya 23.4", "sujato": "Linked Discourses 23.4"}, {"key": "sn23.4:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.4:0.3", "pali": "Pariññeyyasutta", "sujato": "Should Be Completely Understood"}]}, {"id": "sn23.4/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.4:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.4:1.2", "pali": "Āyasmā rādho yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "Then Venerable Rādha went up to the Buddha, bowed, and sat down to one side.\nThe Buddha said to him:"}]}, {"id": "sn23.4/2", "label": "“Rādha, I will teach you the things…", "rows": [{"key": "sn23.4:2.1", "pali": "“Pariññeyye ca, rādha, dhamme desessāmi pariññañca pariññātāviṁ puggalañca.", "sujato": "“Rādha, I will teach you the things that should be completely understood,\ncomplete understanding, and the individual who has completely understood."}, {"key": "sn23.4:2.2", "pali": "Taṁ suṇāhi, sādhukaṁ manasi karohi;\nbhāsissāmī”ti.", "sujato": "Listen and apply your mind well, I will speak.”"}, {"key": "sn23.4:2.3", "pali": "“Evaṁ, bhante”ti kho āyasmā rādho bhagavato paccassosi.", "sujato": "“Yes, sir,” Rādha replied."}, {"key": "sn23.4:2.4", "pali": "Bhagavā etadavoca:", "sujato": "The Buddha said this:"}, {"key": "sn23.4:2.5", "pali": "“katame ca, rādha, pariññeyyā dhammā?", "sujato": "“And what things should be completely understood?"}, {"key": "sn23.4:2.6", "pali": "Rūpaṁ kho, rādha, pariññeyyo dhammo, vedanā pariññeyyo dhammo,\nsaññā pariññeyyo dhammo, saṅkhārā pariññeyyo dhammo, viññāṇaṁ pariññeyyo dhammo.", "sujato": "Form, feeling, perception, choices, and consciousness."}, {"key": "sn23.4:2.7", "pali": "Ime vuccanti, rādha, pariññeyyā dhammā.", "sujato": "These are called the things that should be completely understood."}, {"key": "sn23.4:2.8", "pali": "Katamā ca, rādha, pariññā?", "sujato": "And what is complete understanding?"}, {"key": "sn23.4:2.9", "pali": "Yo kho, rādha, rāgakkhayo dosakkhayo mohakkhayo—", "sujato": "The ending of greed, hate, and delusion."}, {"key": "sn23.4:2.10", "pali": "ayaṁ vuccati, rādha, pariññā.", "sujato": "This is called complete understanding."}, {"key": "sn23.4:2.11", "pali": "Katamo ca, rādha, pariññātāvī puggalo?", "sujato": "And what is the individual who has completely understood?"}, {"key": "sn23.4:2.12", "pali": "‘Arahā’tissa vacanīyaṁ.", "sujato": "It should be said:\na perfected one,"}, {"key": "sn23.4:2.13", "pali": "Yvāyaṁ āyasmā evaṁnāmo evaṅgotto—", "sujato": "the venerable of such and such name and clan."}, {"key": "sn23.4:2.14", "pali": "ayaṁ vuccati, rādha, pariññātāvī puggalo”ti.", "sujato": "This is called the individual who has completely understood.”"}, {"key": "sn23.4:2.15", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn23.5", "label": "SN 23.5 · Ascetics and Brahmins", "children": [{"id": "sn23.5/0", "label": "Linked Discourses 23.5", "rows": [{"key": "sn23.5:0.1", "pali": "Saṁyutta Nikāya 23.5", "sujato": "Linked Discourses 23.5"}, {"key": "sn23.5:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.5:0.3", "pali": "Samaṇasutta", "sujato": "Ascetics and Brahmins"}]}, {"id": "sn23.5/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.5:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.5:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.5:1.3", "pali": "“pañcime, rādha, upādānakkhandhā.", "sujato": "“Rādha, there are these five grasping aggregates."}, {"key": "sn23.5:1.4", "pali": "Katame pañca?", "sujato": "What five?"}, {"key": "sn23.5:1.5", "pali": "Rūpupādānakkhandho, vedanupādānakkhandho, saññupādānakkhandho, saṅkhārupādānakkhandho, viññāṇupādānakkhandho.", "sujato": "The grasping aggregates of form, feeling, perception, choices, and consciousness."}, {"key": "sn23.5:1.6", "pali": "Ye hi keci, rādha, samaṇā vā brāhmaṇā vā imesaṁ pañcannaṁ upādānakkhandhānaṁ\nassādañca ādīnavañca nissaraṇañca yathābhūtaṁ nappajānanti;", "sujato": "There are ascetics and brahmins who don’t truly understand these five grasping aggregates’ gratification,\ndrawback, and escape."}, {"key": "sn23.5:1.7", "pali": "na me te, rādha, samaṇā vā brāhmaṇā vā samaṇesu vā samaṇasammatā brāhmaṇesu vā brāhmaṇasammatā,\nna ca pana te āyasmanto sāmaññatthaṁ vā brahmaññatthaṁ vā\ndiṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharanti.", "sujato": "I don’t deem them as true ascetics and brahmins.\nThose venerables don’t realize the goal of life as an ascetic or brahmin,\nand don’t live having realized it with their own insight."}, {"key": "sn23.5:1.8", "pali": "Ye ca kho keci, rādha,\nsamaṇā vā brāhmaṇā vā imesaṁ pañcannaṁ upādānakkhandhānaṁ assādañca ādīnavañca nissaraṇañca yathābhūtaṁ pajānanti;", "sujato": "There are ascetics and brahmins who do truly understand these five grasping aggregates’ gratification,\ndrawback, and escape."}, {"key": "sn23.5:1.9", "pali": "te kho me, rādha, samaṇā vā brāhmaṇā vā samaṇesu ceva samaṇasammatā brāhmaṇesu ca brāhmaṇasammatā,\nte ca panāyasmanto sāmaññatthañca brahmaññatthañca diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "I deem them as true ascetics and brahmins.\nThose venerables realize the goal of life as an ascetic or brahmin, and live having realized it with their own insight.”"}, {"key": "sn23.5:1.10", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn23.6", "label": "SN 23.6 · Ascetics and Brahmins (2nd)", "children": [{"id": "sn23.6/0", "label": "Linked Discourses 23.6", "rows": [{"key": "sn23.6:0.1", "pali": "Saṁyutta Nikāya 23.6", "sujato": "Linked Discourses 23.6"}, {"key": "sn23.6:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.6:0.3", "pali": "Dutiyasamaṇasutta", "sujato": "Ascetics and Brahmins (2nd)"}]}, {"id": "sn23.6/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.6:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.6:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.6:1.3", "pali": "“pañcime, rādha, upādānakkhandhā.", "sujato": "“Rādha, there are these five grasping aggregates."}, {"key": "sn23.6:1.4", "pali": "Katame pañca?", "sujato": "What five?"}, {"key": "sn23.6:1.5", "pali": "Rūpupādānakkhandho …pe… viññāṇupādānakkhandho.", "sujato": "The grasping aggregates of form, feeling, perception, choices, and consciousness."}, {"key": "sn23.6:1.6", "pali": "Ye hi keci, rādha, samaṇā vā brāhmaṇā vā imesaṁ pañcannaṁ upādānakkhandhānaṁ samudayañca\natthaṅgamañca assādañca ādīnavañca nissaraṇañca yathābhūtaṁ nappajānanti …pe…", "sujato": "There are ascetics and brahmins who don’t truly understand these five grasping aggregates’ origin,\ndisappearance, gratification, drawback, and escape …\nThose venerables don’t realize the goal of life as an ascetic or brahmin …"}, {"key": "sn23.6:1.7", "pali": "sayaṁ abhiññā sacchikatvā upasampajja viharantī”ti.", "sujato": "There are ascetics and brahmins who do truly understand …\nThose venerables realize the goal of life as an ascetic or brahmin, and live having realized it with their own insight.”"}, {"key": "sn23.6:1.8", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn23.7", "label": "SN 23.7 · A Stream-Enterer", "children": [{"id": "sn23.7/0", "label": "Linked Discourses 23.7", "rows": [{"key": "sn23.7:0.1", "pali": "Saṁyutta Nikāya 23.7", "sujato": "Linked Discourses 23.7"}, {"key": "sn23.7:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.7:0.3", "pali": "Sotāpannasutta", "sujato": "A Stream-Enterer"}]}, {"id": "sn23.7/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.7:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.7:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.7:1.3", "pali": "“pañcime, rādha, upādānakkhandhā.", "sujato": "“Rādha, there are these five grasping aggregates."}, {"key": "sn23.7:1.4", "pali": "Katame pañca?", "sujato": "What five?"}, {"key": "sn23.7:1.5", "pali": "Rūpupādānakkhandho …pe… viññāṇupādānakkhandho.", "sujato": "The grasping aggregates of form, feeling, perception, choices, and consciousness."}, {"key": "sn23.7:1.6", "pali": "Yato kho, rādha, ariyasāvako imesaṁ pañcannaṁ upādānakkhandhānaṁ samudayañca\natthaṅgamañca assādañca ādīnavañca nissaraṇañca yathābhūtaṁ pajānāti—", "sujato": "When a noble disciple truly understands these five grasping aggregates’ origin,\ndisappearance, gratification, drawback, and escape,"}, {"key": "sn23.7:1.7", "pali": "ayaṁ vuccati, rādha, ariyasāvako sotāpanno avinipātadhammo niyato sambodhiparāyano”ti.", "sujato": "they’re called a noble disciple who is a stream-enterer,\nnot liable to be reborn in the underworld, assured, destined for awakening.”"}, {"key": "sn23.7:1.8", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn23.8", "label": "SN 23.8 · A Perfected One", "children": [{"id": "sn23.8/0", "label": "Linked Discourses 23.8", "rows": [{"key": "sn23.8:0.1", "pali": "Saṁyutta Nikāya 23.8", "sujato": "Linked Discourses 23.8"}, {"key": "sn23.8:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.8:0.3", "pali": "Arahantasutta", "sujato": "A Perfected One"}]}, {"id": "sn23.8/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.8:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.8:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.8:1.3", "pali": "“pañcime, rādha, upādānakkhandhā.", "sujato": "“Rādha, there are these five grasping aggregates."}, {"key": "sn23.8:1.4", "pali": "Katame pañca?", "sujato": "What five?"}, {"key": "sn23.8:1.5", "pali": "Rūpupādānakkhandho …pe… viññāṇupādānakkhandho.", "sujato": "The grasping aggregates of form, feeling, perception, choices, and consciousness."}, {"key": "sn23.8:1.6", "pali": "Yato kho, rādha, bhikkhu imesaṁ pañcannaṁ upādānakkhandhānaṁ samudayañca atthaṅgamañca\nassādañca ādīnavañca nissaraṇañca yathābhūtaṁ viditvā anupādāvimutto hoti—", "sujato": "A mendicant comes to be freed by not grasping after truly understanding these five grasping aggregates’ origin,\ndisappearance, gratification, drawback, and escape."}, {"key": "sn23.8:1.7", "pali": "ayaṁ vuccati, rādha,\nbhikkhu arahaṁ khīṇāsavo vusitavā katakaraṇīyo ohitabhāro\nanuppattasadattho parikkhīṇabhavasaṁyojano sammadaññāvimutto”ti.", "sujato": "Such a mendicant is called a perfected one, with defilements ended,\nwho has completed the spiritual journey, done what had to be done,\nlaid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence, and is rightly freed through enlightenment.”"}, {"key": "sn23.8:1.8", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn23.9", "label": "SN 23.9 · Desire and Greed", "children": [{"id": "sn23.9/0", "label": "Linked Discourses 23.9", "rows": [{"key": "sn23.9:0.1", "pali": "Saṁyutta Nikāya 23.9", "sujato": "Linked Discourses 23.9"}, {"key": "sn23.9:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.9:0.3", "pali": "Chandarāgasutta", "sujato": "Desire and Greed"}]}, {"id": "sn23.9/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.9:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.9:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.9:1.3", "pali": "“rūpe kho, rādha, yo chando yo rāgo yā nandī yā taṇhā, taṁ pajahatha.", "sujato": "“Rādha, you should give up any desire, greed, relishing, and craving for form."}, {"key": "sn23.9:1.4", "pali": "Evaṁ taṁ rūpaṁ pahīnaṁ bhavissati ucchinnamūlaṁ tālāvatthukataṁ anabhāvaṅkataṁ āyatiṁ anuppādadhammaṁ.", "sujato": "Thus that form will be given up, cut off at the root,\nmade like a palm stump, obliterated, and unable to arise in the future."}, {"key": "sn23.9:1.5", "pali": "Vedanāya yo chando yo rāgo yā nandī yā taṇhā, taṁ pajahatha.", "sujato": "You should give up any desire, greed, relishing, and craving for feeling …"}, {"key": "sn23.9:1.6", "pali": "Evaṁ sā vedanā pahīnā bhavissati ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": ""}, {"key": "sn23.9:1.7", "pali": "Saññāya …", "sujato": "perception …"}, {"key": "sn23.9:1.8", "pali": "saṅkhāresu yo chando yo rāgo yā nandī yā taṇhā, taṁ pajahatha.", "sujato": "choices …"}, {"key": "sn23.9:1.9", "pali": "Evaṁ te saṅkhārā pahīnā bhavissanti ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": ""}, {"key": "sn23.9:1.10", "pali": "Viññāṇe yo chando yo rāgo yā nandī yā taṇhā, taṁ pajahatha.", "sujato": "consciousness."}, {"key": "sn23.9:1.11", "pali": "Evaṁ taṁ viññāṇaṁ pahīnaṁ bhavissati …pe… anuppādadhamman”ti.", "sujato": "Thus that consciousness will be given up, cut off at the root,\nmade like a palm stump, obliterated, and unable to arise in the future.”"}, {"key": "sn23.9:1.12", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn23.10", "label": "SN 23.10 · Desire and Greed (2nd)", "children": [{"id": "sn23.10/0", "label": "Linked Discourses 23.10", "rows": [{"key": "sn23.10:0.1", "pali": "Saṁyutta Nikāya 23.10", "sujato": "Linked Discourses 23.10"}, {"key": "sn23.10:0.2", "pali": "1.\nPaṭhamamāravagga", "sujato": "1.\nAbout Māra"}, {"key": "sn23.10:0.3", "pali": "Dutiyachandarāgasutta", "sujato": "Desire and Greed (2nd)"}]}, {"id": "sn23.10/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.10:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.10:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.10:1.3", "pali": "“rūpe kho, rādha, yo chando yo rāgo yā nandī yā taṇhā ye upayupādānā cetaso adhiṭṭhānābhinivesānusayā, te pajahatha.", "sujato": "“Rādha, you should give up any desire, greed, relishing, and craving for form;\nand any attraction, grasping, mental fixation, insistence, and underlying tendencies."}, {"key": "sn23.10:1.4", "pali": "Evaṁ taṁ rūpaṁ pahīnaṁ bhavissati ucchinnamūlaṁ tālāvatthukataṁ anabhāvaṅkataṁ āyatiṁ anuppādadhammaṁ.", "sujato": "Thus that form will be given up, cut off at the root,\nmade like a palm stump, obliterated, and unable to arise in the future."}, {"key": "sn23.10:1.5", "pali": "Vedanāya yo chando yo rāgo yā nandī yā taṇhā ye upayupādānā cetaso adhiṭṭhānābhinivesānusayā, te pajahatha.", "sujato": "You should give up any desire, greed, relishing, and craving for feeling …"}, {"key": "sn23.10:1.6", "pali": "Evaṁ sā vedanā pahīnā bhavissati ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": ""}, {"key": "sn23.10:1.7", "pali": "Saññāya …", "sujato": "perception …"}, {"key": "sn23.10:1.8", "pali": "saṅkhāresu yo chando yo rāgo yā nandī yā taṇhā ye upayupādānā cetaso adhiṭṭhānābhinivesānusayā, te pajahatha.", "sujato": "choices …"}, {"key": "sn23.10:1.9", "pali": "Evaṁ te saṅkhārā pahīnā bhavissanti ucchinnamūlā tālāvatthukatā anabhāvaṅkatā āyatiṁ anuppādadhammā.", "sujato": ""}, {"key": "sn23.10:1.10", "pali": "Viññāṇe yo chando yo rāgo yā nandī yā taṇhā ye upayupādānā cetaso adhiṭṭhānābhinivesānusayā, te pajahatha.", "sujato": "consciousness;\nand any attraction, grasping, mental fixation, insistence, and underlying tendencies."}, {"key": "sn23.10:1.11", "pali": "Evaṁ taṁ viññāṇaṁ pahīnaṁ bhavissati ucchinnamūlaṁ tālāvatthukataṁ anabhāvaṅkataṁ āyatiṁ anuppādadhamman”ti.", "sujato": "Thus that consciousness will be given up, cut off at the root,\nmade like a palm stump, obliterated, and unable to arise in the future.”"}, {"key": "sn23.10:1.12", "pali": "Dasamaṁ.", "sujato": ""}, {"key": "sn23.10:1.13", "pali": "Rādhasaṁyuttassa paṭhamamāravaggo.", "sujato": ""}]}, {"id": "sn23.10/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn23.10:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn23.10:2.1", "pali": "Māro satto bhavanetti,", "sujato": ""}, {"key": "sn23.10:2.2", "pali": "pariññeyyā samaṇā duve;", "sujato": ""}, {"key": "sn23.10:2.3", "pali": "Sotāpanno arahā ca,", "sujato": ""}, {"key": "sn23.10:2.4", "pali": "chandarāgāpare duveti.", "sujato": ""}]}]}]}, {"id": "sn23-dutiyamaravagga", "label": "Dutiyamāravagga — Second Chapter About Māra", "children": [{"id": "sn23.11", "label": "SN 23.11 · About Māra", "children": [{"id": "sn23.11/0", "label": "Linked Discourses 23.11", "rows": [{"key": "sn23.11:0.1", "pali": "Saṁyutta Nikāya 23.11", "sujato": "Linked Discourses 23.11"}, {"key": "sn23.11:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.11:0.3", "pali": "Mārasutta", "sujato": "About Māra"}]}, {"id": "sn23.11/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.11:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.11:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.11:1.3", "pali": "“‘māro, māro’ti, bhante, vuccati.", "sujato": "“Sir, they speak of ‘Māra’."}, {"key": "sn23.11:1.4", "pali": "Katamo nu kho, bhante, māro”ti?", "sujato": "How is Māra defined?”"}, {"key": "sn23.11:1.5", "pali": "“Rūpaṁ kho, rādha, māro, vedanā māro, saññā māro, saṅkhārā māro, viññāṇaṁ māro.", "sujato": "“Rādha, form is Māra, feeling is Māra, perception is Māra, choices are Māra, consciousness is Māra."}, {"key": "sn23.11:1.6", "pali": "Evaṁ passaṁ, rādha, sutavā ariyasāvako rūpasmimpi nibbindati, vedanāyapi nibbindati,\nsaññāyapi nibbindati, saṅkhāresupi nibbindati, viññāṇasmimpi nibbindati.", "sujato": "Seeing this, a learned noble disciple grows disillusioned with form, feeling, perception, choices, and consciousness."}, {"key": "sn23.11:1.7", "pali": "Nibbindaṁ virajjati;\nvirāgā vimuccati.\nVimuttasmiṁ vimuttamiti ñāṇaṁ hoti.", "sujato": "Being disillusioned, desire fades away.\nWhen desire fades away they’re freed.\nWhen they’re freed, they know they’re freed."}, {"key": "sn23.11:1.8", "pali": "‘Khīṇā jāti, vusitaṁ brahmacariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyā’ti pajānātī”ti.", "sujato": "They understand:\n‘Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.’”"}, {"key": "sn23.11:1.9", "pali": "Paṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn23.12", "label": "SN 23.12 · Subject to Māra", "children": [{"id": "sn23.12/0", "label": "Linked Discourses 23.12", "rows": [{"key": "sn23.12:0.1", "pali": "Saṁyutta Nikāya 23.12", "sujato": "Linked Discourses 23.12"}, {"key": "sn23.12:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.12:0.3", "pali": "Māradhammasutta", "sujato": "Subject to Māra"}]}, {"id": "sn23.12/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.12:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.12:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.12:1.3", "pali": "“‘māradhammo, māradhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of ‘Māra nature’."}, {"key": "sn23.12:1.4", "pali": "Katamo nu kho, bhante, māradhammo”ti?", "sujato": "What is of Māra nature?”"}, {"key": "sn23.12:1.5", "pali": "“Rūpaṁ kho, rādha, māradhammo, vedanā māradhammo, saññā māradhammo, saṅkhārā māradhammo, viññāṇaṁ māradhammo.", "sujato": "“Rādha, form is of Māra nature.\nFeeling, perception, choices, and consciousness are of Māra nature."}, {"key": "sn23.12:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.12:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.12:1.8", "pali": "Dutiyaṁ.", "sujato": ""}]}]}, {"id": "sn23.13", "label": "SN 23.13 · Impermanence", "children": [{"id": "sn23.13/0", "label": "Linked Discourses 23.13", "rows": [{"key": "sn23.13:0.1", "pali": "Saṁyutta Nikāya 23.13", "sujato": "Linked Discourses 23.13"}, {"key": "sn23.13:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.13:0.3", "pali": "Aniccasutta", "sujato": "Impermanence"}]}, {"id": "sn23.13/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.13:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.13:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.13:1.3", "pali": "“‘aniccaṁ, aniccan’ti, bhante, vuccati.", "sujato": "“Sir, they speak of ‘impermanence’."}, {"key": "sn23.13:1.4", "pali": "Katamaṁ nu kho, bhante, aniccan”ti?", "sujato": "What has impermanent nature?”"}, {"key": "sn23.13:1.5", "pali": "“Rūpaṁ kho, rādha, aniccaṁ, vedanā aniccā, saññā aniccā, saṅkhārā aniccā, viññāṇaṁ aniccaṁ.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness are impermanent."}, {"key": "sn23.13:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.13:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.13:1.8", "pali": "Tatiyaṁ.", "sujato": ""}]}]}, {"id": "sn23.14", "label": "SN 23.14 · Liable to Impermanence", "children": [{"id": "sn23.14/0", "label": "Linked Discourses 23.14", "rows": [{"key": "sn23.14:0.1", "pali": "Saṁyutta Nikāya 23.14", "sujato": "Linked Discourses 23.14"}, {"key": "sn23.14:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.14:0.3", "pali": "Aniccadhammasutta", "sujato": "Liable to Impermanence"}]}, {"id": "sn23.14/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.14:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.14:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.14:1.3", "pali": "“‘aniccadhammo, aniccadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of having ‘impermanent nature’."}, {"key": "sn23.14:1.4", "pali": "Katamo nu kho, bhante, aniccadhammo”ti?", "sujato": "What is of impermanent nature?"}, {"key": "sn23.14:1.5", "pali": "“Rūpaṁ kho, rādha, aniccadhammo, vedanā aniccadhammo, saññā aniccadhammo, saṅkhārā aniccadhammo, viññāṇaṁ aniccadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness are of impermanent nature."}, {"key": "sn23.14:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.14:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.14:1.8", "pali": "Catutthaṁ.", "sujato": ""}]}]}, {"id": "sn23.15", "label": "SN 23.15 · Suffering", "children": [{"id": "sn23.15/0", "label": "Linked Discourses 23.15", "rows": [{"key": "sn23.15:0.1", "pali": "Saṁyutta Nikāya 23.15", "sujato": "Linked Discourses 23.15"}, {"key": "sn23.15:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.15:0.3", "pali": "Dukkhasutta", "sujato": "Suffering"}]}, {"id": "sn23.15/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.15:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.15:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.15:1.3", "pali": "“‘dukkhaṁ, dukkhan’ti, bhante, vuccati.", "sujato": "“Sir, they speak of ‘suffering’."}, {"key": "sn23.15:1.4", "pali": "Katamaṁ nu kho, bhante, dukkhan”ti?", "sujato": "What is suffering?”"}, {"key": "sn23.15:1.5", "pali": "“Rūpaṁ kho, rādha, dukkhaṁ, vedanā dukkhā, saññā dukkhā, saṅkhārā dukkhā, viññāṇaṁ dukkhaṁ.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness are suffering."}, {"key": "sn23.15:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.15:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.15:1.8", "pali": "Pañcamaṁ.", "sujato": ""}]}]}, {"id": "sn23.16", "label": "SN 23.16 · Liable to Suffering", "children": [{"id": "sn23.16/0", "label": "Linked Discourses 23.16", "rows": [{"key": "sn23.16:0.1", "pali": "Saṁyutta Nikāya 23.16", "sujato": "Linked Discourses 23.16"}, {"key": "sn23.16:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.16:0.3", "pali": "Dukkhadhammasutta", "sujato": "Liable to Suffering"}]}, {"id": "sn23.16/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.16:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.16:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.16:1.3", "pali": "“‘dukkhadhammo, dukkhadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of having ‘suffering nature’."}, {"key": "sn23.16:1.4", "pali": "Katamo nu kho, bhante, dukkhadhammo”ti?", "sujato": "What is of a nature to suffer?”"}, {"key": "sn23.16:1.5", "pali": "“Rūpaṁ kho, rādha, dukkhadhammo, vedanā dukkhadhammo, saññā dukkhadhammo, saṅkhārā dukkhadhammo, viññāṇaṁ dukkhadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness are of a nature to suffer."}, {"key": "sn23.16:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.16:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.16:1.8", "pali": "Chaṭṭhaṁ.", "sujato": ""}]}]}, {"id": "sn23.17", "label": "SN 23.17 · Not-Self", "children": [{"id": "sn23.17/0", "label": "Linked Discourses 23.17", "rows": [{"key": "sn23.17:0.1", "pali": "Saṁyutta Nikāya 23.17", "sujato": "Linked Discourses 23.17"}, {"key": "sn23.17:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.17:0.3", "pali": "Anattasutta", "sujato": "Not-Self"}]}, {"id": "sn23.17/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.17:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.17:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.17:1.3", "pali": "“‘anattā, anattā’ti, bhante, vuccati.", "sujato": "“Sir, they speak of ‘not-self’."}, {"key": "sn23.17:1.4", "pali": "Katamo nu kho, bhante, anattā”ti?", "sujato": "What is not-self?”"}, {"key": "sn23.17:1.5", "pali": "“Rūpaṁ kho, rādha, anattā, vedanā anattā, saññā anattā, saṅkhārā anattā, viññāṇaṁ anattā.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness are not-self."}, {"key": "sn23.17:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.17:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.17:1.8", "pali": "Sattamaṁ.", "sujato": ""}]}]}, {"id": "sn23.18", "label": "SN 23.18 · Naturally Not-Self", "children": [{"id": "sn23.18/0", "label": "Linked Discourses 23.18", "rows": [{"key": "sn23.18:0.1", "pali": "Saṁyutta Nikāya 23.18", "sujato": "Linked Discourses 23.18"}, {"key": "sn23.18:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.18:0.3", "pali": "Anattadhammasutta", "sujato": "Naturally Not-Self"}]}, {"id": "sn23.18/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.18:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.18:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.18:1.3", "pali": "“‘anattadhammo, anattadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of having ‘not-self nature’."}, {"key": "sn23.18:1.4", "pali": "Katamo nu kho, bhante, anattadhammo”ti?", "sujato": "What has a nature of not-self?”"}, {"key": "sn23.18:1.5", "pali": "“Rūpaṁ kho, rādha, anattadhammo, vedanā anattadhammo, saññā anattadhammo, saṅkhārā anattadhammo, viññāṇaṁ anattadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness have a nature of not-self."}, {"key": "sn23.18:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.18:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.18:1.8", "pali": "Aṭṭhamaṁ.", "sujato": ""}]}]}, {"id": "sn23.19", "label": "SN 23.19 · Liable To End", "children": [{"id": "sn23.19/0", "label": "Linked Discourses 23.19", "rows": [{"key": "sn23.19:0.1", "pali": "Saṁyutta Nikāya 23.19", "sujato": "Linked Discourses 23.19"}, {"key": "sn23.19:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.19:0.3", "pali": "Khayadhammasutta", "sujato": "Liable To End"}]}, {"id": "sn23.19/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.19:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.19:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.19:1.3", "pali": "“‘khayadhammo, khayadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of a ‘liability to end’."}, {"key": "sn23.19:1.4", "pali": "Katamo nu kho, bhante, khayadhammo”ti?", "sujato": "What has a liability to end?”"}, {"key": "sn23.19:1.5", "pali": "“Rūpaṁ kho, rādha, khayadhammo, vedanā khayadhammo, saññā khayadhammo, saṅkhārā khayadhammo, viññāṇaṁ khayadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness have a liability to end."}, {"key": "sn23.19:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.19:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.19:1.8", "pali": "Navamaṁ.", "sujato": ""}]}]}, {"id": "sn23.20", "label": "SN 23.20 · liable to fall", "children": [{"id": "sn23.20/0", "label": "Linked Discourses 23.20", "rows": [{"key": "sn23.20:0.1", "pali": "Saṁyutta Nikāya 23.20", "sujato": "Linked Discourses 23.20"}, {"key": "sn23.20:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.20:0.3", "pali": "Vayadhammasutta", "sujato": "liable to fall"}]}, {"id": "sn23.20/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.20:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.20:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.20:1.3", "pali": "“‘vayadhammo, vayadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of a ‘liability to fall’."}, {"key": "sn23.20:1.4", "pali": "Katamo nu kho, bhante, vayadhammo”ti?", "sujato": "What has a liability to fall?”"}, {"key": "sn23.20:1.5", "pali": "“Rūpaṁ kho, rādha, vayadhammo, vedanā vayadhammo, saññā vayadhammo, saṅkhārā vayadhammo, viññāṇaṁ vayadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness have a liability to fall."}, {"key": "sn23.20:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.20:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.20:1.8", "pali": "Dasamaṁ.", "sujato": ""}]}]}, {"id": "sn23.21", "label": "SN 23.21 · Liable To Originate", "children": [{"id": "sn23.21/0", "label": "Linked Discourses 23.21", "rows": [{"key": "sn23.21:0.1", "pali": "Saṁyutta Nikāya 23.21", "sujato": "Linked Discourses 23.21"}, {"key": "sn23.21:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.21:0.3", "pali": "Samudayadhammasutta", "sujato": "Liable To Originate"}]}, {"id": "sn23.21/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.21:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.21:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.21:1.3", "pali": "“‘samudayadhammo, samudayadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of a ‘liability to originate’."}, {"key": "sn23.21:1.4", "pali": "Katamo nu kho, bhante, samudayadhammo”ti?", "sujato": "What has a liability to originate?”"}, {"key": "sn23.21:1.5", "pali": "“Rūpaṁ kho, rādha, samudayadhammo, vedanā samudayadhammo,\nsaññā samudayadhammo, saṅkhārā samudayadhammo, viññāṇaṁ samudayadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness have a liability to originate."}, {"key": "sn23.21:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.21:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.21:1.8", "pali": "Ekādasamaṁ.", "sujato": ""}]}]}, {"id": "sn23.22", "label": "SN 23.22 · Liable To Cease", "children": [{"id": "sn23.22/0", "label": "Linked Discourses 23.22", "rows": [{"key": "sn23.22:0.1", "pali": "Saṁyutta Nikāya 23.22", "sujato": "Linked Discourses 23.22"}, {"key": "sn23.22:0.2", "pali": "2.\nDutiyamāravagga", "sujato": "2.\nAbout Māra (2nd)"}, {"key": "sn23.22:0.3", "pali": "Nirodhadhammasutta", "sujato": "Liable To Cease"}]}, {"id": "sn23.22/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.22:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.22:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.22:1.3", "pali": "“‘nirodhadhammo, nirodhadhammo’ti, bhante, vuccati.", "sujato": "“Sir, they speak of a ‘liability to cease’."}, {"key": "sn23.22:1.4", "pali": "Katamo nu kho, bhante, nirodhadhammo”ti?", "sujato": "What has a liability to cease?”"}, {"key": "sn23.22:1.5", "pali": "“Rūpaṁ kho, rādha, nirodhadhammo, vedanā nirodhadhammo,\nsaññā nirodhadhammo, saṅkhārā nirodhadhammo, viññāṇaṁ nirodhadhammo.", "sujato": "“Rādha, form, feeling, perception, choices, and consciousness have a liability to cease."}, {"key": "sn23.22:1.6", "pali": "Evaṁ passaṁ …pe…", "sujato": "Seeing this …"}, {"key": "sn23.22:1.7", "pali": "nāparaṁ itthattāyāti pajānātī”ti.", "sujato": "They understand:\n‘… there is nothing further for this place.’”"}, {"key": "sn23.22:1.8", "pali": "Dvādasamaṁ.", "sujato": ""}, {"key": "sn23.22:1.9", "pali": "Dutiyamāravaggo.", "sujato": ""}]}, {"id": "sn23.22/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn23.22:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn23.22:2.1", "pali": "Māro ca māradhammo ca,", "sujato": ""}, {"key": "sn23.22:2.2", "pali": "Aniccena apare duve;", "sujato": ""}, {"key": "sn23.22:2.3", "pali": "Dukkhena ca duve vuttā,", "sujato": ""}, {"key": "sn23.22:2.4", "pali": "Anattena tatheva ca;", "sujato": ""}, {"key": "sn23.22:2.5", "pali": "Khayavayasamudayaṁ,", "sujato": ""}, {"key": "sn23.22:2.6", "pali": "Nirodhadhammena dvādasāti.", "sujato": ""}]}]}]}, {"id": "sn23-ayacanavagga", "label": "Āyācanavagga — The Chapter on Aspiration", "children": [{"id": "sn23.23-33", "label": "SN 23.23–33 · Eleven Discourses on Māra, Etc.", "children": [{"id": "sn23.23-33/0", "label": "Linked Discourses 23.23–33", "rows": [{"key": "sn23.23:0.1", "pali": "Saṁyutta Nikāya 23.23–33", "sujato": "Linked Discourses 23.23–33"}, {"key": "sn23.23:0.2", "pali": "3.\nĀyācanavagga", "sujato": "3.\nAppeals"}, {"key": "sn23.23:0.3", "pali": "Mārādisuttaekādasaka", "sujato": "Eleven Discourses on Māra, Etc."}]}, {"id": "sn23.23-33/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.23:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.23:1.2", "pali": "Ekamantaṁ nisinno kho āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Seated to one side, Venerable Rādha said to the Buddha:"}, {"key": "sn23.23:1.3", "pali": "“sādhu me, bhante, bhagavā saṅkhittena dhammaṁ desetu,\nyamahaṁ bhagavato dhammaṁ sutvā eko vūpakaṭṭho appamatto ātāpī pahitatto vihareyyan”ti.", "sujato": "“Sir, may the Buddha please teach me Dhamma in brief.\nWhen I’ve heard it, I’ll live alone, withdrawn, diligent, keen, and resolute.”"}, {"key": "sn23.24:1.1", "pali": "“Yo kho, rādha, māradhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo …pe….", "sujato": "“You should give up any desire, any greed, any desire and greed for whatever is of Māra nature …”"}, {"key": "sn23.25:1.1", "pali": "“Yaṁ kho, rādha, aniccaṁ …pe….", "sujato": "“… impermanent …”"}, {"key": "sn23.26:1.1", "pali": "“Yo kho, rādha, aniccadhammo …pe….", "sujato": "“… of impermanent nature …”"}, {"key": "sn23.27:1.1", "pali": "“Yaṁ kho, rādha, dukkhaṁ …pe….", "sujato": "“… suffering …”"}, {"key": "sn23.28:1.1", "pali": "“Yo kho, rādha, dukkhadhammo …pe….", "sujato": "“… of suffering nature …”"}, {"key": "sn23.29:1.1", "pali": "“Yo kho, rādha, anattā …pe….", "sujato": "“… not-self …”"}, {"key": "sn23.30:1.1", "pali": "“Yo kho, rādha, anattadhammo …pe….", "sujato": "“… of not-self nature …”"}, {"key": "sn23.31:1.1", "pali": "“Yo kho, rādha, khayadhammo …pe….", "sujato": "“… of a nature to end …”"}, {"key": "sn23.32:1.1", "pali": "“Yo kho, rādha, vayadhammo …pe….", "sujato": "“… of a nature to fall …”"}, {"key": "sn23.33:1.1", "pali": "“Yo kho, rādha, samudayadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo …pe….", "sujato": "“… of a nature to originate …”"}]}, {"id": "sn23.23-33/2", "label": "“Rādha, you should give up any desire,…", "rows": [{"key": "sn23.23:2.1", "pali": "“Yo kho, rādha, māro;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "“Rādha, you should give up any desire, any greed, any desire and greed for whatever is Māra."}, {"key": "sn23.23:2.2", "pali": "Ko ca, rādha, māro?", "sujato": "And what is Māra?"}, {"key": "sn23.23:2.3", "pali": "Rūpaṁ kho, rādha, māro;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "Form is Māra.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.23:2.4", "pali": "Vedanā māro;\ntatra te chando pahātabbo …pe…", "sujato": "Feeling …"}, {"key": "sn23.23:2.5", "pali": "saññā māro;\ntatra te chando pahātabbo …pe…", "sujato": "Perception …"}, {"key": "sn23.23:2.6", "pali": "saṅkhārā māro;\ntatra te chando pahātabbo …pe…", "sujato": "Choices …"}, {"key": "sn23.23:2.7", "pali": "viññāṇaṁ māro;\ntatra te chando pahātabbo …pe…", "sujato": "Consciousness is Māra.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.23:2.8", "pali": "yo kho, rādha, māro;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo”ti.", "sujato": "You should give up any desire, any greed, any desire and greed for whatever is Māra.”"}]}]}, {"id": "sn23.34", "label": "SN 23.34 · Liable To Cease", "children": [{"id": "sn23.34/0", "label": "Linked Discourses 23.34", "rows": [{"key": "sn23.34:0.1", "pali": "Saṁyutta Nikāya 23.34", "sujato": "Linked Discourses 23.34"}, {"key": "sn23.34:0.2", "pali": "3.\nĀyācanavagga", "sujato": "3.\nAppeals"}, {"key": "sn23.34:0.3", "pali": "Nirodhadhammasutta", "sujato": "Liable To Cease"}]}, {"id": "sn23.34/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.34:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.34:1.2", "pali": "Āyasmā rādho bhagavantaṁ etadavoca:", "sujato": "Venerable Rādha said to the Buddha:"}, {"key": "sn23.34:1.3", "pali": "“sādhu me, bhante, bhagavā saṅkhittena dhammaṁ desetu,\nyamahaṁ bhagavato dhammaṁ sutvā eko vūpakaṭṭho appamatto ātāpī pahitatto vihareyyan”ti.", "sujato": "“Sir, may the Buddha please teach me Dhamma in brief.\nWhen I’ve heard it, I’ll live alone, withdrawn, diligent, keen, and resolute.”"}]}, {"id": "sn23.34/2", "label": "“Rādha, you should give up any desire,…", "rows": [{"key": "sn23.34:2.1", "pali": "“Yo kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "“Rādha, you should give up any desire, any greed, any desire and greed for whatever is of a nature to cease."}, {"key": "sn23.34:2.2", "pali": "Ko ca, rādha, nirodhadhammo?", "sujato": "And what is of a nature to cease?"}, {"key": "sn23.34:2.3", "pali": "Rūpaṁ kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo …pe…", "sujato": "Form is of a nature to cease.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.34:2.4", "pali": "vedanā nirodhadhammo;\ntatra te chando pahātabbo …pe…", "sujato": "Feeling …"}, {"key": "sn23.34:2.5", "pali": "saññā nirodhadhammo;\ntatra te chando pahātabbo …pe…", "sujato": "Perception …"}, {"key": "sn23.34:2.6", "pali": "saṅkhārā nirodhadhammo;\ntatra te chando pahātabbo …pe…", "sujato": "Choices …"}, {"key": "sn23.34:2.7", "pali": "viññāṇaṁ nirodhadhammo;\ntatra te chando pahātabbo …pe…", "sujato": "Consciousness is of a nature to cease.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.34:2.8", "pali": "yo kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo”ti.", "sujato": "You should give up any desire, any greed, any desire and greed for whatever is of a nature to cease.”"}, {"key": "sn23.34:2.9", "pali": "Āyācanavaggo tatiyo.", "sujato": ""}]}, {"id": "sn23.34/3", "label": "Tassuddānaṁ", "rows": [{"key": "sn23.34:3.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn23.34:3.1", "pali": "Māro ca māradhammo ca,", "sujato": ""}, {"key": "sn23.34:3.2", "pali": "Aniccena apare duve;", "sujato": ""}, {"key": "sn23.34:3.3", "pali": "Dukkhena ca duve vuttā,", "sujato": ""}, {"key": "sn23.34:3.4", "pali": "Anattena tatheva ca;", "sujato": ""}, {"key": "sn23.34:3.5", "pali": "Khayavayasamudayaṁ,", "sujato": ""}, {"key": "sn23.34:3.6", "pali": "Nirodhadhammena dvādasāti.", "sujato": ""}]}]}]}, {"id": "sn23-upanisinnavagga", "label": "Upanisinnavagga — The Chapter on Sitting Close", "children": [{"id": "sn23.35-45", "label": "SN 23.35–45 · Eleven Discourses on Māra, Etc.", "children": [{"id": "sn23.35-45/0", "label": "Linked Discourses 23.35", "rows": [{"key": "sn23.35:0.1", "pali": "Saṁyutta Nikāya 23.35–45", "sujato": "Linked Discourses 23.35"}, {"key": "sn23.35:0.2", "pali": "4.\nUpanisinnavagga", "sujato": "4.\nSitting Close"}, {"key": "sn23.35:0.3", "pali": "Mārādisuttaekādasaka", "sujato": "Eleven Discourses on Māra, Etc."}]}, {"id": "sn23.35-45/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.35:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.35:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.35:1.3", "pali": "“yo kho, rādha, māro;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "“Rādha, you should give up any desire, any greed, any desire and greed for whatever is Māra."}, {"key": "sn23.35:1.4", "pali": "Ko ca, rādha, māro?", "sujato": "And what is Māra?"}, {"key": "sn23.35:1.5", "pali": "Rūpaṁ kho, rādha, māro;\ntatra te chando pahātabbo …pe…", "sujato": "Form is Māra.\nYou should give up any desire, any greed, any desire and greed for it. …"}, {"key": "sn23.35:1.6", "pali": "viññāṇaṁ māro;\ntatra te chando pahātabbo …pe…", "sujato": "Consciousness is Māra.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.35:1.7", "pali": "yo kho, rādha, māro;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo”ti.", "sujato": "You should give up any desire, any greed, any desire and greed for whatever is Māra.”"}, {"key": "sn23.36:1.1", "pali": "“Yo kho, rādha, māradhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo …pe….", "sujato": "“You should give up any desire, any greed, any desire and greed for whatever is subject to Māra …”"}, {"key": "sn23.37:1.1", "pali": "“Yaṁ kho, rādha, aniccaṁ …pe….", "sujato": "“… impermanent …”"}, {"key": "sn23.38:1.1", "pali": "“Yo kho, rādha, aniccadhammo …pe….", "sujato": "“… liable to impermanence …”"}, {"key": "sn23.39:1.1", "pali": "“Yaṁ kho, rādha, dukkhaṁ …pe….", "sujato": "“… suffering …”"}, {"key": "sn23.40:1.1", "pali": "“Yo kho, rādha, dukkhadhammo …pe….", "sujato": "“… liable to suffering …”"}, {"key": "sn23.41:1.1", "pali": "“Yo kho, rādha, anattā …pe….", "sujato": "“… not-self …”"}, {"key": "sn23.42:1.1", "pali": "“Yo kho, rādha, anattadhammo …pe….", "sujato": "“… liable to not-self …”"}, {"key": "sn23.43:1.1", "pali": "“Yo kho, rādha, khayadhammo …pe….", "sujato": "“… liable to end …”"}, {"key": "sn23.44:1.1", "pali": "“Yo kho, rādha, vayadhammo …pe….", "sujato": "“… liable to fall …”"}, {"key": "sn23.45:1.1", "pali": "“Yo kho, rādha, samudayadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo …pe….", "sujato": "“… liable to originate …”"}]}]}, {"id": "sn23.46", "label": "SN 23.46 · Liable To Cease", "children": [{"id": "sn23.46/0", "label": "Linked Discourses 23.46", "rows": [{"key": "sn23.46:0.1", "pali": "Saṁyutta Nikāya 23.46", "sujato": "Linked Discourses 23.46"}, {"key": "sn23.46:0.2", "pali": "4.\nUpanisinnavagga", "sujato": "4.\nSitting Close"}, {"key": "sn23.46:0.3", "pali": "Nirodhadhammasutta", "sujato": "Liable To Cease"}]}, {"id": "sn23.46/1", "label": "At Sāvatthī.", "rows": [{"key": "sn23.46:1.1", "pali": "Sāvatthinidānaṁ.", "sujato": "At Sāvatthī."}, {"key": "sn23.46:1.2", "pali": "Ekamantaṁ nisinnaṁ kho āyasmantaṁ rādhaṁ bhagavā etadavoca:", "sujato": "When Venerable Rādha was seated to one side, the Buddha said to him:"}, {"key": "sn23.46:1.3", "pali": "“yo kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "“Rādha, you should give up any desire, any greed, any desire and greed for whatever is liable to cease."}, {"key": "sn23.46:1.4", "pali": "Ko ca, rādha, nirodhadhammo?", "sujato": "And what is liable to cease?"}, {"key": "sn23.46:1.5", "pali": "Rūpaṁ kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "Form is liable to cease.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.46:1.6", "pali": "Vedanā …pe…", "sujato": "Feeling …"}, {"key": "sn23.46:1.7", "pali": "saññā …pe…", "sujato": "Perception …"}, {"key": "sn23.46:1.8", "pali": "saṅkhārā …pe…", "sujato": "Choices …"}, {"key": "sn23.46:1.9", "pali": "viññāṇaṁ nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo.", "sujato": "Consciousness is liable to cease.\nYou should give up any desire, any greed, any desire and greed for it."}, {"key": "sn23.46:1.10", "pali": "Yo kho, rādha, nirodhadhammo;\ntatra te chando pahātabbo, rāgo pahātabbo, chandarāgo pahātabbo”ti.", "sujato": "You should give up any desire, any greed, any desire and greed for whatever is liable to cease.”"}, {"key": "sn23.46:1.11", "pali": "Upanisinnavaggo catuttho.", "sujato": ""}]}, {"id": "sn23.46/2", "label": "Tassuddānaṁ", "rows": [{"key": "sn23.46:2.0", "pali": "Tassuddānaṁ", "sujato": ""}, {"key": "sn23.46:2.1", "pali": "Māro ca māradhammo ca,", "sujato": ""}, {"key": "sn23.46:2.2", "pali": "Aniccena apare duve;", "sujato": ""}, {"key": "sn23.46:2.3", "pali": "Dukkhena ca duve vuttā,", "sujato": ""}, {"key": "sn23.46:2.4", "pali": "Anattena tatheva ca;", "sujato": ""}, {"key": "sn23.46:2.5", "pali": "Khayavayasamudayaṁ,", "sujato": ""}, {"key": "sn23.46:2.6", "pali": "Nirodhadhammena dvādasāti.", "sujato": ""}, {"key": "sn23.46:2.7", "pali": "Rādhasaṁyuttaṁ samattaṁ.", "sujato": "The Linked Discourses with Rādha are complete."}]}]}]}];
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"sn23.1:1.2": ["Rādha was introduced in <a class=
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();

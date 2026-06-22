@@ -30,6 +30,8 @@
   --nav-indent:calc(var(--logo-w) + 1.1rem);  /* row-1 crumbs AND row-2 "Contents" share this left offset so they line up */
   --fs:15px;
   --toc-scale:1;
+  --fn-h:2.4rem;   /* footnote region height (lower-left); strip when minimized */
+  --fn-scale:1;    /* footnote text-size multiplier (independent A−/A+) */
 }
 [data-theme="dark"]{
   --bg:#1a1612;--border:#3a3028;
@@ -260,19 +262,40 @@ header{
 
 .sidebar{
   width:var(--sw);flex-shrink:0;
-  position:fixed;left:0;bottom:0;
+  position:fixed;left:0;bottom:var(--fn-h);
   /* TOC text base — scaled relative to the main reading font via --toc-scale,
      so the in-sidebar .tl/.tn/.tr-pali rules (em, below) size independently of
      the reading panes. tocScale=1 reproduces the original rem appearance. */
   font-size:calc(var(--fs) * var(--toc-scale));
   overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--sec-border) transparent;  /* Firefox */
   background:var(--sidebar-bg);
   border-right:1px solid var(--sec-border);z-index:200;
   transition:transform .22s ease,background .2s;
 }
 .sidebar.hidden{transform:translateX(-100%)}
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:2px}
+/* Wider (9px) so the scrollbar is an obvious, grabbable bar — not just a hairline cue.
+   (Mouse-wheel-over-TOC also scrolls; this just makes dragging discoverable.) */
+.sidebar::-webkit-scrollbar{width:9px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--sec-border);border-radius:5px;
+  border:2px solid var(--sidebar-bg)}
+.sidebar::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── TOC RESIZE SASH ── vertical drag handle tracking the sidebar/content boundary.
+   Overlays the left edge of #colBar (z above 250) so it's grabbable over the bar row. */
+/* Grab zone sits at the boundary and extends RIGHT toward the hamburger (not left over
+   the TOC scrollbar). Wider (7px) for a more generous, easier grab. */
+#tocSash{
+  position:fixed;top:var(--hh);bottom:0;left:var(--sw);
+  width:7px;z-index:260;cursor:col-resize;
+  background:transparent;transition:background .12s;
+}
+#tocSash:hover,#tocSash.dragging{background:var(--accent);opacity:.5}
+#tocSash.hidden{display:none}
+/* While dragging, kill the .22s layout transitions so the panel tracks the cursor. */
+body.sw-dragging{user-select:none;cursor:col-resize}
+body.sw-dragging .content,body.sw-dragging .site-footer,
+body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{transition:none}
 
 .content{margin-left:var(--sw);flex:1;min-width:0;padding:1rem 1.2rem 5rem;transition:margin-left .22s}
 .content.full{margin-left:0}
@@ -391,16 +414,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fnico:hover{background:var(--toc-hover)}
 .fnico.on{background:var(--toc-act)}   /* marker whose note is currently open */
 .fnico::after{content:"";position:absolute;top:-.6em;left:-1.1em;right:-1.1em;bottom:-1.6em}
-#fnPane{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);
-  background:var(--sidebar-bg);color:var(--text);border-left:1px solid var(--border);
-  box-shadow:-4px 0 18px rgba(0,0,0,.28);z-index:500;
-  transform:translateX(100%);transition:transform .22s ease;
+/* Desktop: footnotes live in the LOWER-LEFT, below the TOC (shares the left column,
+   width --sw; height --fn-h). Mobile (≤640px, below) overrides this to a bottom sheet. */
+#fnPane{position:fixed;left:0;bottom:0;width:var(--sw);height:var(--fn-h);z-index:500;
+  background:var(--sidebar-bg);color:var(--text);
+  border-top:2px solid var(--accent);border-right:1px solid var(--sec-border);
+  box-shadow:0 -2px 10px rgba(0,0,0,.18);
+  container-type:inline-size;container-name:fnpane;
   display:flex;flex-direction:column}
-#fnPane.show{transform:translateX(0)}
-.fn-head{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);background:var(--sec-bg)}
+/* flex-wrap: in the narrow left column the controls wrap to a 2nd row instead of being
+   clipped (the pane has no horizontal scroll). Compact gap/padding keeps it one row when
+   the panel is wide. */
+/* Distinct header tone (--bar-bg, the column-bar shade) + the pane's accent top border
+   separate the footnote panel from the TOC list sharing the column above it. */
+.fn-head{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;padding:.5rem .6rem;
+  border-bottom:1px solid var(--sec-border);background:var(--bar-bg)}
 .fn-head .fn-title{font-size:.85rem;color:var(--text);
-  display:flex;align-items:baseline;gap:.5em;min-width:0}
+  display:flex;align-items:baseline;gap:.4em;min-width:0;flex:1 1 70px;overflow:hidden}
 .fn-spacer{flex:1}                                       /* pushes ☠/Copy/✕ to the right */
 .fn-head button:disabled{opacity:.35;cursor:default}    /* prev/next at list ends */
 .fn-head button.on{background:var(--toc-act)}            /* 'all' toggle when ON */
@@ -411,7 +441,20 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-all-block:last-child{border-bottom:none}
 .fn-all-active{border-left-color:var(--accent);background:var(--toc-hover)}
 .fn-all-ref{display:block;margin-bottom:.35rem}          /* per-block ref backlink heading */
-.fn-tl{font-weight:600}                                  /* translator label */
+.fn-tl{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}                                    /* translator label (ellipsis when tight) */
+/* Narrow panel → show the abbreviated label ("Suj.") instead of the full name, so the
+   header rarely needs to wrap. Container query on #fnPane (reactive to the sash, no JS). */
+.fn-tl-abbr{display:none}
+@container fnpane (max-width:230px){
+  .fn-tl-full{display:none}
+  .fn-tl-abbr{display:inline}
+}
+/* The two nav arrows sit flush as one segmented control. */
+.fn-nav{display:inline-flex;gap:0;flex-shrink:0}
+.fn-nav button{border-radius:0}
+.fn-nav button:first-child{border-radius:5px 0 0 5px}
+.fn-nav button:last-child{border-radius:0 5px 5px 0;border-left:none}
 .fn-seg{font-family:monospace;font-size:.9em;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis}               /* segment ref */
 /* the seg ref is a <button> backlink — keep it looking like a ref, not a button,
@@ -419,8 +462,8 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 .fn-head button.fn-seg{border:none;background:none;padding:0;cursor:pointer}
 .fn-head button.fn-seg:hover{background:none;color:var(--accent);text-decoration:underline}
 .fn-head button{cursor:pointer;border:1px solid var(--border);background:var(--bg);
-  color:var(--text);border-radius:5px;padding:.25rem .6rem;font-size:.8rem;
-  font-family:sans-serif;transition:background .2s}
+  color:var(--text);border-radius:5px;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;transition:background .2s;flex-shrink:0}
 .fn-head button:hover{background:var(--toc-hover)}
 .fn-warn-btn{cursor:pointer;border:1px solid var(--border);background:var(--bg);
   border-radius:5px;padding:.2rem .45rem;font-size:1rem;line-height:1;
@@ -434,16 +477,59 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
    internally (a flex item won't shrink below content size without min-height:0),
    so long notes get a scrollbar while the header + warning banner stay pinned. */
 .fn-body{flex:1;min-height:0;padding:1rem 1.1rem;overflow-y:auto;
-  overflow-wrap:break-word;line-height:1.7;font-size:1rem;
+  overflow-wrap:break-word;line-height:1.7;font-size:calc(1rem * var(--fn-scale));
   white-space:pre-wrap;user-select:text}
 .fn-body a.xref,.fn-body a[target]{color:var(--accent);cursor:pointer;
   text-decoration:underline}
 .fn-body hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+/* Minimized strip label (shown only when minimized on desktop — see media block). */
+.fn-strip{display:none;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;font-family:sans-serif;cursor:pointer;
+  border-radius:4px;padding:.15rem .3rem;transition:background .12s,color .12s}
+.fn-strip:hover{color:var(--accent);background:var(--toc-hover)}
+/* Translator chooser popup, anchored just above the minimized strip. */
+#fnMenu{display:none;position:fixed;left:.4rem;bottom:var(--fn-h);z-index:520;
+  min-width:160px;max-width:calc(var(--sw) - .8rem);
+  background:var(--sec-bg);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.3);padding:.3rem}
+#fnMenu.show{display:block}
+.fn-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text);font-family:Georgia,serif;font-size:.82rem;
+  padding:.4rem .55rem;border-radius:4px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;transition:background .12s}
+.fn-menu-item:hover{background:var(--toc-hover)}
+.fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
+   Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
+  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+body.fn-dragging{user-select:none;cursor:row-resize}
+
+/* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
 @media (max-width:640px){
-  #fnPane{top:auto;bottom:0;right:0;width:100%;height:62vh;border-left:none;
-    border-top:1px solid var(--border);box-shadow:0 -4px 18px rgba(0,0,0,.28);
-    transform:translateY(100%)}
+  #fnPane{top:auto;left:0;right:0;width:100%;height:62vh;
+    border-right:none;border-top:1px solid var(--border);
+    box-shadow:0 -4px 18px rgba(0,0,0,.28);
+    transform:translateY(100%);transition:transform .22s ease}
   #fnPane.show{transform:translateY(0)}
+  .sidebar{bottom:0}
+  #fnSash{display:none}
+}
+/* Desktop: the lower-left split + minimized-strip behavior. */
+@media (min-width:641px){
+  #fnSash{display:block}
+  #fnPane.min ~ #fnSash{display:none}
+  #fnPane.min .fn-strip{display:block}
+  #fnPane.min .fn-head > *:not(.fn-strip){display:none}
+  #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
+  /* Sidebar collapsed (☰ off) → the whole left column is gone, so the footnote pane,
+     its sash and its chooser hide too (#colBar carries .sidebar-hidden, and is an
+     earlier body sibling of all three). Opening a note while collapsed re-shows the
+     sidebar (openNote → toggleSidebar), which clears this. */
+  #colBar.sidebar-hidden ~ #fnPane,
+  #colBar.sidebar-hidden ~ #fnSash,
+  #colBar.sidebar-hidden ~ #fnMenu{display:none}
 }
 </style>
 </head>
@@ -500,6 +586,13 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
           </span>
         </div>
         <div class="set-row">
+          <span class="set-lbl">Footnote text size</span>
+          <span class="set-ctl">
+            <button class="icon-btn" title="Decrease footnote text size" onclick="adjustFnScale(-0.1)">A−</button>
+            <button class="icon-btn" title="Increase footnote text size" onclick="adjustFnScale(0.1)">A+</button>
+          </span>
+        </div>
+        <div class="set-row">
           <span class="set-lbl">Theme</span>
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
@@ -524,6 +617,10 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   <div class="add-col-btn" id="addColBtn" title="Add column" onclick="addCol()">+</div>
 </div>
 
+<!-- TOC RESIZE SASH — vertical drag handle at the sidebar/content boundary (x = --sw),
+     just left of the ☰ toggle; drags --sw to resize the left TOC panel. -->
+<div id="tocSash" title="Drag to resize the contents panel"></div>
+
 <!-- STICKY TOC HEADER BAR -->
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
@@ -541,31 +638,41 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
 <footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
-<!-- FOOTNOTE PANE (Sujato comments) — slides in from the right (bottom sheet on
-     mobile). Body is populated by openNote() with build-sanitized note HTML. -->
-<aside id="fnPane" aria-hidden="true">
+<!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
+     mobile). Body is populated by openNote() with build-sanitized note HTML. When no
+     note is shown (.min) only #fnStrip is visible (a thin labeled strip). -->
+<aside id="fnPane" class="min" aria-hidden="true">
   <div class="fn-head">
+    <span class="fn-strip" id="fnStrip" aria-haspopup="true" aria-expanded="false" title="Click to choose which translator's footnotes to show. (You can also open a note by clicking its marker in a line.)">Footnotes ▾</span>
     <span class="fn-title" id="fnTitle">Footnote</span>
-    <!-- Footnote navigation (current translator's notes, in segment order). -->
-    <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
-    <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    <!-- Footnote navigation (current translator's notes, in segment order). The two
+         arrows sit flush together as one segmented control to save width. -->
+    <span id="fnNav" class="fn-nav">
+      <button id="fnPrev" title="Previous footnote" onclick="fnGoto(-1)">◀</button>
+      <button id="fnNext" title="Next footnote" onclick="fnGoto(1)">▶</button>
+    </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
     <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
          full warning banner below. Shown only when the note is a Sujato note. -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
-    <button id="fnCopy" title="Copy footnote text">Copy</button>
+    <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
   </div>
   <div class="fn-warn" id="fnWarnMsg" hidden>☢️ Warning: Sujato's views on Jhāna contradict the Early Buddhist Texts (EBT). His interpretation relies on the Visuddhimagga — a Theravāda commentary written roughly 500 years after the EBT — rather than the source texts themselves. His translations are widely used but his doctrinal views should not be taken at face value. Always verify with reputable EBT sources. Read his translations and notes with great care and wise discrimination.</div>
   <div class="fn-body" id="fnBody"></div>
 </aside>
+<!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
+<div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
+     with footnotes on this page (populated by buildFnMenu). -->
+<div id="fnMenu" role="menu"></div>
 
 <script>
 const TREE=[{"id": "0", "label": "Middle Discourses 86", "rows": [{"key": "mn86:0.1", "pali": "Majjhima Nikāya 86", "sujato": "Middle Discourses 86", "thanissaro": "", "pts": ""}, {"key": "mn86:0.2", "pali": "Aṅgulimālasutta", "sujato": "With Aṅgulimāla", "thanissaro": "", "pts": ""}]}, {"id": "1", "label": "So I have heard.", "rows": [{"key": "mn86:1.1", "pali": "Evaṁ me sutaṁ—", "sujato": "So I have heard.", "thanissaro": "I have heard that", "pts": "THUS have I heard:"}, {"key": "mn86:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "thanissaro": "on one occasion the Blessed One was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "Sāvatthī, at Jeta Grove, in Anāthapiṇḍika's monastery."}]}, {"id": "2", "label": "Now at that time in the realm…", "rows": [{"key": "mn86:2.1", "pali": "Tena kho pana samayena rañño pasenadissa kosalassa vijite coro aṅgulimālo\nnāma hoti luddo lohitapāṇi hatapahate niviṭṭho adayāpanno pāṇabhūtesu.", "sujato": "Now at that time in the realm of King Pasenadi of Kosala there was a bandit named Aṅgulimāla.\nHe was violent, bloody-handed, a hardened killer, merciless to living beings.", "thanissaro": "And at that time in King Pasenadi’s realm there was a bandit named Aṅgulimāla:\nbrutal, bloody-handed, devoted to killing & slaying, showing no mercy to living beings.", "pts": "Now at that time, in the realm of King Pasenadi of Kosaia[] there was a robber named Aṇgulimāla,[] a hunter,\nbloody-handed, bent on death and destruction, merciless to living creatures."}, {"key": "mn86:2.2", "pali": "Tena gāmāpi agāmā katā, nigamāpi anigamā katā, janapadāpi ajanapadā katā.", "sujato": "He laid waste to villages, towns, and countries.", "thanissaro": "He turned villages into non-villages, towns into non-towns, settled countryside into unsettled countryside.", "pts": "Through him villages were depopulated[] and market towns were depopulated and country districts were depopulated."}, {"key": "mn86:2.3", "pali": "So manusse vadhitvā vadhitvā aṅgulīnaṁ mālaṁ dhāreti.", "sujato": "He was constantly murdering humans, and he wore their fingers as a necklace.", "thanissaro": "Having repeatedly killed human beings, he wore a garland [māla] made of fingers [aṅguli].", "pts": "From his constant killing of people he wore a garland of fingers."}]}, {"id": "3", "label": "Then the Buddha robed up in the…", "rows": [{"key": "mn86:3.1", "pali": "Atha kho bhagavā pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya sāvatthiṁ piṇḍāya pāvisi.", "sujato": "Then the Buddha robed up in the morning and, taking his bowl and robe, entered Sāvatthī for alms.", "thanissaro": "Then the Blessed One, early in the morning,\nhaving adjusted his lower robe and taking his bowl & outer robe, went into Sāvatthī for alms.", "pts": "Then the Lord, having dressed in the morning, taking his bowl and robe, entered Sāvatthī for almsfood;"}, {"key": "mn86:3.2", "pali": "Sāvatthiyaṁ piṇḍāya caritvā pacchābhattaṁ piṇḍapātapaṭikkanto senāsanaṁ\nsaṁsāmetvā pattacīvaramādāya yena coro aṅgulimālo tenaddhānamaggaṁ paṭipajji.", "sujato": "Then, after the meal, on his return from almsround, he set his lodgings in order and,\ntaking his bowl and robe, he walked down the road that led to Aṅgulimāla.", "thanissaro": "Having gone for alms in Sāvatthī and returning from his alms round after his meal, he set his lodging in order.\nCarrying his bowl & robe, he went along the road to where Aṅgulimāla was staying.", "pts": "having walked for alms in Sāvatthī, returning from the almsgathering after the meal,\nhaving packed away his lodging, taking his bowl and robe, he set out along a highway towards the robber Aṇgulimāla."}, {"key": "mn86:3.3", "pali": "Addasāsuṁ kho gopālakā pasupālakā kassakā pathāvino bhagavantaṁ yena coro aṅgulimālo tenaddhānamaggapaṭipannaṁ.", "sujato": "The cowherds, shepherds, farmers, and travelers saw him on the road,", "thanissaro": "Cowherds, shepherds, & farmers saw him going along the road to where Aṅgulimāla was staying,", "pts": "Cowherds, goatherds,\nyeomen farmers and travellers saw the Lord as he was setting out along the highway towards the robber Aṇgulimāla."}, {"key": "mn86:3.4", "pali": "Disvāna bhagavantaṁ etadavocuṁ:", "sujato": "and said to him,", "thanissaro": "and on seeing him said to him,", "pts": "Having seen the Lord, they spoke thus to him:"}, {"key": "mn86:3.5", "pali": "“mā, samaṇa, etaṁ maggaṁ paṭipajji.", "sujato": "“Don’t take this road, ascetic.", "thanissaro": "“Don’t go along that road, contemplative, for on that road is Aṅgulimāla:", "pts": "\"Do not, recluse, set out along this road."}, {"key": "mn86:3.6", "pali": "Etasmiṁ, samaṇa, magge coro aṅgulimālo nāma luddo lohitapāṇi hatapahate niviṭṭho adayāpanno pāṇabhūtesu.", "sujato": "On this road there is a bandit named Aṅgulimāla.\nHe is violent, bloody-handed, a hardened killer, merciless to living beings.", "thanissaro": "brutal, bloody-handed, devoted to killing & slaying, showing no mercy to living beings.", "pts": "There is a robber on this road called Aṇgulimāla, a hunter, bloody-handed,\nbent on death and destruction, merciless to living creatures."}, {"key": "mn86:3.7", "pali": "Tena gāmāpi agāmā katā, nigamāpi anigamā katā, janapadāpi ajanapadā katā.", "sujato": "He has laid waste to villages, towns, and countries.", "thanissaro": "He has turned villages into non-villages, towns into non-towns, settled countryside into unsettled countryside.", "pts": "Through him villages are depopulated and market towns are depopulated and country districts are depopulated."}, {"key": "mn86:3.8", "pali": "So manusse vadhitvā vadhitvā aṅgulīnaṁ mālaṁ dhāreti.", "sujato": "He is constantly murdering humans, and he wears their fingers as a necklace.", "thanissaro": "Having repeatedly killed human beings, he wears a garland made of fingers.", "pts": "From his constant killing of people he wares a garland of fingers."}, {"key": "mn86:3.9", "pali": "Etañhi, samaṇa, maggaṁ dasapi purisā vīsampi purisā tiṁsampi purisā\ncattārīsampi purisā paññāsampi purisā saṅkaritvā saṅkaritvā paṭipajjanti.", "sujato": "People travel along this road only after banding closely together in groups of ten, twenty, thirty, forty, or fifty.", "thanissaro": "Groups of ten, twenty, thirty, & forty men have gone along that road,", "pts": "This is a road, recluse,\nalong which ten or twenty or thirty or forty men set out only after they have collected together,"}, {"key": "mn86:3.10", "pali": "Tepi corassa aṅgulimālassa hatthatthaṁ gacchantī”ti.", "sujato": "Still they meet their end by Aṅgulimāla’s hand.”", "thanissaro": "and even they have fallen into Aṅgulimāla’s hands.”", "pts": "and even they are at the mercy of the robber Aṇgulimāla.\""}, {"key": "mn86:3.11", "pali": "Evaṁ vutte, bhagavā tuṇhībhūto agamāsi.", "sujato": "But when they said this, the Buddha went on in silence.", "thanissaro": "When this was said, the Blessed One kept going in silence.", "pts": "When this had been said, the Lord, having become silent, went on."}, {"key": "mn86:3.12", "pali": "Dutiyampi kho gopālakā …pe…", "sujato": "For a second time …", "thanissaro": "A second time.…", "pts": "And a second time, the cowherds, goatherds, yeomen farmers and travellers spoke thus to the Lord:\n\"Do not, recluse, set out along this road.\nThere is a robber on this road called Aṇgulimāla, a hunter, bloody-handed,\nbent on death and destruction, merciless to living creatures.\nThrough him villages are depopulated and market towns are depopulated and country districts are depopulated.\nFrom his constant killing of people he wares a garland of fingers.\nThis is a road, recluse,\nalong which ten or twenty or thirty or forty men set out only after they have collected together,\nand even they are at the mercy of the robber Aṇgulimāla.\"\nAnd a second time, when this had been said, the Lord, having become silent, went on."}, {"key": "mn86:3.13", "pali": "tatiyampi kho gopālakā pasupālakā kassakā pathāvino bhagavantaṁ etadavocuṁ:", "sujato": "and a third time, they urged the Buddha to turn back.", "thanissaro": "A third time, cowherds, shepherds, & farmers said to the Blessed One,", "pts": "And a third time, the cowherds, goatherds, yeomen farmers and travellers spoke thus to the Lord:"}, {"key": "mn86:3.14", "pali": "“mā, samaṇa, etaṁ maggaṁ paṭipajji,\netasmiṁ samaṇa magge coro aṅgulimālo nāma luddo lohitapāṇi hatapahate niviṭṭho adayāpanno pāṇabhūtesu,\ntena gāmāpi agāmā katā, nigamāpi anigamā katā, janapadāpi ajanapadā katā.", "sujato": "", "thanissaro": "“Don’t go along that road, contemplative.…", "pts": "\"Do not, recluse, set out along this road.\nThere is a robber on this road called Aṇgulimāla, a hunter, bloody-handed,\nbent on death and destruction, merciless to living creatures."}, {"key": "mn86:3.15", "pali": "So manusse vadhitvā vadhitvā aṅgulīnaṁ mālaṁ dhāreti.", "sujato": "", "thanissaro": "", "pts": "Through him villages are depopulated and market towns are depopulated and country districts are depopulated.\nFrom his constant killing of people he wares a garland of fingers."}, {"key": "mn86:3.16", "pali": "Etañhi samaṇa maggaṁ dasapi purisā vīsampi purisā tiṁsampi purisā\ncattārīsampi purisā paññāsampi purisā saṅkaritvā saṅkaritvā paṭipajjanti.", "sujato": "", "thanissaro": "Groups of ten, twenty, thirty, & forty men have gone along that road,", "pts": "This is a road, recluse,\nalong which ten or twenty or thirty or forty men set out only after they have collected together,"}, {"key": "mn86:3.17", "pali": "Tepi corassa aṅgulimālassa hatthatthaṁ gacchantī”ti.", "sujato": "", "thanissaro": "and even they have fallen into Aṅgulimāla’s hands.”", "pts": "and even they are at the mercy of the robber Aṇgulimāla.\""}]}, {"id": "4", "label": "But when they said this, the Buddha…", "rows": [{"key": "mn86:4.1", "pali": "Atha kho bhagavā tuṇhībhūto agamāsi.", "sujato": "But when they said this, the Buddha went on in silence.", "thanissaro": "When this was said, the Blessed One kept going in silence.", "pts": "And a third time, when this had been said, the Lord, having become silent, went on."}, {"key": "mn86:4.2", "pali": "Addasā kho coro aṅgulimālo bhagavantaṁ dūratova āgacchantaṁ.", "sujato": "The bandit Aṅgulimāla saw the Buddha coming off in the distance,", "thanissaro": "Then Aṅgulimāla saw the Blessed One coming from afar and on seeing him, this thought occurred to him:", "pts": "The robber Aṇgulimāla saw the Lord coming in the distance;"}, {"key": "mn86:4.3", "pali": "Disvānassa etadahosi:", "sujato": "and thought,", "thanissaro": "", "pts": "on seeing him, it occurred to him:"}, {"key": "mn86:4.4", "pali": "“acchariyaṁ vata bho, abbhutaṁ vata bho.", "sujato": "“Oh lord, how incredible, how amazing!", "thanissaro": "“Isn’t it amazing!\nIsn’t it astounding!", "pts": "\"Indeed it is wonderful, indeed it is marvellous."}, {"key": "mn86:4.5", "pali": "Imañhi maggaṁ dasapi purisā vīsampi purisā tiṁsampi purisā cattārīsampi\npurisā paññāsampi purisā saṅkaritvā saṅkaritvā paṭipajjanti.", "sujato": "People travel along this road only after banding closely together in groups of ten, twenty, thirty, forty, or fifty.", "thanissaro": "Groups of ten, twenty, thirty, & forty men have gone along this road, and even they have fallen into my hands,", "pts": "This is a road, along which ten or twenty or thirty or forty men set out only after they have collected together,"}, {"key": "mn86:4.6", "pali": "Tepi mama hatthatthaṁ gacchanti.", "sujato": "Still they meet their end by my hand.", "thanissaro": "", "pts": "and even they are at my mercy."}, {"key": "mn86:4.7", "pali": "Atha ca panāyaṁ samaṇo eko adutiyo pasayha maññe āgacchati.", "sujato": "But still this ascetic comes along alone and unaccompanied, like a conqueror.", "thanissaro": "and yet now this contemplative comes attacking, as it were, alone and without a companion.", "pts": "And now this recluse is coming along alone, without a companion, it seems from choice.[]"}, {"key": "mn86:4.8", "pali": "Yannūnāhaṁ imaṁ samaṇaṁ jīvitā voropeyyan”ti.", "sujato": "Why don’t I take his life?”", "thanissaro": "Why don’t I kill him?”", "pts": "Suppose I were to deprive this recluse of life?\""}]}, {"id": "5", "label": "Then Aṅgulimāla donned his sword and shield,…", "rows": [{"key": "mn86:5.1", "pali": "Atha kho coro aṅgulimālo asicammaṁ gahetvā dhanukalāpaṁ sannayhitvā bhagavantaṁ piṭṭhito piṭṭhito anubandhi.", "sujato": "Then Aṅgulimāla donned his sword and shield, fastened his bow and arrows, and followed behind the Buddha.", "thanissaro": "So Aṅgulimāla, taking up his sword & shield, buckling on his bow & quiver, followed right behind the Blessed One.", "pts": "Then the robber Aṇgulimāla, having grasped his sword and shield,\nhaving armed himself with bow and quiver, followed close after the Lord."}, {"key": "mn86:5.2", "pali": "Atha kho bhagavā tathārūpaṁ iddhābhisaṅkhāraṁ abhisaṅkhāsi yathā coro aṅgulimālo\nbhagavantaṁ pakatiyā gacchantaṁ sabbathāmena gacchanto na sakkoti sampāpuṇituṁ.", "sujato": "But the Buddha used his psychic power to will that Aṅgulimāla could not catch up with him no matter how hard he tried,\neven though the Buddha kept walking at a normal speed.", "thanissaro": "Then the Blessed One willed a feat of psychic power such that Aṅgulimāla,\nthough running with all his might, could not catch up with the Blessed One walking at normal pace.", "pts": "Then the Lord performed such a wonder of psychic power that the robber Aṇgulimāla,\nalthough walking with all his strength, was not able to catch up with the Lord who was walking at an ordinary pace."}, {"key": "mn86:5.3", "pali": "Atha kho corassa aṅgulimālassa etadahosi:", "sujato": "Then Aṅgulimāla thought,", "thanissaro": "Then the thought occurred to Aṅgulimāla:", "pts": "Then it occurred to the robber Aṇgulimāla:"}, {"key": "mn86:5.4", "pali": "“acchariyaṁ vata bho, abbhutaṁ vata bho.", "sujato": "“Oh lord, how incredible, how amazing!", "thanissaro": "“Isn’t it amazing!\nIsn’t it astounding!", "pts": "'Indeed it is wonderful, indeed it is marvellous."}, {"key": "mn86:5.5", "pali": "Ahañhi pubbe hatthimpi dhāvantaṁ anupatitvā gaṇhāmi, assampi dhāvantaṁ anupatitvā gaṇhāmi,\nrathampi dhāvantaṁ anupatitvā gaṇhāmi, migampi dhāvantaṁ anupatitvā gaṇhāmi;", "sujato": "Previously, even when I’ve chased a speeding elephant, horse, chariot or deer, I’ve always caught up with them.", "thanissaro": "In the past I’ve chased & seized even a swift-running elephant,\na swift-running horse, a swift-running chariot, a swift-running deer.", "pts": "Although formerly I could attack and seize a running elephant, I could attack and seize a running horse,\nI could attack and seize a running chariot, I could attack and seize a running deer,\nnow I, although walking with all my strength,"}, {"key": "mn86:5.6", "pali": "atha ca panāhaṁ imaṁ samaṇaṁ pakatiyā gacchantaṁ sabbathāmena gacchanto na sakkomi sampāpuṇitun”ti.", "sujato": "But I can’t catch up with this ascetic no matter how hard I try, even though he’s walking at a normal speed.”", "thanissaro": "But now, even though I’m running with all my might, I can’t catch up with this contemplative walking at normal pace.”", "pts": "am not able to catch up with this recluse who is walking at an ordinary pace."}, {"key": "mn86:5.7", "pali": "Ṭhitova bhagavantaṁ etadavoca:", "sujato": "He stood still and said,", "thanissaro": "So he stopped and called out to the Blessed One,", "pts": "Standing still, he said to the Lord:"}, {"key": "mn86:5.8", "pali": "“tiṭṭha, tiṭṭha, samaṇā”ti.", "sujato": "“Stop, stop, ascetic!”", "thanissaro": "“Stop, contemplative!\nStop!”", "pts": "\"Stand still, recluse, stand still, recluse.\""}, {"key": "mn86:5.9", "pali": "“Ṭhito ahaṁ, aṅgulimāla, tvañca tiṭṭhā”ti.", "sujato": "“I’ve stopped, Aṅgulimāla—now you stop.”", "thanissaro": "“I have stopped, Aṅgulimāla.\nYou stop.”", "pts": "\"I am standing still, Aṇgulimāla, you too stand still.\""}, {"key": "mn86:5.10", "pali": "Atha kho corassa aṅgulimālassa etadahosi:", "sujato": "Then Aṅgulimāla thought,", "thanissaro": "Then the thought occurred to Aṅgulimāla,", "pts": "Then it occurred to the robber Aṇgulimāla:"}, {"key": "mn86:5.11", "pali": "“ime kho samaṇā sakyaputtiyā saccavādino saccapaṭiññā.", "sujato": "“These ascetics who follow the Sakyan speak the truth.", "thanissaro": "“These Sakyan contemplatives are speakers of the truth,", "pts": "\"These recluses, sons of the Sakyans, are truth-speakers, approving of truth."}, {"key": "mn86:5.12", "pali": "Atha panāyaṁ samaṇo gacchaṁ yevāha:", "sujato": "Yet while walking the ascetic Gotama says:", "thanissaro": "asserters of the truths, and yet this contemplative, even while walking, says,", "pts": "But yet this recluse, while he is walking, says:"}, {"key": "mn86:5.13", "pali": "‘ṭhito ahaṁ, aṅgulimāla, tvañca tiṭṭhā’ti.", "sujato": "‘I’ve stopped, Aṅgulimāla—now you stop.’", "thanissaro": "‘I have stopped, Aṅgulimāla.\nYou stop.’", "pts": "'I am standing still, Aṇgulimāla, you too stand still.'"}, {"key": "mn86:5.14", "pali": "Yannūnāhaṁ imaṁ samaṇaṁ puccheyyan”ti.", "sujato": "Why don’t I ask him about this?”", "thanissaro": "Why don’t I question him?”", "pts": "Suppose I were to question this recluse?\""}]}, {"id": "6", "label": "Then he addressed the Buddha in verse:", "rows": [{"key": "mn86:6.1", "pali": "Atha kho coro aṅgulimālo bhagavantaṁ gāthāya ajjhabhāsi:", "sujato": "Then he addressed the Buddha in verse:", "thanissaro": "So Aṅgulimāla the bandit addressed this verse to the Blessed One:", "pts": "Then the robber Aṇgulimāla spoke out to the Lord in verses:[]"}, {"key": "mn86:6.2", "pali": "“Gacchaṁ vadesi samaṇa ṭhitomhi,", "sujato": "“While walking, ascetic, you say ‘I’ve stopped.’", "thanissaro": "“While walking, contemplative, you say,\n‘I have stopped.’", "pts": "\"While you are walking, recluse, you say:"}, {"key": "mn86:6.3", "pali": "Mamañca brūsi ṭhitamaṭṭhitoti;", "sujato": "And I have stopped, but you tell me I’ve not.", "thanissaro": "But when I have stopped you say I haven’t.", "pts": "'I am standing still,' and you tell me, who am standing still, that I am not standing still."}, {"key": "mn86:6.4", "pali": "Pucchāmi taṁ samaṇa etamatthaṁ,", "sujato": "I’m asking you this, ascetic:", "thanissaro": "I ask you the meaning of this:", "pts": "I ask you, recluse, about this matter:"}, {"key": "mn86:6.5", "pali": "Kathaṁ ṭhito tvaṁ ahamaṭṭhitomhī”ti.", "sujato": "how is it you’ve stopped and I have not?”", "thanissaro": "How have you stopped?\nHow haven’t I?”\nThe Buddha:", "pts": "How is it that you are standing still, yet I am not standing still?\""}, {"key": "mn86:6.6", "pali": "“Ṭhito ahaṁ aṅgulimāla sabbadā,", "sujato": "“Aṅgulimāla, I have forever stopped—", "thanissaro": "“I have stopped, Aṅgulimāla, once & for all,", "pts": "\"I, Aṇgulimāla, am standing still, having for all beings everywhere laid aside the stick,"}, {"key": "mn86:6.7", "pali": "Sabbesu bhūtesu nidhāya daṇḍaṁ;", "sujato": "I’ve laid aside violence towards all creatures.", "thanissaro": "having cast off violence toward all living beings.", "pts": ""}, {"key": "mn86:6.8", "pali": "Tuvañca pāṇesu asaññatosi,", "sujato": "But you can’t stop yourself <j>from harming living creatures;", "thanissaro": "You, though, are unrestrained toward beings.", "pts": "But you are unrestrained regarding creatures;"}, {"key": "mn86:6.9", "pali": "Tasmā ṭhitohaṁ tuvamaṭṭhitosī”ti.", "sujato": "that’s why I’ve stopped, but you have not.”", "thanissaro": "That’s how I’ve stopped and you haven’t.”\nAṅgulimāla:", "pts": "therefore I am standing still, you are not standing still.\""}, {"key": "mn86:6.10", "pali": "“Cirassaṁ vata me mahito mahesī,", "sujato": "“Oh, at long last a renowned great seer,", "thanissaro": "“At long last a greatly revered great seer", "pts": "\"Long it is since a great sage was honoured by me, yet this recluse is penetrating the Great Grove."}, {"key": "mn86:6.11", "pali": "Mahāvanaṁ pāpuṇi saccavādī;", "sujato": "an ascetic has followed me into this deep wood.", "thanissaro": "for my sake has come to the great forest.", "pts": ""}, {"key": "mn86:6.12", "pali": "Sohaṁ carissāmi pahāya pāpaṁ,", "sujato": "Now that I’ve heard your verse on Dhamma,", "thanissaro": "Having heard your verse in line with the Dhamma, I will go about having abandoned evil.”", "pts": "I will soon get rid of evil, hearing Dhamma in a verse of yours.\""}, {"key": "mn86:6.13", "pali": "Sutvāna gāthaṁ tava dhammayuttaṁ”.", "sujato": "I shall live without evil.”", "thanissaro": "", "pts": ""}, {"key": "mn86:6.14", "pali": "Itveva coro asimāvudhañca,", "sujato": "With these words, <j>the bandit hurled his sword and weapons", "thanissaro": "So saying, the bandit hurled his sword & weapons", "pts": "When the robber had spoken thus, he hurled his sword and weapons down a cliff, into a pit, a chasm."}, {"key": "mn86:6.15", "pali": "Sobbhe papāte narake akiri;", "sujato": "down a cliff into an abyss.", "thanissaro": "over a cliff into a chasm, a pit.", "pts": ""}, {"key": "mn86:6.16", "pali": "Avandi coro sugatassa pāde,", "sujato": "He venerated the Holy One’s feet,", "thanissaro": "Then the bandit paid homage to the feet of the One Well-Gone,", "pts": "The robber honoured the Well-farer's feet;"}, {"key": "mn86:6.17", "pali": "Tattheva naṁ pabbajjaṁ ayāci.", "sujato": "and asked him for the going forth right away.", "thanissaro": "and right there requested the Going-forth.", "pts": "there he asked for the going forth."}, {"key": "mn86:6.18", "pali": "Buddho ca kho kāruṇiko mahesi,", "sujato": "Then the Buddha, the compassionate great seer,", "thanissaro": "The Awakened One, the compassionate great seer,", "pts": "The Awakened One and compassionate great sage who is the Teacher of the world with its devas, Thereupon said to him:"}, {"key": "mn86:6.19", "pali": "Yo satthā lokassa sadevakassa;", "sujato": "the teacher of the world with its gods,", "thanissaro": "the teacher of the world, along with its devas, said to him then:", "pts": ""}, {"key": "mn86:6.20", "pali": "“Tamehi bhikkhū”ti tadā avoca,", "sujato": "said to him,\n“Come, monk!”", "thanissaro": "“Come, bhikkhu.”", "pts": "\"Come, monk.\""}, {"key": "mn86:6.21", "pali": "Eseva tassa ahu bhikkhubhāvoti.", "sujato": "And with that he became a monk.", "thanissaro": "That in itself was bhikkhuhood for him.", "pts": "This itself was monk's status for him."}]}, {"id": "7", "label": "Then the Buddha set out for Sāvatthī…", "rows": [{"key": "mn86:7.1", "pali": "Atha kho bhagavā āyasmatā aṅgulimālena pacchāsamaṇena yena sāvatthi tena cārikaṁ pakkāmi.", "sujato": "Then the Buddha set out for Sāvatthī with Venerable Aṅgulimāla as his second monk.", "thanissaro": "Then the Blessed One set out wandering toward Sāvatthī with Ven. Aṅgulimāla as his attendant monk.", "pts": "Then the Lord set out on tour for Sāvatthī with the venerable Aṇgulimāla as his attendant."}, {"key": "mn86:7.2", "pali": "Anupubbena cārikaṁ caramāno yena sāvatthi tadavasari.", "sujato": "Traveling stage by stage, he arrived at Sāvatthī,", "thanissaro": "After wandering by stages he reached Sāvatthī,", "pts": "In due course, walking on tour, he arrived at Sāvatthī."}, {"key": "mn86:7.3", "pali": "Tatra sudaṁ bhagavā sāvatthiyaṁ viharati jetavane anāthapiṇḍikassa ārāme.", "sujato": "where he stayed in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "thanissaro": "and there he lived near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "While he was there the Lord stayed near Sāvatthī, in the Jeta Grove in Anāthapiṇḍika's monastery."}]}, {"id": "8", "label": "Now at that time a crowd had…", "rows": [{"key": "mn86:8.1", "pali": "Tena kho pana samayena rañño pasenadissa kosalassa antepuradvāre mahājanakāyo sannipatitvā uccāsaddo mahāsaddo hoti:", "sujato": "Now at that time a crowd had gathered by the gate of King Pasenadi’s royal compound making a colossal racket,", "thanissaro": "Now at that time a large crowd of people, loud & noisy,\nhad gathered at the gates to King Pasenadi Kosala’s inner palace,", "pts": "Now at that time, a great concourse of people, having gathered together at the gate of King Pasenadi's palace,\nwere making a loud noise, a great noise, saying:"}, {"key": "mn86:8.2", "pali": "“coro te, deva, vijite aṅgulimālo nāma luddo lohitapāṇi hatapahate niviṭṭho adayāpanno pāṇabhūtesu.", "sujato": "“In your realm, Your Majesty, there is a bandit named Aṅgulimāla.\nHe is violent, bloody-handed, a hardened killer, merciless to living beings.", "thanissaro": "(calling out,) “There is a bandit in your realm, sire, named Aṅgulimāla:\nbrutal, bloody-handed, devoted to killing & slaying, showing no mercy to living beings.", "pts": "\"There is a robber in your realm, sire, called Aṇgulimāla, a hunter,\nbloody-handed, bent on death and destruction, merciless to living creatures."}, {"key": "mn86:8.3", "pali": "Tena gāmāpi agāmā katā, nigamāpi anigamā katā, janapadāpi ajanapadā katā.", "sujato": "He has laid waste to villages, towns, and countries.", "thanissaro": "He has turned villages into non-villages, towns into non-towns, settled countryside into unsettled countryside.", "pts": "Through him villages are depopulated and market towns are depopulated and country districts are depopulated."}, {"key": "mn86:8.4", "pali": "So manusse vadhitvā vadhitvā aṅgulīnaṁ mālaṁ dhāreti.", "sujato": "He is constantly murdering humans, and he wears their fingers as a necklace.", "thanissaro": "Having repeatedly killed human beings, he wears a garland made of fingers.", "pts": "From his constant killing of people he wares a garland of fingers."}, {"key": "mn86:8.5", "pali": "Taṁ devo paṭisedhetū”ti.", "sujato": "Your Majesty must put a stop to him!”", "thanissaro": "The king must stamp him out!”", "pts": "Let the king drive him out.\""}]}, {"id": "9", "label": "Then King Pasenadi drove out from Sāvatthī…", "rows": [{"key": "mn86:9.1", "pali": "Atha kho rājā pasenadi kosalo pañcamattehi assasatehi sāvatthiyā nikkhami divā divassa.", "sujato": "Then King Pasenadi drove out from Sāvatthī in the middle of the day with around five hundred horses,", "thanissaro": "Then King Pasenadi Kosala, with a cavalry of roughly 500 horsemen,", "pts": "Then King Pasenadi, with as many as five hundred horses,\nleft Sāvatthī early in the morning and started for the monastery."}, {"key": "mn86:9.2", "pali": "Yena ārāmo tena pāvisi.", "sujato": "heading for the monastery.", "thanissaro": "drove out of Sāvatthī in the middle of the day and entered the monastery.", "pts": ""}, {"key": "mn86:9.3", "pali": "Yāvatikā yānassa bhūmi yānena gantvā yānā paccorohitvā pattikova yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinnaṁ kho rājānaṁ pasenadiṁ kosalaṁ bhagavā etadavoca:", "sujato": "He went by carriage as far as the terrain allowed, then descended and approached the Buddha on foot.\nHe bowed and sat down to one side.\nThe Buddha said to him,", "thanissaro": "Driving as far as the ground was passable for chariots,\nhe got down from his chariot and went on foot to the Blessed One.\nOn arrival, having bowed down to the Blessed One, he sat to one side.\nAs he was sitting there, the Blessed One said to him,", "pts": "Having gone by vehicle as far as the ground permitted, he dismounted from his vehicle and approached the Lord on foot;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nThe Lord spoke thus to King Pasenadi as he was sitting down at a respectful distance:"}, {"key": "mn86:9.4", "pali": "“kiṁ nu te, mahārāja, rājā vā māgadho seniyo bimbisāro kupito vesālikā vā licchavī aññe vā paṭirājāno”ti?", "sujato": "“What is it, great king?\nIs King Seniya Bimbisāra of Magadha angry with you, or the Licchavis of Vesālī, or some other opposing ruler?”", "thanissaro": "“What is it, great king?\nHas King Seniya Bimbisāra of Magadha provoked you, or have the Licchavis of Vesālī or some other hostile king?”", "pts": "\"What is it, sire?\nIs King Seniya Bimbisāra of Magadha angry with you, or the Licehavis of Vesālī, or some hostile king?\""}]}, {"id": "10", "label": "“No, sir.", "rows": [{"key": "mn86:10.1", "pali": "“Na kho me, bhante, rājā māgadho seniyo bimbisāro kupito, nāpi vesālikā licchavī, nāpi aññe paṭirājāno.", "sujato": "“No, sir.", "thanissaro": "“No, lord.\nKing Seniya Bimbisāra of Magadha hasn’t provoked me, nor have the Licchavis of Vesālī, nor has some other hostile king.", "pts": "\"Revered sir, it is not that King Seniya Bimbisāra of Magadha is angry with me,\nor the Licehavis of Vesālī, or any hostile king."}, {"key": "mn86:10.2", "pali": "Coro me, bhante, vijite aṅgulimālo nāma luddo lohitapāṇi hatapahate niviṭṭho adayāpanno pāṇabhūtesu.", "sujato": "In my realm there is a bandit named Aṅgulimāla.\nHe is violent, bloody-handed, a hardened killer, merciless to living beings. …", "thanissaro": "There is a bandit in my realm, lord, named Aṅgulimāla:\nbrutal, bloody-handed, devoted to killing & slaying, showing no mercy to living beings.", "pts": "There is a robber in my realm, revered sir, named Aṇgulimāla, a hunter,\nbloody-handed, bent on death and destruction, merciless to living creatures."}, {"key": "mn86:10.3", "pali": "Tena gāmāpi agāmā katā, nigamāpi anigamā katā, janapadāpi ajanapadā katā.", "sujato": "", "thanissaro": "He has turned villages into non-villages, towns into non-towns, settled countryside into unsettled countryside.", "pts": "Through him villages are depopulated and market towns are depopulated and country districts are depopulated."}, {"key": "mn86:10.4", "pali": "So manusse vadhitvā vadhitvā aṅgulīnaṁ mālaṁ dhāreti.", "sujato": "", "thanissaro": "Having repeatedly killed human beings, he wears a garland made of fingers.", "pts": "From his constant killing of people he wares a garland of fingers."}, {"key": "mn86:10.5", "pali": "Tāhaṁ, bhante, paṭisedhissāmī”ti.", "sujato": "I shall put a stop to him.”", "thanissaro": "I am going to stamp him out.”", "pts": "I, revered sir, shall never drive him out.\""}]}, {"id": "11", "label": "“But great king, suppose you were to…", "rows": [{"key": "mn86:11.1", "pali": "“Sace pana tvaṁ, mahārāja,\naṅgulimālaṁ passeyyāsi kesamassuṁ ohāretvā kāsāyāni vatthāni acchādetvā agārasmā anagāriyaṁ pabbajitaṁ,\nvirataṁ pāṇātipātā, virataṁ adinnādānā, virataṁ musāvādā, ekabhattikaṁ,\nbrahmacāriṁ, sīlavantaṁ, kalyāṇadhammaṁ, kinti naṁ kareyyāsī”ti?", "sujato": "“But great king, suppose you were to see that Aṅgulimāla had shaved off his hair and beard,\ndressed in ocher robes, and gone forth from the lay life to homelessness.\nAnd that he was refraining from killing living creatures, stealing, and lying;\nthat he was eating in one part of the day, and was chaste, ethical, and of good character.\nWhat would you do to him?”", "thanissaro": "“Great king, suppose you were to see Aṅgulimāla with his hair & beard shaved off,\nwearing the ochre robe, having gone forth from the home life into homelessness,\nrefraining from killing living beings, refraining from taking what is not given,\nrefraining from telling lies, living the holy life on one meal a day, virtuous & of fine character:\nwhat would you do to him?”", "pts": "\"But[] if you, sire, were to see the robber Aṇgulimāla, having had his hair and beard cut off,\nhaving donned saffron robes, having gone forth from home into homelessness,\nrefraining from onslaught on creatures, refraining from taking what has not been given, refraining from lying speech,\na one-meal-man, a Brahma-farer, virtuous, of lovely character - what would you do to him?\""}, {"key": "mn86:11.2", "pali": "“Abhivādeyyāma vā, bhante, paccuṭṭheyyāma vā āsanena vā nimanteyyāma,\nabhinimanteyyāma vā naṁ cīvarapiṇḍapātasenāsanagilānappaccayabhesajjaparikkhārehi,\ndhammikaṁ vā assa rakkhāvaraṇaguttiṁ saṁvidaheyyāma.", "sujato": "“I would bow to him, rise in his presence, or offer him a seat.\nI’d invite him to accept robes, almsfood, lodgings, and medicines and supplies for the sick.\nAnd I’d organize his lawful guarding and protection.", "thanissaro": "“We would bow down to him, lord, or rise up to greet him, or offer him a seat,\nor offer him robes, almsfood, lodgings, or medicinal requisites for curing illness;\nor we would arrange a lawful guard, protection, & defense.", "pts": "\"Revered sir, we would salute him or rise up before him or offer\nhim a seat or invite him to the requisites of robe-material,\nalmsfood, lodgings and medicines for the sick, or we would have a proper watch and ward and guard provided for him."}, {"key": "mn86:11.3", "pali": "Kuto panassa, bhante, dussīlassa pāpadhammassa evarūpo sīlasaṁyamo bhavissatī”ti?", "sujato": "But sir, how could such an immoral, evil man ever have such virtue and restraint?”", "thanissaro": "But how could there be such virtue & restraint in an unvirtuous, evil character?”", "pts": "But whence could there be, revered sir, such control in moral habit for one of bad morality, of evil character?\""}]}, {"id": "12", "label": "Now at that time Venerable Aṅgulimāla was…", "rows": [{"key": "mn86:12.1", "pali": "Tena kho pana samayena āyasmā aṅgulimālo bhagavato avidūre nisinno hoti.", "sujato": "Now at that time Venerable Aṅgulimāla was sitting not far from the Buddha.", "thanissaro": "Now at that time Ven. Aṅgulimāla was sitting not far from the Blessed One.", "pts": "Now at that time the venerable Aṇgulimāla was sitting near the Lord."}, {"key": "mn86:12.2", "pali": "Atha kho bhagavā dakkhiṇaṁ bāhuṁ paggahetvā rājānaṁ pasenadiṁ kosalaṁ etadavoca:", "sujato": "Then the Buddha pointed with his right arm and said to the king,", "thanissaro": "So the Blessed One, pointing with his right arm, said to King Pasenadi Kosala,", "pts": "Then the Lord, stretching out his right arm, spoke thus to King Pasenadi:"}, {"key": "mn86:12.3", "pali": "“eso, mahārāja, aṅgulimālo”ti.", "sujato": "“Great king, this is Aṅgulimāla.”", "thanissaro": "“That, great king, is Aṅgulimāla.”", "pts": "\"This, sire, is Aṇgulimāla.\""}, {"key": "mn86:12.4", "pali": "Atha kho rañño pasenadissa kosalassa ahudeva bhayaṁ, ahu chambhitattaṁ, ahu lomahaṁso.", "sujato": "Then the king became frightened, scared, his hair standing on end.", "thanissaro": "Then King Pasenadi Kosala was frightened, terrified, his hair standing on end.", "pts": "Then King Pasenadi was afraid, alarmed and his hair stood on end."}, {"key": "mn86:12.5", "pali": "Atha kho bhagavā rājānaṁ pasenadiṁ kosalaṁ bhītaṁ saṁviggaṁ lomahaṭṭhajātaṁ viditvā rājānaṁ pasenadiṁ kosalaṁ etadavoca:", "sujato": "Knowing this, the Buddha said to him,", "thanissaro": "So the Blessed One, sensing the king’s fear & hair-raising awe, said to him,", "pts": "Then the Lord, knowing King Pasenadi's terror and agitation and that his hair was standing on end,\nspoke thus to King Pasenadi:"}, {"key": "mn86:12.6", "pali": "“mā bhāyi, mahārāja, natthi te ito bhayan”ti.", "sujato": "“Do not fear, great king.\nYou have nothing to fear from him.”", "thanissaro": "“Don’t be afraid, great king.\nDon’t be afraid.\nHe poses no danger to you.", "pts": "\"Do not be afraid, sire, do not be afraid, sire;\nyou have no cause for fear here.\""}, {"key": "mn86:12.7", "pali": "Atha kho rañño pasenadissa kosalassa yaṁ ahosi bhayaṁ vā chambhitattaṁ vā lomahaṁso vā so paṭippassambhi.", "sujato": "Then the king’s fear died down.", "thanissaro": "Then the king’s fear, his terror, his hair-standing-on-end subsided.", "pts": "Then King Pasenadi's fear and alarm and the standing of his hair on end all abated."}, {"key": "mn86:12.8", "pali": "Atha kho rājā pasenadi kosalo yenāyasmā aṅgulimālo tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ aṅgulimālaṁ etadavoca:", "sujato": "Then the king went over to Aṅgulimāla and said,", "thanissaro": "He went over to Ven. Aṅgulimāla and said,", "pts": "Then King Pasenadi approached the venerable Aṇgulimāla;\nhaving approached, he spoke thus to the venerable Aṇgulimāla:"}, {"key": "mn86:12.9", "pali": "“ayyo no, bhante, aṅgulimālo”ti?", "sujato": "“Sir, is the master really Aṅgulimāla?”", "thanissaro": "“Are you really Aṅgulimāla, lord?”", "pts": "\"Revered sir, is the master really Aṇgulimāla?\""}, {"key": "mn86:12.10", "pali": "“Evaṁ, mahārājā”ti.", "sujato": "“Yes, great king.”", "thanissaro": "“Yes, great king.”", "pts": "\"Yes, sire.\""}, {"key": "mn86:12.11", "pali": "“Kathaṅgotto ayyassa pitā, kathaṅgottā mātā”ti?", "sujato": "“What clans were your father and mother from?”", "thanissaro": "“What is your father’s clan?\nWhat is your mother’s clan?”", "pts": "\"Of what clan was the master's father?\nOf what clan his mother?\""}, {"key": "mn86:12.12", "pali": "“Gaggo kho, mahārāja, pitā, mantāṇī mātā”ti.", "sujato": "“My father was a Gagga, and my mother a Mantāṇī.”", "thanissaro": "“My father is a Gagga, great king, and my mother a Mantāṇi.”", "pts": "\"Gagga was my father, sire, Mantāni my mother.\""}, {"key": "mn86:12.13", "pali": "“Abhiramatu, bhante, ayyo gaggo mantāṇiputto.", "sujato": "“Sir, may Master Gagga son of Mantāṇī be happy.", "thanissaro": "“Then may Master Gagga Mantāṇiputta delight (in staying here).", "pts": "\"Revered sir, let the master, the son of Gagga and Mantāni, be of good cheer."}, {"key": "mn86:12.14", "pali": "Ahamayyassa gaggassa mantāṇiputtassa ussukkaṁ karissāmi cīvarapiṇḍapātasenāsanagilānappaccayabhesajjaparikkhārānan”ti.", "sujato": "I’ll make sure that you’re provided with robes, almsfood, lodgings, and medicines and supplies for the sick.”", "thanissaro": "I will be responsible for your robes, almsfood, lodgings, & medicinal requisites for curing illness.”", "pts": "I will make an effort in the matter of the requisites of robe-material, almsfood, lodgings and medicines for the sick,\nor we would have a proper watch and ward and guard provided for the master, the son of Gagga and Mantāni.\""}]}, {"id": "13", "label": "But at that time Venerable Aṅgulimāla lived…", "rows": [{"key": "mn86:13.1", "pali": "Tena kho pana samayena āyasmā aṅgulimālo āraññiko hoti piṇḍapātiko paṁsukūliko tecīvariko.", "sujato": "But at that time Venerable Aṅgulimāla lived in the wilderness, ate only almsfood, and owned just three robes.", "thanissaro": "Now it so happened that at that time Ven. Aṅgulimāla was a wilderness-dweller,\nan alms-goer, wearing one set of the triple robe made of cast-off cloth.", "pts": "Now at that time the venerable Aṇgulimāla was a forest-dweller,\nan almsman, a rag-robe wearer, one who wore the three robes."}, {"key": "mn86:13.2", "pali": "Atha kho āyasmā aṅgulimālo rājānaṁ pasenadiṁ kosalaṁ etadavoca:", "sujato": "So he said to the king,", "thanissaro": "So he said to King Pasenadi Kosala,", "pts": "So the venerable Aṇgulimāla spoke thus to King Pasenadi:"}, {"key": "mn86:13.3", "pali": "“alaṁ, mahārāja, paripuṇṇaṁ me cīvaran”ti.", "sujato": "“Enough, great king.\nMy robes are complete.”", "thanissaro": "“Enough, great king.\nMy triple robe is complete.”", "pts": "\"No, sire, I am complete as to the three robes.\""}, {"key": "mn86:13.4", "pali": "Atha kho rājā pasenadi kosalo yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho rājā pasenadi kosalo bhagavantaṁ etadavoca:", "sujato": "Then the king went back to the Buddha, bowed, sat down to one side, and said to him,", "thanissaro": "So King Pasenadi Kosala went to the Blessed One and on arrival, having bowed down to him, sat to one side.\nAs he was sitting there he said to the Blessed One,", "pts": "Then King Pasenadi approached the Lord;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, King Pasenadi spoke thus to the Lord:"}, {"key": "mn86:13.5", "pali": "“acchariyaṁ, bhante, abbhutaṁ, bhante.", "sujato": "“It’s incredible, sir, it’s amazing!", "thanissaro": "“It’s amazing, lord.", "pts": "\"It is wonderful, revered sir, it is marvellous, revered sir, how this Lord, revered sir,"}, {"key": "mn86:13.6", "pali": "Yāvañcidaṁ, bhante, bhagavā adantānaṁ dametā, asantānaṁ sametā, aparinibbutānaṁ parinibbāpetā.", "sujato": "How the Buddha tames those who are wild, pacifies those who are violent, and extinguishes those who are unquenched!", "thanissaro": "It’s astounding, how the Blessed One has tamed the untamed,\npacified the unpeaceful, and brought to unbinding those who were not unbound.", "pts": "tames the untamed, calms the uncalmed, helps to quell completely those that are not completely quelled.[]"}, {"key": "mn86:13.7", "pali": "Yañhi mayaṁ, bhante, nāsakkhimhā daṇḍenapi satthenapi dametuṁ so bhagavatā adaṇḍena asattheneva danto.", "sujato": "For I was not able to tame him with the rod and the sword, but the Buddha tamed him without rod or sword.", "thanissaro": "For what we could not tame even with blunt or bladed weapons, the Blessed One has tamed without blunt or bladed weapons.", "pts": "Him, revered sir, that I was unable to tame with stick and sword, the Lord has tamed without stick or sword."}, {"key": "mn86:13.8", "pali": "Handa ca dāni mayaṁ, bhante, gacchāma;", "sujato": "Well, now, sir, I must go.", "thanissaro": "Now, lord, we must go.", "pts": "Well, I am going now, revered sir, I am very busy, there is much to be done.\""}, {"key": "mn86:13.9", "pali": "bahukiccā mayaṁ bahukaraṇīyā”ti.", "sujato": "I have many duties, and much to do.”", "thanissaro": "Many are our duties, many our responsibilities.”", "pts": ""}, {"key": "mn86:13.10", "pali": "“Yassadāni, mahārāja, kālaṁ maññasī”ti.", "sujato": "“Please, great king, go at your convenience.”", "thanissaro": "“Then do, great king, what you think it is now time to do.”", "pts": "\"You do now, sire, that for which you deem it the right time.\""}, {"key": "mn86:13.11", "pali": "Atha kho rājā pasenadi kosalo uṭṭhāyāsanā bhagavantaṁ abhivādetvā padakkhiṇaṁ katvā pakkāmi.", "sujato": "Then King Pasenadi got up from his seat, bowed,\nand respectfully circled the Buddha, keeping him on his right, before leaving.", "thanissaro": "Then King Pasenadi Kosala got up from his seat, bowed down to the Blessed One and—keeping him to his right—departed.", "pts": "Then King Pasenadi, rising from his seat, having greeted the Lord, departed keeping his right side towards him."}]}, {"id": "14", "label": "Then Venerable Aṅgulimāla robed up in the…", "rows": [{"key": "mn86:14.1", "pali": "Atha kho āyasmā aṅgulimālo pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya sāvatthiyaṁ piṇḍāya pāvisi.", "sujato": "Then Venerable Aṅgulimāla robed up in the morning and, taking his bowl and robe, entered Sāvatthī for alms.", "thanissaro": "Then Ven. Aṅgulimāla, early in the morning,\nhaving adjusted his lower robe and taking his bowl & outer robe, went into Sāvatthī for alms.", "pts": "Then the venerable Aṇgulimāla, having dressed in the morning, taking his bowl and robe, entered Sāvatthī for almsfood."}, {"key": "mn86:14.2", "pali": "Addasā kho āyasmā aṅgulimālo sāvatthiyaṁ sapadānaṁ piṇḍāya caramāno aññataraṁ itthiṁ mūḷhagabbhaṁ vighātagabbhaṁ.", "sujato": "Then as he was wandering indiscriminately for almsfood he saw a woman undergoing a distressing obstructed labor.", "thanissaro": "As he was going from house to house for alms, he saw a woman suffering a breech birth.", "pts": "And as the venerable Aṇgulimāla was walking in Sāvatthī on an uninterrupted round for almsfood,\nhe saw a woman in difficult and dangerous labour."}, {"key": "mn86:14.3", "pali": "Disvānassa etadahosi:", "sujato": "Seeing this, it occurred to him,", "thanissaro": "On seeing her, the thought occurred to him:", "pts": "On seeing her, it occurred to him:"}, {"key": "mn86:14.4", "pali": "“kilissanti vata, bho, sattā;", "sujato": "“Oh, beings undergo such travail!", "thanissaro": "“How tormented are living beings!", "pts": "\"Beings are indeed impure, beings are indeed impure.\""}, {"key": "mn86:14.5", "pali": "kilissanti vata, bho, sattā”ti.", "sujato": "Oh, beings undergo such travail!”", "thanissaro": "How tormented are living beings!”", "pts": ""}, {"key": "mn86:14.6", "pali": "Atha kho āyasmā aṅgulimālo sāvatthiyaṁ piṇḍāya caritvā pacchābhattaṁ piṇḍapātapaṭikkanto yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhivādetvā ekamantaṁ nisīdi.\nEkamantaṁ nisinno kho āyasmā aṅgulimālo bhagavantaṁ etadavoca:", "sujato": "Then after wandering for alms in Sāvatthī, after the meal, on his return from almsround,\nhe went to the Buddha, bowed, sat down to one side, and told him what had happened.\nThe Buddha said to him,", "thanissaro": "Then, having gone for alms in Sāvatthī and returning from his alms round after his meal, he went to the Blessed One.\nOn arrival, having bowed down to him, he sat to one side.\nAs he was sitting there he said to the Blessed One,", "pts": "Then the venerable Aṇgulimāla, having walked in Sāvatthī for almsfood,\non returning from the almsgathering after the meal, approached the Lord;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Aṇgulimāla spoke thus to the Lord:"}, {"key": "mn86:14.7", "pali": "“idhāhaṁ, bhante, pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya sāvatthiṁ piṇḍāya pāvisiṁ.", "sujato": "", "thanissaro": "“Just now, lord, early in the morning,\nhaving adjusted my lower robe and taking my bowl & outer robe, I went into Sāvatthī for alms.", "pts": "\"Now, I, revered sir, having dressed in the morning was walking in Sāvatthī on an uninterrupted round for almsfood,"}, {"key": "mn86:14.8", "pali": "Addasaṁ kho ahaṁ, bhante, sāvatthiyaṁ sapadānaṁ piṇḍāya caramāno aññataraṁ itthiṁ mūḷhagabbhaṁ vighātagabbhaṁ.", "sujato": "", "thanissaro": "As I was going from house to house for alms, I saw a woman suffering a breech birth.", "pts": "and saw a woman in difficult and dangerous labour."}, {"key": "mn86:14.9", "pali": "Disvāna mayhaṁ etadahosi:", "sujato": "", "thanissaro": "On seeing her, the thought occurred to me:", "pts": "On seeing her, it occurred to me:"}, {"key": "mn86:14.10", "pali": "‘kilissanti vata bho sattā, kilissanti vata bho sattā’”ti.", "sujato": "", "thanissaro": "‘How tormented are living beings!\nHow tormented are living beings!’”", "pts": "\"Beings are indeed impure, beings are indeed impure.\""}]}, {"id": "15", "label": "“Well then, Aṅgulimāla, go to that woman…", "rows": [{"key": "mn86:15.1", "pali": "“Tena hi tvaṁ, aṅgulimāla, yena sā itthī tenupasaṅkama;\nupasaṅkamitvā taṁ itthiṁ evaṁ vadehi:", "sujato": "“Well then, Aṅgulimāla, go to that woman and say this:", "thanissaro": "“In that case, Aṅgulimāla, go to that woman and on arrival say to her,", "pts": "\"Well then, do you, Aṇgulimāla, approach Sāvatthī;\nhaving approached, speak thus to that woman:"}, {"key": "mn86:15.2", "pali": "‘yatohaṁ, bhagini, jāto nābhijānāmi sañcicca pāṇaṁ jīvitā voropetā, tena saccena sotthi te hotu, sotthi gabbhassā’”ti.", "sujato": "‘Ever since I was born, sister, I don’t recall having intentionally taken the life of a living creature.\nBy this truth, may both you and your baby be safe.’”", "thanissaro": "‘Sister, since I was born I do not recall intentionally killing a living being.\nThrough this truth may there be wellbeing for you, wellbeing for your fetus.’”", "pts": "'I, sister, am not aware of having intentionally deprived any living thing of life since I was born.\nBy this truth may there be well-being for you, well-being for the unborn child.'\""}, {"key": "mn86:15.3", "pali": "“So hi nūna me, bhante, sampajānamusāvādo bhavissati.", "sujato": "“But sir, wouldn’t that be telling a deliberate lie?", "thanissaro": "“But, lord, wouldn’t that be a lie for me?", "pts": "\"But would not this be deliberate lying on my part, revered sir?"}, {"key": "mn86:15.4", "pali": "Mayā hi, bhante, bahū sañcicca pāṇā jīvitā voropitā”ti.", "sujato": "For I have intentionally killed many living creatures.”", "thanissaro": "For I have intentionally killed many living beings.”", "pts": "For, revered sir, many living things have been intentionally deprived of life by me.\""}, {"key": "mn86:15.5", "pali": "“Tena hi tvaṁ, aṅgulimāla, yena sā itthī tenupasaṅkama;\nupasaṅkamitvā taṁ itthiṁ evaṁ vadehi:", "sujato": "“In that case, Aṅgulimāla, go to that woman and say this:", "thanissaro": "“Then in that case, Aṅgulimāla, go to that woman and on arrival say to her,", "pts": "\"Well then, do you, Aṇgulimāla, approach Sāvatthī;\nhaving approached, speak thus to that woman:"}, {"key": "mn86:15.6", "pali": "‘yatohaṁ, bhagini, ariyāya jātiyā jāto, nābhijānāmi sañcicca pāṇaṁ jīvitā voropetā,\ntena saccena sotthi te hotu, sotthi gabbhassā’”ti.", "sujato": "‘Ever since I was born in the noble birth, sister,\nI don’t recall having intentionally taken the life of a living creature.\nBy this truth, may both you and your baby be safe.’”", "thanissaro": "‘Sister, since I was born in the noble birth, I do not recall intentionally killing a living being.\nThrough this truth may there be wellbeing for you, wellbeing for your fetus.’”", "pts": "'I, sister, am not aware of having intentionally deprived any living thing of life since I was born of the ariyan birth.\nBy this truth may there be well-being for you, well-being for the unborn child.'\""}, {"key": "mn86:15.7", "pali": "“Evaṁ, bhante”ti kho āyasmā aṅgulimālo bhagavato paṭissutvā yena sā itthī tenupasaṅkami;\nupasaṅkamitvā taṁ itthiṁ etadavoca:", "sujato": "“Yes, sir,” replied Aṅgulimāla.\nHe went to that woman and said:", "thanissaro": "Responding,\n“As you say, lord,” to the Blessed One, Aṅgulimāla went to that woman and on arrival said to her,", "pts": "\"Yes, revered sir,\" and the venerable Aṇgulimāla, having answered the Lord in assent, approached Sāvatthī;\nhaving approached, he spoke thus to that woman:"}, {"key": "mn86:15.8", "pali": "“yatohaṁ, bhagini, ariyāya jātiyā jāto, nābhijānāmi sañcicca pāṇaṁ jīvitā voropetā,\ntena saccena sotthi te hotu, sotthi gabbhassā”ti.", "sujato": "“Ever since I was born in the noble birth, sister,\nI don’t recall having intentionally taken the life of a living creature.\nBy this truth, may both you and your baby be safe.”", "thanissaro": "“Sister, since I was born in the noble birth, I do not recall intentionally killing a living being.\nThrough this may there be wellbeing for you, wellbeing for your fetus.”", "pts": "\"I, sister, am not aware of having intentionally deprived any living thing of life since I was born of the ariyan birth.\nBy this truth may there be well-being for you, well-being for the unborn child.'\""}, {"key": "mn86:15.9", "pali": "Atha khvāssā itthiyā sotthi ahosi, sotthi gabbhassa.", "sujato": "Then that woman was safe, and so was her baby.", "thanissaro": "And there was wellbeing for the woman, wellbeing for her fetus.", "pts": ""}]}, {"id": "16", "label": "Then Aṅgulimāla, living alone, withdrawn, diligent, keen,…", "rows": [{"key": "mn86:16.1", "pali": "Atha kho āyasmā aṅgulimālo eko vūpakaṭṭho appamatto ātāpī pahitatto viharanto\nnacirasseva—yassatthāya kulaputtā sammadeva agārasmā anagāriyaṁ pabbajanti,\ntadanuttaraṁ—brahmacariyapariyosānaṁ diṭṭheva dhamme sayaṁ abhiññā sacchikatvā upasampajja vihāsi.", "sujato": "Then Aṅgulimāla, living alone, withdrawn, diligent, keen, and resolute,\nsoon realized the supreme end of the spiritual path in this very life.\nHe lived having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.", "thanissaro": "Then Ven. Aṅgulimāla, dwelling alone, secluded, heedful, ardent, & resolute,\nin no long time reached & remained in the supreme goal of the holy\nlife for which clansmen rightly go forth from home into homelessness,\nknowing & realizing it for himself in the here & now.", "pts": "Then the venerable Aṇgulimāla, living alone, aloof, diligent, ardent, self-resolute,\nhaving soon realized here and now by his own super-knowledge that matchless goal of the Brahma-faring\nfor the sake of which young men of family rightly go forth from home into homelessness,\nentering on it, abided in it."}, {"key": "mn86:16.2", "pali": "“Khīṇā jāti, vusitaṁ brahmacariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyā”ti abbhaññāsi.", "sujato": "He understood:\n“Rebirth is ended;\nthe spiritual journey has been completed;\nwhat had to be done has been done;\nthere is nothing further for this place.”", "thanissaro": "He knew:\n“Birth is ended, the holy life fulfilled, the task done.\nThere is nothing further for the sake of this world.”", "pts": "And he knew:\nDestroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so."}, {"key": "mn86:16.3", "pali": "Aññataro kho panāyasmā aṅgulimālo arahataṁ ahosi.", "sujato": "And Venerable Aṅgulimāla became one of the perfected.", "thanissaro": "And thus Ven. Aṅgulimāla became another one of the arahants.", "pts": "And so the venerable Angulimāla was one of the perfected ones."}]}, {"id": "17", "label": "Then Venerable Aṅgulimāla robed up in the…", "rows": [{"key": "mn86:17.1", "pali": "Atha kho āyasmā aṅgulimālo pubbaṇhasamayaṁ nivāsetvā pattacīvaramādāya sāvatthiṁ piṇḍāya pāvisi.", "sujato": "Then Venerable Aṅgulimāla robed up in the morning and, taking his bowl and robe, entered Sāvatthī for alms.", "thanissaro": "Then Ven. Aṅgulimāla, early in the morning,\nhaving adjusted his lower robe and taking his bowl & outer robe, went into Sāvatthī for alms.", "pts": "Then the venerable Aṇgulimāla, having dressed in the morning, taking his bowl and robe, entered Sāvatthī for almsfood."}, {"key": "mn86:17.2", "pali": "Tena kho pana samayena aññenapi leḍḍu khitto āyasmato aṅgulimālassa kāye nipatati,\naññenapi daṇḍo khitto āyasmato aṅgulimālassa kāye nipatati,\naññenapi sakkharā khittā āyasmato aṅgulimālassa kāye nipatati.", "sujato": "Now at that time someone threw a stone that hit Aṅgulimāla, someone else threw a stick, and someone else threw gravel.", "thanissaro": "Now at that time a clod thrown by one person hit Ven. Aṅgulimāla on the body,\na stone thrown by another person hit him on the body, and a potsherd thrown by still another person hit him on the body.", "pts": "Now at that time a clod of earth thrown by one man fell on the venerable Aṇgulimāla,\nalso a stick thrown by another and gravel thrown by a third.[]"}, {"key": "mn86:17.3", "pali": "Atha kho āyasmā aṅgulimālo bhinnena sīsena, lohitena gaḷantena,\nbhinnena pattena, vipphālitāya saṅghāṭiyā yena bhagavā tenupasaṅkami.", "sujato": "Then Aṅgulimāla—with cracked head, bleeding, his bowl broken, and his outer robe torn—went to the Buddha.", "thanissaro": "So Ven. Aṅgulimāla—his head broken open and dripping with blood,\nhis bowl broken, and his outer robe ripped to shreds—went to the Blessed One.", "pts": "Then the venerable Aṇgulimāla, with a broken head streaming with blood,\nhis bowl smashed, and his outer cloak in tatters, approached the Lord."}, {"key": "mn86:17.4", "pali": "Addasā kho bhagavā āyasmantaṁ aṅgulimālaṁ dūratova āgacchantaṁ.", "sujato": "The Buddha saw him coming off in the distance,", "thanissaro": "The Blessed One saw him coming from afar and on seeing him said to him:", "pts": "The Lord saw the venerable Aṇgulimāla coming in the distance;"}, {"key": "mn86:17.5", "pali": "Disvāna āyasmantaṁ aṅgulimālaṁ etadavoca:", "sujato": "and said to him,", "thanissaro": "", "pts": "seeing him, he spoke thus to the venerable Aṇgulimāla:"}, {"key": "mn86:17.6", "pali": "“adhivāsehi tvaṁ, brāhmaṇa, adhivāsehi tvaṁ, brāhmaṇa.", "sujato": "“Endure it, brahmin!\nEndure it, brahmin!", "thanissaro": "“Bear with it, brahman!\nBear with it!", "pts": "\"Do you endure it, brahman[] do you endure it, brahman."}, {"key": "mn86:17.7", "pali": "Yassa kho tvaṁ, brāhmaṇa,\nkammassa vipākena bahūni vassāni bahūni vassasatāni bahūni vassasahassāni niraye pacceyyāsi tassa tvaṁ,\nbrāhmaṇa, kammassa vipākaṁ diṭṭheva dhamme paṭisaṁvedesī”ti.", "sujato": "You’re experiencing in this very life the result of deeds that\nmight have caused you to be tormented in hell for many years,\nmany hundreds or thousands of years.”", "thanissaro": "The fruit of the kamma that would have burned you in hell for many years,\nmany hundreds of years, many thousands of years, you are now experiencing in the here & now!”", "pts": "You are experiencing here and now the ripening of that kamma through the\nripening of which you would (otherwise) boil in Niraya Hell for many years,\nmany hundreds of years, many thousands of years.\""}]}, {"id": "18", "label": "Later, Venerable Aṅgulimāla was experiencing the bliss…", "rows": [{"key": "mn86:18.1", "pali": "Atha kho āyasmā aṅgulimālo rahogato paṭisallīno vimuttisukhaṁ paṭisaṁvedi;", "sujato": "Later, Venerable Aṅgulimāla was experiencing the bliss of release while in private retreat.", "thanissaro": "Then Ven. Aṅgulimāla, having gone alone into seclusion, experienced the bliss of release.", "pts": "Then the venerable Aṇgulimāla, as he was meditating in private,"}, {"key": "mn86:18.2", "pali": "tāyaṁ velāyaṁ imaṁ udānaṁ udānesi:", "sujato": "On that occasion he expressed this heartfelt sentiment:", "thanissaro": "At that time he exclaimed:", "pts": "experienced the bliss of freedom,[] and at that time uttered this solemn utterance:"}, {"key": "mn86:18.3", "pali": "“Yo pubbeva pamajjitvā,", "sujato": "“He who once was heedless,", "thanissaro": "Who once was heedless,", "pts": "\"He[] who formerly was slothful but afterwards is diligent Illumes this world like the moon when freed from a cloud."}, {"key": "mn86:18.4", "pali": "pacchā so nappamajjati;", "sujato": "but turned to heedfulness,", "thanissaro": "but later is not,", "pts": ""}, {"key": "mn86:18.5", "pali": "Somaṁ lokaṁ pabhāseti,", "sujato": "lights up the world,", "thanissaro": "brightens the world", "pts": ""}, {"key": "mn86:18.6", "pali": "abbhā muttova candimā.", "sujato": "like the moon freed from clouds.", "thanissaro": "like the moon set free from a cloud.", "pts": ""}, {"key": "mn86:18.7", "pali": "Yassa pāpaṁ kataṁ kammaṁ,", "sujato": "Someone whose bad deed", "thanissaro": "His evil-done deed", "pts": "He whose evilly done kamma is closed by what is skilled Illumes this world like the moon when freed from a cloud."}, {"key": "mn86:18.8", "pali": "kusalena pidhīyati;", "sujato": "is supplanted by the good,", "thanissaro": "is replaced with skillfulness:", "pts": ""}, {"key": "mn86:18.9", "pali": "Somaṁ lokaṁ pabhāseti,", "sujato": "lights up the world,", "thanissaro": "he brightens the world", "pts": ""}, {"key": "mn86:18.10", "pali": "abbhā muttova candimā.", "sujato": "like the moon freed from clouds.", "thanissaro": "like the moon set free from a cloud.", "pts": ""}, {"key": "mn86:18.11", "pali": "Yo have daharo bhikkhu,", "sujato": "A young mendicant", "thanissaro": "Whatever young monk", "pts": "Indeed, he who, a young monk,"}, {"key": "mn86:18.12", "pali": "yuñjati buddhasāsane;", "sujato": "devoted to the Buddha’s teaching,", "thanissaro": "devotes himself to the Buddha’s bidding:", "pts": ""}, {"key": "mn86:18.13", "pali": "Somaṁ lokaṁ pabhāseti,", "sujato": "lights up the world,", "thanissaro": "he brightens the world", "pts": "cleaves to the Awakened One's Dispensation Illumines this world like the moon when freed from a cloud."}, {"key": "mn86:18.14", "pali": "abbhā muttova candimā.", "sujato": "like the moon freed from clouds.", "thanissaro": "like the moon set free from a cloud.", "pts": ""}, {"key": "mn86:18.15", "pali": "Disā hi me dhammakathaṁ suṇantu,", "sujato": "May even my enemies <j>hear a Dhamma talk!", "thanissaro": "May even my enemies hear talk of the Dhamma.", "pts": "Let my foes but hear talk on Dhamma, let my foes but cleave to the Awakened One's Dispensation,"}, {"key": "mn86:18.16", "pali": "Disā hi me yuñjantu buddhasāsane;", "sujato": "May even my enemies <j>devote themselves to the Buddha’s teaching!", "thanissaro": "May even my enemies devote themselves to the Buddha’s bidding.", "pts": ""}, {"key": "mn86:18.17", "pali": "Disā hi me te manujā bhajantu,", "sujato": "May even my enemies associate with those good men", "thanissaro": "May even my enemies associate with those people who—peaceful, good—", "pts": "Let those men, my foes, but follow Dhamma - and, calmed, only it will they accept."}, {"key": "mn86:18.18", "pali": "Ye dhammamevādapayanti santo.", "sujato": "who establish others in the Dhamma!", "thanissaro": "get others to accept the Dhamma.", "pts": ""}, {"key": "mn86:18.19", "pali": "Disā hi me khantivādānaṁ,", "sujato": "May even my enemies <j>hear Dhamma at the right time,", "thanissaro": "May even my enemies hear the Dhamma time & again", "pts": "Let my foes, from speakers on forbearance and commenders of gentleness\nHear Dhamma from time to time and act in conformity with it."}, {"key": "mn86:18.20", "pali": "avirodhappasaṁsīnaṁ;", "sujato": "from those who teach acceptance,", "thanissaro": "from those who advise endurance, forbearance, who praise non-opposition,", "pts": ""}, {"key": "mn86:18.21", "pali": "Suṇantu dhammaṁ kālena,", "sujato": "praising acquiescence;", "thanissaro": "", "pts": ""}, {"key": "mn86:18.22", "pali": "tañca anuvidhīyantu.", "sujato": "and may they follow that path!", "thanissaro": "and may they follow it.", "pts": ""}, {"key": "mn86:18.23", "pali": "Na hi jātu so mamaṁ hiṁse,", "sujato": "For then they’d never wish harm", "thanissaro": "For surely he wouldn’t harm me,", "pts": "Such a one would not harm me nor yet any other at all - He would attain the\nuttermost peace and guard those who have craving and those who have none.[]"}, {"key": "mn86:18.24", "pali": "aññaṁ vā pana kiñci naṁ;", "sujato": "upon myself or others.", "thanissaro": "or anyone else;", "pts": ""}, {"key": "mn86:18.25", "pali": "Pappuyya paramaṁ santiṁ,", "sujato": "Having arrived at ultimate peace,", "thanissaro": "he would attain the foremost peace,", "pts": ""}, {"key": "mn86:18.26", "pali": "rakkheyya tasathāvare.", "sujato": "they’d look after creatures firm and frail.", "thanissaro": "would protect the feeble & firm.", "pts": ""}, {"key": "mn86:18.27", "pali": "Udakañhi nayanti nettikā,", "sujato": "For irrigators guide the water,", "thanissaro": "Irrigators guide the water.", "pts": "As[] ditchers lead the water, as fletchers shape the shaft,"}, {"key": "mn86:18.28", "pali": "Usukārā namayanti tejanaṁ;", "sujato": "and fletchers straighten arrows;", "thanissaro": "Fletchers shape the arrow shaft.", "pts": ""}, {"key": "mn86:18.29", "pali": "Dāruṁ namayanti tacchakā,", "sujato": "carpenters carve timber—", "thanissaro": "Carpenters shape the wood.", "pts": "As joiners shape the timber, so do the wise tame themselves."}, {"key": "mn86:18.30", "pali": "Attānaṁ damayanti paṇḍitā.", "sujato": "but the astute tame themselves.", "thanissaro": "The wise control themselves.", "pts": ""}, {"key": "mn86:18.31", "pali": "Daṇḍeneke damayanti,", "sujato": "Some tame by using the rod,", "thanissaro": "Some tame with a blunt stick,", "pts": "Some[] are tamed by the stick, goads or whips;"}, {"key": "mn86:18.32", "pali": "aṅkusehi kasāhi ca;", "sujato": "some with goads, and some with whips.", "thanissaro": "with hooks, & with whips", "pts": ""}, {"key": "mn86:18.33", "pali": "Adaṇḍena asatthena,", "sujato": "But the unaffected one tamed me", "thanissaro": "But without blunt or bladed weapons", "pts": "I, without stick, without weapon, was tamed by Him who is ' Such.'"}, {"key": "mn86:18.34", "pali": "ahaṁ dantomhi tādinā.", "sujato": "without rod or sword.", "thanissaro": "I was tamed by the one who is Such.", "pts": ""}, {"key": "mn86:18.35", "pali": "Ahiṁsakoti me nāmaṁ,", "sujato": "My name is ‘Harmless’,", "thanissaro": "“Doer of No Harm” is my name,", "pts": "My name is 'Harmless,'[] though once I harmful was."}, {"key": "mn86:18.36", "pali": "hiṁsakassa pure sato;", "sujato": "though I used to be harmful.", "thanissaro": "but I used to be a doer of harm.", "pts": ""}, {"key": "mn86:18.37", "pali": "Ajjāhaṁ saccanāmomhi,", "sujato": "The name I bear today is true,", "thanissaro": "Today I am true to my name,", "pts": "Today I am truly named,[] for I harm no thing at all."}, {"key": "mn86:18.38", "pali": "na naṁ hiṁsāmi kiñci naṁ.", "sujato": "for I do no harm to anyone.", "thanissaro": "for I harm no one at all.", "pts": ""}, {"key": "mn86:18.39", "pali": "Coro ahaṁ pure āsiṁ,", "sujato": "I used to be a bandit,", "thanissaro": "A bandit I used to be,", "pts": "Once I was the notorious robber Aṇgulimāla;"}, {"key": "mn86:18.40", "pali": "aṅgulimāloti vissuto;", "sujato": "the notorious Aṅgulimāla.", "thanissaro": "renowned as Aṅgulimāla.", "pts": ""}, {"key": "mn86:18.41", "pali": "Vuyhamāno mahoghena,", "sujato": "Swept away in a great flood,", "thanissaro": "Swept along by a great flood,", "pts": "Being swept away by the great flood, I came to the Awakened One for refuge."}, {"key": "mn86:18.42", "pali": "buddhaṁ saraṇamāgamaṁ.", "sujato": "I went to the Buddha as a refuge.", "thanissaro": "I went to the Buddha as refuge.", "pts": ""}, {"key": "mn86:18.43", "pali": "Lohitapāṇi pure āsiṁ,", "sujato": "I used to have blood on my hands,", "thanissaro": "Bloody-handed I used to be,", "pts": "Once I was the notorious bloody-handed Aṇgulimāla - 0 see my going for refuge, becoming's cord[] removed!"}, {"key": "mn86:18.44", "pali": "aṅgulimāloti vissuto;", "sujato": "the notorious Aṅgulimāla.", "thanissaro": "renowned as Aṅgulimāla.", "pts": ""}, {"key": "mn86:18.45", "pali": "Saraṇagamanaṁ passa,", "sujato": "See the refuge I’ve found—", "thanissaro": "See my going for refuge!", "pts": ""}, {"key": "mn86:18.46", "pali": "bhavanetti samūhatā.", "sujato": "the leash to existence is eradicated.", "thanissaro": "Uprooted is [craving], the guide to becoming.", "pts": ""}, {"key": "mn86:18.47", "pali": "Tādisaṁ kammaṁ katvāna,", "sujato": "I’ve done many of the sort of deeds", "thanissaro": "Having done the type of kamma", "pts": "Me who had wrought such kamma as leads to many a woeful bourn,"}, {"key": "mn86:18.48", "pali": "bahuṁ duggatigāminaṁ;", "sujato": "that lead to a bad destination.", "thanissaro": "that would lead to many bad destinations,", "pts": ""}, {"key": "mn86:18.49", "pali": "Phuṭṭho kammavipākena,", "sujato": "The result of my deeds has already struck me,", "thanissaro": "touched by the fruit of (that) kamma,", "pts": "When touched by the ripening of kamma,[] debtless I enjoy an owner's state.[]"}, {"key": "mn86:18.50", "pali": "aṇaṇo bhuñjāmi bhojanaṁ.", "sujato": "so I enjoy my food free of debt.", "thanissaro": "unindebted, I eat my food.", "pts": ""}, {"key": "mn86:18.51", "pali": "Pamādamanuyuñjanti,", "sujato": "Fools and simpletons", "thanissaro": "They’re addicted to heedlessness", "pts": "Fools,[] folk poor in wisdom, pursue slothfulness;"}, {"key": "mn86:18.52", "pali": "bālā dummedhino janā;", "sujato": "devote themselves to negligence.", "thanissaro": "—dullards, fools—", "pts": ""}, {"key": "mn86:18.53", "pali": "Appamādañca medhāvī,", "sujato": "But the wise protect diligence", "thanissaro": "while one who is wise cherishes heedfulness", "pts": "A wise man guards diligence as wealth supreme."}, {"key": "mn86:18.54", "pali": "dhanaṁ seṭṭhaṁva rakkhati.", "sujato": "as their best treasure.", "thanissaro": "as his highest wealth.", "pts": ""}, {"key": "mn86:18.55", "pali": "Mā pamādamanuyuñjetha,", "sujato": "Don’t devote yourself to negligence,", "thanissaro": "Don’t give way to heedlessness", "pts": "Pursue[] not slothfulness,"}, {"key": "mn86:18.56", "pali": "mā kāmarati santhavaṁ;", "sujato": "or delight in erotic intimacy.", "thanissaro": "or to intimacy with sensual delight—", "pts": ""}, {"key": "mn86:18.57", "pali": "Appamatto hi jhāyanto,", "sujato": "For if you’re diligent and practice absorption,", "thanissaro": "for a heedful person, absorbed in jhāna,", "pts": "be not acquainted with sensual delights - Meditating with diligence one attains abundant joy."}, {"key": "mn86:18.58", "pali": "pappoti vipulaṁ sukhaṁ.", "sujato": "you’ll attain abundant happiness.", "thanissaro": "attains an abundant bliss.", "pts": ""}, {"key": "mn86:18.59", "pali": "Svāgataṁ nāpagataṁ,", "sujato": "It was welcome, not unwelcome,", "thanissaro": "This has come well & not gone away,", "pts": "Well[] was (my) coming,[] there is no departing, nor was I ill-advised -"}, {"key": "mn86:18.60", "pali": "nayidaṁ dummantitaṁ mama;", "sujato": "the advice I got was good.", "thanissaro": "it was not badly thought through for me.", "pts": ""}, {"key": "mn86:18.61", "pali": "Saṁvibhattesu dhammesu,", "sujato": "Of the well-explained teachings,", "thanissaro": "From among well-analyzed qualities,", "pts": "Among various truths[] that which I follow is supreme."}, {"key": "mn86:18.62", "pali": "yaṁ seṭṭhaṁ tadupāgamaṁ.", "sujato": "I arrived at the best.", "thanissaro": "I have obtained the best.", "pts": ""}, {"key": "mn86:18.63", "pali": "Svāgataṁ nāpagataṁ,", "sujato": "It was welcome, not unwelcome,", "thanissaro": "This has come well & not gone away,", "pts": "Well was (my) coming, there is no departing,"}, {"key": "mn86:18.64", "pali": "nayidaṁ dummantitaṁ mama;", "sujato": "the advice I got was good.", "thanissaro": "it was not badly thought through for me.", "pts": ""}, {"key": "mn86:18.65", "pali": "Tisso vijjā anuppattā,", "sujato": "I’ve attained the three knowledges", "thanissaro": "The three knowledges have been attained;", "pts": "nor was I ill-advised - Won is the threefold knowledge, done is the teaching of the Awakened One.\""}, {"key": "mn86:18.66", "pali": "kataṁ buddhassa sāsanan”ti.", "sujato": "and fulfilled the Buddha’s instructions.”", "thanissaro": "the Buddha’s bidding, done.", "pts": ""}, {"key": "mn86:18.67", "pali": "Aṅgulimālasuttaṁ niṭṭhitaṁ chaṭṭhaṁ.", "sujato": "", "thanissaro": "", "pts": "Discourse with Aṇgulimāla"}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}, {"key": "thanissaro", "label": "Thanissaro", "dot": "#6a88c8", "light": {"bg": "#eef0f8", "text": "#0d1a3a"}, "dark": {"bg": "#121520", "text": "#a8b8d8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -575,6 +682,9 @@ const SEG_NOTES = {"sujato": {"mn86:2.1": ["This is a rare sutta where the Buddh
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
+const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50% of window
+const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
+const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
 let COLS = ["pali", "sujato", "thanissaro", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
@@ -582,6 +692,9 @@ let currentTheme = 'light';
 let currentFs = 15;
 let allMode = true;   // footnote pane: list ALL of a translator's notes (default ON)
 let currentTocScale = 1;
+let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
+let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
+let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
 let showSeg = false;
 
 // ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
@@ -597,6 +710,7 @@ function saveSettings(){
     savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
+       sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
        showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
   }catch(e){/* storage unavailable — settings just don't persist */}
 }
@@ -607,6 +721,9 @@ function loadSettings(){
     if(s.theme==='dark'||s.theme==='light') currentTheme=s.theme;
     if(typeof s.fs==='number') currentFs=Math.min(FS_MAX,Math.max(FS_MIN,s.fs));
     if(typeof s.tocScale==='number') currentTocScale=Math.min(TOC_MAX,Math.max(TOC_MIN,s.tocScale));
+    if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
+    if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
+    if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
     if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
@@ -771,6 +888,9 @@ function fnSyncAllBtn(){
   const b=document.getElementById('fnAll');
   b.title='Show all footnotes (currently '+(allMode?'ON':'OFF')+')';
   b.classList.toggle('on',allMode);
+  // ◀▶ and 'all' are mutually exclusive: in all-mode every note is visible, so hide the
+  // step-arrow cluster (it reappears in single-step mode). Saves width in the narrow column.
+  document.getElementById('fnNav').style.display=allMode?'none':'';
 }
 function fnToggleAll(){
   allMode=!allMode; saveSettings(); fnSyncAllBtn();
@@ -789,18 +909,29 @@ function openAllNotes(tkey){
 function openNote(tkey,seg){
   const id=tkey+'\x1e'+seg;
   const p=document.getElementById('fnPane');
+  // "Open" = showing a note: mobile uses .show (bottom sheet); desktop uses :not(.min)
+  // (the lower-left pane is permanent, toggling between strip and expanded).
+  const isOpen = isMobile() ? p.classList.contains('show') : !p.classList.contains('min');
   // Clicking the marker of the note already showing closes the pane (toggle);
   // clicking a different marker switches to it.
-  if(p.classList.contains('show') && fnCur===id){ closeNote(); return; }
+  if(isOpen && fnCur===id){ closeNote(); return; }
   fnCur=id;
   fnFillBody(tkey,seg);
   fnSyncAllBtn();
   // Title bar: which translator + the segment ref. The ref is a backlink button
   // that scrolls the main text to this line (pane stays open).
   const title=document.getElementById('fnTitle'); title.textContent='';
-  const tl=mk('span','fn-tl'); tl.textContent=getT(tkey).label;
-  const sg=mk('button','fn-seg'); sg.textContent=seg;
-  sg.title='Jump to this line in the text';
+  // Translator label: full name when wide; first 3 letters + '.' when the panel is narrow
+  // (toggled by the container query above). Tooltip always shows the full name.
+  const label=getT(tkey).label;
+  const tl=mk('span','fn-tl'); tl.title=label;
+  const full=mk('span','fn-tl-full'); full.textContent=label;
+  const abbr=mk('span','fn-tl-abbr'); abbr.textContent=label.slice(0,3)+'.';
+  tl.append(full,abbr);
+  // 🦘 backlink: jump the main pane to this footnote's line. The seg ref is on its own
+  // line of the tooltip (\n), not tacked onto the end of a long sentence.
+  const sg=mk('button','fn-seg'); sg.textContent='🦘';
+  sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
   // Sujato-only translator caveat button; banner starts collapsed each open.
@@ -810,14 +941,62 @@ function openNote(tkey,seg){
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
   document.getElementById('fnPrev').disabled = idx<=0;
   document.getElementById('fnNext').disabled = idx>=segs.length-1;
-  p.classList.add('show'); p.setAttribute('aria-hidden','false');
+  p.setAttribute('aria-hidden','false');
+  if(isMobile()){
+    p.classList.add('show');
+  }else{
+    p.classList.remove('min');
+    // The footnote shares the left column; if it's collapsed, re-show it so the note
+    // is visible. toggleSidebar() recomputes --fn-h via updateHeaderHeight.
+    if(!sidebarVisible) toggleSidebar(); else applyFnHeight();
+  }
   fnMarkActive();
 }
 function closeNote(){
   const p=document.getElementById('fnPane');
-  p.classList.remove('show'); p.setAttribute('aria-hidden','true');
+  if(isMobile()){ p.classList.remove('show'); }
+  else{ p.classList.add('min'); applyFnHeight(); }   // desktop: auto-minimize to the strip
+  p.setAttribute('aria-hidden','true');
   fnCur=null; fnMarkActive();
 }
+// ── TRANSLATOR CHOOSER (click the minimized strip) ── lists the translators that have
+// footnotes on this page; picking one opens that translator's all-notes.
+function fnNoteTranslators(){
+  return ALL_TRANSLATIONS.map(t=>t.key)
+    .filter(k=>SEG_NOTES[k] && Object.keys(SEG_NOTES[k]).length);
+}
+function buildFnMenu(){
+  const m=document.getElementById('fnMenu'); m.innerHTML='';
+  const keys=fnNoteTranslators();
+  if(!keys.length){
+    const d=mk('div','fn-menu-empty'); d.textContent='No footnotes on this page';
+    m.appendChild(d); return;
+  }
+  keys.forEach(k=>{
+    const n=Object.keys(SEG_NOTES[k]).length;
+    const b=mk('button','fn-menu-item');
+    b.textContent=getT(k).label+' — '+n+(n===1?' footnote':' footnotes');
+    b.onclick=()=>{ closeFnMenu(); openAllNotes(k); };
+    m.appendChild(b);
+  });
+}
+function openFnMenu(){
+  buildFnMenu();
+  document.getElementById('fnMenu').classList.add('show');
+  document.getElementById('fnStrip').setAttribute('aria-expanded','true');
+}
+function closeFnMenu(){
+  const m=document.getElementById('fnMenu'); if(m) m.classList.remove('show');
+  const s=document.getElementById('fnStrip'); if(s) s.setAttribute('aria-expanded','false');
+}
+function toggleFnMenu(){
+  document.getElementById('fnMenu').classList.contains('show') ? closeFnMenu() : openFnMenu();
+}
+document.getElementById('fnStrip').addEventListener('click',e=>{ e.stopPropagation(); toggleFnMenu(); });
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#fnMenu') && !e.target.closest('#fnStrip')) closeFnMenu();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeFnMenu(); });
 document.getElementById('fnCopy').onclick=()=>{
   const t=document.getElementById('fnBody').innerText;
   if(navigator.clipboard) navigator.clipboard.writeText(t);
@@ -885,6 +1064,16 @@ function adjustTocScale(delta){
   applyTocScale();
   saveSettings();
 }
+// ── FOOTNOTE TEXT SIZE (independent A−/A+, multiplies the reading font) ──
+function applyFnScale(){
+  document.documentElement.style.setProperty('--fn-scale', fnScale);
+}
+function adjustFnScale(delta){
+  fnScale = Math.min(FNFS_MAX, Math.max(FNFS_MIN,
+    Math.round((fnScale + delta) * 100) / 100));
+  applyFnScale();
+  saveSettings();
+}
 
 // ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
 function applySeg(){
@@ -910,8 +1099,125 @@ function toggleSidebar(){
   if(ft) ft.classList.toggle('full', !sidebarVisible);
   bar.classList.toggle('sidebar-hidden', !sidebarVisible);
   btn.classList.toggle('on', sidebarVisible);
+  document.getElementById('tocSash').classList.toggle('hidden', !sidebarVisible);
   saveSettings();
   updateHeaderHeight();
+}
+
+// ── SIDEBAR WIDTH (drag sash) ── adjusts --sw; layout (colBar/sidebar/content/footer)
+// follows because they all key off --sw. Bounds: SW_MIN px floor, 50%-of-window ceiling.
+function clampSW(px){
+  const max = Math.max(SW_MIN, window.innerWidth * 0.5);
+  return Math.max(SW_MIN, Math.min(max, px));
+}
+function applySidebarW(){
+  currentSidebarW = clampSW(currentSidebarW);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function setSidebarW(px){
+  currentSidebarW = clampSW(px);
+  document.documentElement.style.setProperty('--sw', currentSidebarW + 'px');
+}
+function initSash(){
+  const sash = document.getElementById('tocSash');
+  let dragging = false, pendingX = null;
+  // Resting x of the sash's left edge — used to offset it with a cheap transform.
+  const restX = ()=> currentSidebarW;   // sash left edge now sits AT the boundary (--sw)
+  sash.addEventListener('pointerdown', e=>{
+    dragging = true; pendingX = null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('sw-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    // O(1) regardless of page size: during the drag we ONLY glide the sash handle via
+    // a compositor transform (no layout reflow). The heavy TOC+content resize is
+    // deferred to pointer-up, so the handle stays instant even on huge pages (snp).
+    pendingX = clampSW(e.clientX);
+    sash.style.transform = 'translateX(' + (pendingX - restX()) + 'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    // Commit the width in ONE reflow (sw-dragging still on → no transition), then drop
+    // the drag transform/classes so the sash sits at its new resting edge (no jump).
+    if(pendingX!=null) setSidebarW(pendingX);
+    sash.style.transform = '';
+    document.body.classList.remove('sw-dragging');
+    sash.classList.remove('dragging');
+    pendingX = null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
+}
+
+// ── FOOTNOTE REGION HEIGHT (lower-left split) ──
+// Desktop only: --fn-h is the strip height when minimized, else fnSplit of the height
+// available below the toc-bar (clamped). Mobile uses the bottom sheet (CSS @media).
+function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+function fnAvailable(){
+  const sb=document.getElementById('sidebar');
+  const top=parseFloat(sb.style.top)||sb.getBoundingClientRect().top||0;
+  return Math.max(0, window.innerHeight - top);
+}
+function applyFnHeight(){
+  if(isMobile()) return;
+  const pane=document.getElementById('fnPane');
+  const rootPx=parseFloat(getComputedStyle(document.documentElement).fontSize)||16;
+  let h;
+  if(pane.classList.contains('min')){
+    h = FN_STRIP_REM * rootPx;
+  }else{
+    const avail=fnAvailable();
+    h = Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, fnSplit*avail));
+  }
+  document.documentElement.style.setProperty('--fn-h', h+'px');
+}
+// Commit a new split from the boundary's y (clientY): footnote height = innerHeight − y,
+// clamped; fnSplit = that / available. Called on the horizontal sash's pointer-up.
+function setFnSplit(clientY){
+  const avail=fnAvailable();
+  if(avail<=0) return;
+  const h=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - clientY));
+  fnSplit=h/avail;
+  applyFnHeight();
+}
+// Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
+// drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
+// relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+function initFnSash(){
+  const sash=document.getElementById('fnSash');
+  let dragging=false, pendingY=null;
+  sash.addEventListener('pointerdown', e=>{
+    dragging=true; pendingY=null;
+    try{ sash.setPointerCapture(e.pointerId); }catch(_){}
+    document.body.classList.add('fn-dragging');
+    sash.classList.add('dragging');
+    e.preventDefault();
+  });
+  sash.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    pendingY=e.clientY;
+    const avail=fnAvailable();
+    const hC=Math.min(avail*FN_MAXFRAC, Math.max(FN_MIN, window.innerHeight - e.clientY));
+    const fnH=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fn-h'))||hC;
+    sash.style.transform='translateY('+(fnH - hC)+'px)';
+  });
+  function end(){
+    if(!dragging) return;
+    dragging=false;
+    if(pendingY!=null) setFnSplit(pendingY);
+    sash.style.transform='';
+    document.body.classList.remove('fn-dragging');
+    sash.classList.remove('dragging');
+    pendingY=null;
+    saveSettings();
+  }
+  sash.addEventListener('pointerup', end);
+  sash.addEventListener('pointercancel', end);
 }
 
 // ── HEADER HEIGHT ──
@@ -923,6 +1229,7 @@ function updateHeaderHeight(){
   const sb = document.getElementById('sidebar');
   const tbH = tb.offsetHeight;
   sb.style.top = (h + tbH) + 'px';
+  applyFnHeight();   // re-clamp the footnote region to the new available height
 }
 
 // ── TOC COLLAPSE / EXPAND ALL ──
@@ -1398,6 +1705,8 @@ document.documentElement.setAttribute('data-theme', currentTheme);
 document.getElementById('themeBtn').textContent = themeLabel();
 document.documentElement.style.setProperty('--fs', currentFs+'px');
 applyTocScale();
+applyFnScale();
+applySidebarW();
 applySeg();
 // Sync rem-based fonts to the segment font size from the start (no jump on first A+/A−)
 document.documentElement.style.fontSize = currentFs + 'px';
@@ -1407,10 +1716,15 @@ if(!sidebarVisible){
   document.getElementById('main').classList.add('full');
   document.getElementById('colBar').classList.add('sidebar-hidden');
   document.getElementById('tocBtn').classList.remove('on');
+  document.getElementById('tocSash').classList.add('hidden');
   const ft=document.getElementById('siteFooter'); if(ft) ft.classList.add('full');
 }
 updateHeaderHeight();
+applyFnHeight();   // size the footnote strip (starts minimized) before first render
+initSash();
+initFnSash();
 window.addEventListener('resize', updateHeaderHeight);
+window.addEventListener('resize', applySidebarW);   // re-clamp width to new window bounds
 renderColBar();
 renderTOC();
 renderAll();
