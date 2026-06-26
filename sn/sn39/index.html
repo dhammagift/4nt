@@ -499,6 +499,22 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   text-overflow:ellipsis;transition:background .12s}
 .fn-menu-item:hover{background:var(--toc-hover)}
 .fn-menu-empty{padding:.4rem .55rem;font-size:.8rem;color:var(--muted)}
+/* ── DEPTH-PICKER MENU ── shared popover for every round "+" (expand to N levels).
+   Appended to <body>, position:fixed, anchored below its button by showDepthMenu via
+   inline top/left. Theme-safe: system-color fallbacks (Canvas/CanvasText) so it follows
+   the page color-scheme even before a theme var is set. Models #fnMenu. */
+.depth-menu{position:fixed;z-index:600;min-width:9rem;padding:.3rem;
+  background:var(--sec-bg,Canvas);color:var(--text,CanvasText);
+  border:1px solid var(--border,CanvasText);border-radius:6px;
+  box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.depth-menu-title{font-size:.62rem;font-family:sans-serif;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted,CanvasText);opacity:.7;
+  padding:.15rem .55rem .3rem}
+.depth-menu-item{display:block;width:100%;text-align:left;cursor:pointer;border:none;
+  background:none;color:var(--text,CanvasText);font-family:Georgia,serif;font-size:.82rem;
+  padding:.36rem .55rem;border-radius:4px;white-space:nowrap;transition:background .12s}
+.depth-menu-item:hover,.depth-menu-item:focus{background:var(--toc-hover,Highlight);
+  color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
 #fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
@@ -548,7 +564,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <span class="all-ctl" title="− collapse or + expand all sections of entire document in main pane">
       <button class="hdr-circ on" id="bA" onclick="toggleAll(false)">−</button>
       <span class="all-ctl-lbl">All</span>
-      <button class="hdr-circ" id="bE" onclick="toggleAll(true)">+</button>
+      <button class="hdr-circ" id="bE" aria-haspopup="menu" onclick="expandAllMenu(event,this)">+</button>
     </span>
     <span>&emsp;&emsp;</span>
     <!-- 🦘 quick-jump -->
@@ -625,7 +641,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 <div class="toc-bar" id="tocBar">
   <span class="toc-bar-label">Contents</span>
   <button class="toc-bar-btn" id="tocCollapseBtn" title="Collapse all sections in table of contents" onclick="tocCollapseAll()">−</button>
-  <button class="toc-bar-btn" id="tocExpandBtn" title="Expand all sections in table of contents" onclick="tocExpandAll()">+</button>
+  <button class="toc-bar-btn" id="tocExpandBtn" title="Expand sections in the contents — choose how many levels" aria-haspopup="menu" onclick="tocExpandMenu(event,this)">+</button>
 </div>
 
 <div class="shell">
@@ -669,16 +685,16 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 <div id="fnMenu" role="menu"></div>
 
 <script>
-const TREE=[{"id": "sn39-samandakavagga", "label": "Sāmaṇḍakavagga — The Chapter with Sāmaṇḍaka", "children": [{"id": "sn39.1-15", "label": "SN 39.1–15", "children": [{"id": "sn39.1-15/0", "label": "Linked Discourses 39.1–15", "rows": [{"key": "sn39.1-15:0.1", "pali": "Saṁyutta Nikāya 39.1", "sujato": "Linked Discourses 39.1–15"}, {"key": "sn39.1-15:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.1-15:0.3", "pali": "Sāmaṇḍaka·sutta", "sujato": "With Sāmaṇḍaka on Extinguishment"}]}, {"id": "sn39.1-15/1", "label": "At one time Venerable Sāriputta was staying…", "rows": [{"key": "sn39.1-15:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato": "At one time Venerable Sāriputta was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river."}, {"key": "sn39.1-15:1.2", "pali": "Atha kho sāmaṇḍako pari·b·bājako yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmatā sāri·puttena saddhiṁ sammodi.", "sujato": "Then the wanderer Sāmaṇḍaka went up to Venerable Sāriputta and exchanged greetings with him."}, {"key": "sn39.1-15:1.3", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho sāmaṇḍako pari·b·bājako āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato": "When the greetings and polite conversation were over, he sat down to one side and said to Sāriputta:"}]}, {"id": "sn39.1-15/2", "label": "“Reverend Sāriputta, they speak of this thing…", "rows": [{"key": "sn39.1-15:2.1", "pali": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "sujato": "“Reverend Sāriputta, they speak of this thing called ‘extinguishment’."}, {"key": "sn39.1-15:2.2", "pali": "Katamaṁ nu kho, āvuso, nibbānan”ti?", "sujato": "What is extinguishment?”"}, {"key": "sn39.1-15:2.3", "pali": "“Yo kho, āvuso, rāga·k·khayo dosa·k·khayo moha·k·khayo—", "sujato": "“Reverend, the ending of greed, hate, and delusion"}, {"key": "sn39.1-15:2.4", "pali": "idaṁ vuccati nibbānan”ti.", "sujato": "is called extinguishment.”"}, {"key": "sn39.1-15:2.5", "pali": "“Atthi panāvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato": "“But, reverend, is there a path and a practice for realizing this extinguishment?”"}, {"key": "sn39.1-15:2.6", "pali": "“Atthi kho, āvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato": "“There is, reverend.”"}]}, {"id": "sn39.1-15/3", "label": "“Well, what is it?”", "rows": [{"key": "sn39.1-15:3.1", "pali": "“Katamo panāvuso, maggo\nkatamā paṭi·padā etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato": "“Well, what is it?”"}, {"key": "sn39.1-15:3.2", "pali": "“Ayameva kho, āvuso, ariyo a·ṭ·ṭha·ṅgiko maggo,\netassa nibbānassa sacchi·kiriyāya, seyyathidaṁ—", "sujato": "“It is simply this noble eightfold path, that is:"}, {"key": "sn39.1-15:3.3", "pali": "sammā·diṭṭhi …pe… sammā·samādhi.", "sujato": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right immersion."}, {"key": "sn39.1-15:3.4", "pali": "Ayaṁ kho, āvuso, maggo\nayaṁ paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato": "This is the path, the practice, for realizing this extinguishment.”"}, {"key": "sn39.1-15:3.5", "pali": "“Bhaddako, āvuso, maggo\nbhaddikā paṭi·padā, etassa nibbānassa sacchi·kiriyāya.", "sujato": "“Reverend, this is a fine path, a fine practice, for realizing this extinguishment."}, {"key": "sn39.1-15:3.6", "pali": "Alañca panāvuso sāri·putta, a·p·pamādāyā”ti.", "sujato": "Just this much is enough for diligence.”"}, {"key": "sn39.1-15:3.7", "pali": "Paṭhamaṁ.", "sujato": ""}]}, {"id": "sn39.1-15/4", "label": "(Tell in full as the Linked Discourses…", "rows": [{"key": "sn39.1-15:4.1", "pali": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "sujato": "(Tell in full  as the Linked Discourses with Jambukhādaka.)"}]}]}, {"id": "sn39.16", "label": "SN 39.16 · Hard to Do", "children": [{"id": "sn39.16/0", "label": "Linked Discourses 39.16", "rows": [{"key": "sn39.16:0.1", "pali": "Saṁyutta Nikāya 39.16", "sujato": "Linked Discourses 39.16"}, {"key": "sn39.16:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.16:0.3", "pali": "Dukkara·sutta", "sujato": "Hard to Do"}]}, {"id": "sn39.16/1", "label": "“Reverend Sāriputta, in this teaching and training,…", "rows": [{"key": "sn39.16:1.1", "pali": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye dukkaran”ti?", "sujato": "“Reverend Sāriputta, in this teaching and training, what is hard to do?”"}, {"key": "sn39.16:1.2", "pali": "“Pabbajjā kho, āvuso, imasmiṁ dhamma·vinaye dukkarā”ti.", "sujato": "“Going forth, reverend, is hard to do in this teaching and training.”"}, {"key": "sn39.16:1.3", "pali": "“Pabbajitena panāvuso, kiṁ dukkaran”ti?", "sujato": "“But what’s hard to do for someone who has gone forth?”"}, {"key": "sn39.16:1.4", "pali": "“Pabbajitena kho, āvuso, abhi·rati dukkarā”ti.", "sujato": "“When you’ve gone forth it’s hard to be satisfied.”"}, {"key": "sn39.16:1.5", "pali": "“Abhi·ratena panāvuso, kiṁ dukkaran”ti?", "sujato": "“But what’s hard to do for someone who is satisfied?”"}, {"key": "sn39.16:1.6", "pali": "“Abhi·ratena kho, āvuso, dhammā·nudhamma·p·paṭi·patti dukkarā”ti.", "sujato": "“When you’re satisfied, it’s hard to practice in line with the teaching.”"}, {"key": "sn39.16:1.7", "pali": "“Kīva·ciraṁ panāvuso, dhammā·nudhamma·p·paṭi·panno bhikkhu a·rahaṁ assā”ti?", "sujato": "“But if a mendicant practices  in line with the teaching, will it take them long to become a perfected one?”"}, {"key": "sn39.16:1.8", "pali": "“Naciraṁ, āvuso”ti.", "sujato": "“Not long, reverend.”"}, {"key": "sn39.16:1.9", "pali": "Soḷasamaṁ.", "sujato": ""}, {"key": "sn39.16:1.10", "pali": "(Purimaka·sadisaṁ uddānaṁ.)", "sujato": ""}, {"key": "sn39.16:1.11", "pali": "Sāmaṇḍaka·saṁyuttaṁ sama·t·taṁ.", "sujato": "The Linked Discourses with Sāmaṇḍaka are complete."}]}]}]}];
+const TREE=[{"id": "sn39-samandakavagga", "label": "Sāmaṇḍakavagga — The Chapter with Sāmaṇḍaka", "children": [{"id": "sn39.1-15", "label": "SN 39.1–15", "children": [{"id": "sn39.1-15/0", "label": "Saṁyutta Nikāya 39.1", "rows": [{"key": "sn39.1-15:0.1", "pali": "Saṁyutta Nikāya 39.1", "sujato-corrected": "Linked Discourses 39.1–15"}, {"key": "sn39.1-15:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.1-15:0.3", "pali": "Sāmaṇḍaka·sutta", "sujato-corrected": "With Sāmaṇḍaka on Nibbāna"}]}, {"id": "sn39.1-15/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati ukka·celāyaṁ…", "rows": [{"key": "sn39.1-15:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato-corrected": "At one time Venerable Sāriputta was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river."}, {"key": "sn39.1-15:1.2", "pali": "Atha kho sāmaṇḍako pari·b·bājako yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmatā sāri·puttena saddhiṁ sammodi.", "sujato-corrected": "Then the wanderer Sāmaṇḍaka went up to Venerable Sāriputta and exchanged greetings with him."}, {"key": "sn39.1-15:1.3", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho sāmaṇḍako pari·b·bājako āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, he sat down to one side and said to Sāriputta:"}]}, {"id": "sn39.1-15/2", "label": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "rows": [{"key": "sn39.1-15:2.1", "pali": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "sujato-corrected": "\"Reverend Sāriputta, they speak of this thing called 'Nibbāna'."}, {"key": "sn39.1-15:2.2", "pali": "Katamaṁ nu kho, āvuso, nibbānan”ti?", "sujato-corrected": "What is Nibbāna?\""}, {"key": "sn39.1-15:2.3", "pali": "“Yo kho, āvuso, rāga·k·khayo dosa·k·khayo moha·k·khayo—", "sujato-corrected": "“Reverend, the ending of greed, hate, and delusion"}, {"key": "sn39.1-15:2.4", "pali": "idaṁ vuccati nibbānan”ti.", "sujato-corrected": "is called Nibbāna.\""}, {"key": "sn39.1-15:2.5", "pali": "“Atthi panāvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "\"But, reverend, is there a path and a practice for realizing this Nibbāna?\""}, {"key": "sn39.1-15:2.6", "pali": "“Atthi kho, āvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "“There is, reverend.”"}]}, {"id": "sn39.1-15/3", "label": "“Katamo panāvuso, maggo katamā paṭi·padā etassa nibbānassa…", "rows": [{"key": "sn39.1-15:3.1", "pali": "“Katamo panāvuso, maggo\nkatamā paṭi·padā etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "“Well, what is it?”"}, {"key": "sn39.1-15:3.2", "pali": "“Ayameva kho, āvuso, ariyo a·ṭ·ṭha·ṅgiko maggo,\netassa nibbānassa sacchi·kiriyāya, seyyathidaṁ—", "sujato-corrected": "“It is simply this noble eightfold path, that is:"}, {"key": "sn39.1-15:3.3", "pali": "sammā·diṭṭhi …pe… sammā·samādhi.", "sujato-corrected": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right samādhi."}, {"key": "sn39.1-15:3.4", "pali": "Ayaṁ kho, āvuso, maggo\nayaṁ paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "This is the path, the practice, for realizing this Nibbāna.\""}, {"key": "sn39.1-15:3.5", "pali": "“Bhaddako, āvuso, maggo\nbhaddikā paṭi·padā, etassa nibbānassa sacchi·kiriyāya.", "sujato-corrected": "\"Reverend, this is a fine path, a fine practice, for realizing this Nibbāna."}, {"key": "sn39.1-15:3.6", "pali": "Alañca panāvuso sāri·putta, a·p·pamādāyā”ti.", "sujato-corrected": "Just this much is enough for diligence.”"}, {"key": "sn39.1-15:3.7", "pali": "Paṭhamaṁ.", "sujato-corrected": ""}]}, {"id": "sn39.1-15/4", "label": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "rows": [{"key": "sn39.1-15:4.1", "pali": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "sujato-corrected": "(Tell in full  as the Linked Discourses with Jambukhādaka.)"}]}]}, {"id": "sn39.16", "label": "SN 39.16 · Hard to Do", "children": [{"id": "sn39.16/0", "label": "Saṁyutta Nikāya 39.16", "rows": [{"key": "sn39.16:0.1", "pali": "Saṁyutta Nikāya 39.16", "sujato-corrected": "Linked Discourses 39.16"}, {"key": "sn39.16:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.16:0.3", "pali": "Dukkara·sutta", "sujato-corrected": "Hard to Do"}]}, {"id": "sn39.16/1", "label": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye…", "rows": [{"key": "sn39.16:1.1", "pali": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye dukkaran”ti?", "sujato-corrected": "“Reverend Sāriputta, in this teaching and training, what is hard to do?”"}, {"key": "sn39.16:1.2", "pali": "“Pabbajjā kho, āvuso, imasmiṁ dhamma·vinaye dukkarā”ti.", "sujato-corrected": "“Going forth, reverend, is hard to do in this teaching and training.”"}, {"key": "sn39.16:1.3", "pali": "“Pabbajitena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who has gone forth?”"}, {"key": "sn39.16:1.4", "pali": "“Pabbajitena kho, āvuso, abhi·rati dukkarā”ti.", "sujato-corrected": "“When you’ve gone forth it’s hard to be satisfied.”"}, {"key": "sn39.16:1.5", "pali": "“Abhi·ratena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who is satisfied?”"}, {"key": "sn39.16:1.6", "pali": "“Abhi·ratena kho, āvuso, dhammā·nudhamma·p·paṭi·patti dukkarā”ti.", "sujato-corrected": "“When you’re satisfied, it’s hard to practice in line with the teaching.”"}, {"key": "sn39.16:1.7", "pali": "“Kīva·ciraṁ panāvuso, dhammā·nudhamma·p·paṭi·panno bhikkhu a·rahaṁ assā”ti?", "sujato-corrected": "“But if a mendicant practices  in line with the teaching, will it take them long to become a perfected one?”"}, {"key": "sn39.16:1.8", "pali": "“Naciraṁ, āvuso”ti.", "sujato-corrected": "“Not long, reverend.”"}, {"key": "sn39.16:1.9", "pali": "Soḷasamaṁ.", "sujato-corrected": ""}, {"key": "sn39.16:1.10", "pali": "(Purimaka·sadisaṁ uddānaṁ.)", "sujato-corrected": ""}, {"key": "sn39.16:1.11", "pali": "Sāmaṇḍaka·saṁyuttaṁ sama·t·taṁ.", "sujato-corrected": "The Linked Discourses with Sāmaṇḍaka are complete."}]}]}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato", "label": "Sujato", "dot": "#5da87a", "light": {"bg": "#eef4f0", "text": "#0d2b1e"}, "dark": {"bg": "#121c18", "text": "#b0d0c0"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
 // Footnote pane data: {translator: {seg#: [note_html, …]}}. Default {} (note-free
 // pages emit no icons). Sanitized at build time by notes.py (Sujato comments).
-const SEG_NOTES = {"sujato": {"sn39.1-15:1.1": ["See notes on <a class=\"xref\" data-ref=\"dn16:2.1.2\" href=\"https://suttacentral.net/dn16/en/sujato#2.1.2\" target=\"_blank\" rel=\"noopener\">DN 16:2.1.2</a>, <a class=\"xref\" data-ref=\"sn47.13:1.1\" href=\"https://suttacentral.net/sn47.13/en/sujato#1.1\" target=\"_blank\" rel=\"noopener\">SN 47.13:1.1</a>, and <a class=\"xref\" data-ref=\"sn47.14:1.1\" href=\"https://suttacentral.net/sn47.14/en/sujato#1.1\" target=\"_blank\" rel=\"noopener\">SN 47.14:1.1</a>.\nThe Buddha taught there in <a class=\"xref\" data-ref=\"mn34\" href=\"https://suttacentral.net/mn34/en/sujato\" target=\"_blank\" rel=\"noopener\">MN 34</a>. | The commentary requires the reading <i>ukkacelā</i> (“cloth firebrand”) but its story is contrived.\nThe variant <i>ukkavelā</i> (“firebrand shore”) suggests there may have been a lighthouse there. "]}};
+const SEG_NOTES = {"sujato-corrected": {"sn39.1-15:1.1": ["See notes on <a class=\"xref\" data-ref=\"dn16:2.1.2\" href=\"https://suttacentral.net/dn16/en/sujato#2.1.2\" target=\"_blank\" rel=\"noopener\">DN 16:2.1.2</a>, <a class=\"xref\" data-ref=\"sn47.13:1.1\" href=\"https://suttacentral.net/sn47.13/en/sujato#1.1\" target=\"_blank\" rel=\"noopener\">SN 47.13:1.1</a>, and <a class=\"xref\" data-ref=\"sn47.14:1.1\" href=\"https://suttacentral.net/sn47.14/en/sujato#1.1\" target=\"_blank\" rel=\"noopener\">SN 47.14:1.1</a>.\nThe Buddha taught there in <a class=\"xref\" data-ref=\"mn34\" href=\"https://suttacentral.net/mn34/en/sujato\" target=\"_blank\" rel=\"noopener\">MN 34</a>. | The commentary requires the reading <i>ukkacelā</i> (“cloth firebrand”) but its story is contrived.\nThe variant <i>ukkavelā</i> (“firebrand shore”) suggests there may have been a lighthouse there. "]}};
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -686,7 +702,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -769,25 +785,88 @@ function walkSubtree(node, fn){ (node.children||[]).forEach(c=>{ fn(c.id); if(c.
 // So both a vagga (children are sutta groups) and a sutta (children are paragraph
 // leaves) qualify. A paragraph leaf is rendered by renderLeaf*, never asked.
 function hasCollapsibleChildren(node){ return !!(node.children && node.children.some(c=>c.children||c.rows)); }
+
+// ── SMART EXPAND ("+") — choose how many levels to open ──────────────────────
+// Every round "+" can open its scope partway via a small depth-picker popover.
+// A scope is a TREE node (per-node buttons) or the whole document (the two global
+// "+"). Tier = structural depth below the scope: a direct child is tier 1, a
+// grandchild tier 2, … Every debabel node is collapsible (groups AND paragraph
+// leaves both toggle), so tier is just depth — no "has-children" filter is needed.
+// "N levels" opens every descendant with tier<=N and closes the rest; "All" opens
+// everything (depth=Infinity).
+// depthMapUnder(scope) → { nodeId: tier } for every descendant of scope (scope = a
+// node, or null = the whole document, top-level nodes = tier 1). Paragraph-leaf ids
+// are included (they have a toggle), so they form the deepest tier.
+function depthMapUnder(scope){
+  const m={};
+  (function w(nodes, t){
+    nodes.forEach(n=>{ m[n.id]=t; if(n.children) w(n.children, t+1); });
+  })(scope ? (scope.children||[]) : TREE, 1);
+  return m;
+}
+function maxDepthOf(map){ let d=0; for(const id in map){ if(map[id]>d) d=map[id]; } return d; }
+// Only one depth menu open at a time.
+let depthMenuEl=null;
+function closeDepthMenu(){ if(depthMenuEl){ depthMenuEl.remove(); depthMenuEl=null; } }
+// Show the picker anchored under `btn`. maxD = deepest tier in the scope; onPick(depth)
+// performs the expansion (depth=Infinity for "All"). When maxD<2 there's nothing to
+// choose ("1 level" would equal "All"), so just expand-all immediately (old behavior).
+function showDepthMenu(btn, maxD, onPick){
+  closeDepthMenu();
+  if(maxD<2){ onPick(Infinity); return; }
+  const menu=mk('div','depth-menu'); menu.setAttribute('role','menu');
+  const title=mk('div','depth-menu-title'); title.textContent='Expand to depth';
+  menu.appendChild(title);
+  const addItem=(label,depth)=>{
+    const it=mk('button','depth-menu-item'); it.type='button'; it.textContent=label;
+    it.setAttribute('role','menuitem');
+    it.onclick=ev=>{ ev.stopPropagation(); closeDepthMenu(); onPick(depth); };
+    menu.appendChild(it);
+  };
+  addItem('All levels', Infinity);
+  for(let k=1;k<maxD;k++){ addItem(k+(k===1?' level':' levels'), k); }
+  document.body.appendChild(menu);
+  // Anchor below the button, nudged to stay inside the viewport (flip above if needed).
+  const r=btn.getBoundingClientRect();
+  const mw=menu.offsetWidth, mh=menu.offsetHeight;
+  let left=r.left, top=r.bottom+4;
+  if(left+mw > window.innerWidth-6) left=Math.max(6, window.innerWidth-6-mw);
+  if(top+mh > window.innerHeight-6) top=Math.max(6, r.top-4-mh);
+  menu.style.left=left+'px'; menu.style.top=top+'px';
+  depthMenuEl=menu;
+  const first=menu.querySelector('.depth-menu-item'); if(first) first.focus();
+}
+// Outside-click / Esc close (the openers stopPropagation, so the opening click never
+// reaches these — mirrors the #fnMenu listener pattern).
+document.addEventListener('click',e=>{ if(depthMenuEl && !e.target.closest('.depth-menu')) closeDepthMenu(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDepthMenu(); });
+
 // Build the round subtree collapse/expand-all control for one group node.
 // `state` is SO (main) or SSO (TOC); `rerender` re-renders that view. Collapse
 // closes all descendants but keeps this node open; expand opens this node + all
 // descendants. stopPropagation keeps clicks off the row/header's own toggle.
 function subtControls(node, state, rerender, withLabel){
   const wrap=mk('span','subt');
-  const mkBtn=(glyph,expand,tip)=>{
-    const b=mk('button','subt-btn'); b.type='button'; b.textContent=glyph; b.title=tip;
-    b.onclick=ev=>{
-      ev.stopPropagation();
-      if(expand){ state[node.id]=true; walkSubtree(node, id=>state[id]=true); }
-      else { walkSubtree(node, id=>state[id]=false); }
-      rerender();
-    };
-    return b;
-  };
-  wrap.appendChild(mkBtn('−',false,'Collapse all sections under this group'));
+  // − collapse all descendants (keeps this node open) — unchanged.
+  const bC=mk('button','subt-btn'); bC.type='button'; bC.textContent='−';
+  bC.title='Collapse all sections under this group';
+  bC.onclick=ev=>{ ev.stopPropagation(); walkSubtree(node, id=>state[id]=false); rerender(); };
+  wrap.appendChild(bC);
   if(withLabel){ const l=mk('span','subt-lbl'); l.textContent='all'; wrap.appendChild(l); }
-  wrap.appendChild(mkBtn('+',true,'Expand all sections under this group'));
+  // + opens a depth menu (or expands all when this group is only one tier deep).
+  const bE=mk('button','subt-btn'); bE.type='button'; bE.textContent='+';
+  bE.title='Expand sections under this group — choose how many levels';
+  bE.setAttribute('aria-haspopup','menu');
+  bE.onclick=ev=>{
+    ev.stopPropagation();
+    const m=depthMapUnder(node);
+    showDepthMenu(bE, maxDepthOf(m), depth=>{
+      state[node.id]=true;
+      for(const id in m){ state[id]=(m[id]<=depth); }
+      rerender();
+    });
+  };
+  wrap.appendChild(bE);
   if(withLabel){ const l=mk('span','subt-lbl'); l.textContent='all'; wrap.appendChild(l); }
   return wrap;
 }
@@ -1241,6 +1320,18 @@ function tocExpandAll(){
   walkIds(id=>{ SSO[id]=true; });
   renderTOC();
 }
+// TOC-global "+": open a depth menu over the whole document (SSO state). "All" routes
+// through tocExpandAll; "k levels" opens tiers 1..k. ev.stopPropagation keeps the
+// opening click from reaching the outside-click closer.
+function tocExpandMenu(ev, btn){
+  ev.stopPropagation();
+  const m=depthMapUnder(null);
+  showDepthMenu(btn, maxDepthOf(m), depth=>{
+    if(depth===Infinity){ tocExpandAll(); return; }
+    for(const id in m){ SSO[id]=(m[id]<=depth); }
+    renderTOC();
+  });
+}
 
 // ── DRAG STATE ──
 let dragSrcIdx = null;
@@ -1542,6 +1633,20 @@ function toggleAll(exp){
   document.getElementById('bA').classList.toggle('on',!exp);
   document.getElementById('bE').classList.toggle('on',exp);
   renderAll();
+}
+// Main-global "+": open a depth menu over the whole document (SO state). "All" routes
+// through toggleAll(true) (keeps the bA/bE .on state correct); "k levels" opens tiers
+// 1..k and clears both .on badges (neither fully-collapsed nor fully-expanded).
+function expandAllMenu(ev, btn){
+  ev.stopPropagation();
+  const m=depthMapUnder(null);
+  showDepthMenu(btn, maxDepthOf(m), depth=>{
+    if(depth===Infinity){ toggleAll(true); return; }
+    for(const id in m){ SO[id]=(m[id]<=depth); }
+    document.getElementById('bA').classList.remove('on');
+    document.getElementById('bE').classList.remove('on');
+    renderAll();
+  });
 }
 
 function renderAll(){
