@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 124", "rows": [{"key": "mn124:0.1", "pali": "Majjhima Nikāya 124", "sujato-corrected": "Middle Discourses 124", "pts": ""}, {"key": "mn124:0.2", "pali": "Bākula·sutta", "sujato-corrected": "With Bakkula", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn124:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn124:1.2", "pali": "ekaṁ samayaṁ āyasmā bākulo rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time Venerable Bakkula was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "pts": "At one time the venerable Bakkula was staying near Rājagaha in the Bamboo Grove at the squirrels' feeding place."}]}, {"id": "2", "label": "Atha kho a·cela·kassapo āyasmato bākulassa purāṇa·gihi·sahāyo yenāyasmā…", "rows": [{"key": "mn124:2.1", "pali": "Atha kho a·cela·kassapo āyasmato bākulassa purāṇa·gihi·sahāyo yenāyasmā bākulo tenupasaṅkami;\nupasaṅkamitvā āyasmatā bākulena saddhiṁ sammodi.", "sujato-corrected": "Then the naked ascetic Kassapa, an old friend of Bakkula in the lay life,\napproached him, and exchanged greetings with him.", "pts": "Then Kassapa the Unclothed (wanderer) who had formerly been a friend of the venerable Bakkula when he was a householder,\napproached the venerable Bakkula;\nhaving approached and exchanged greetings of courtesy and friendliness\nwith the venerable Bakkula be sat down at a respectful distance."}, {"key": "mn124:2.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho a·cela·kassapo āyasmantaṁ bākulaṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, he sat down to one side and said to Venerable Bakkula,", "pts": "As Kassapa the Unclothed was sitting down at a respectful distance, he spoke thus to the venerable Bakkula:"}]}, {"id": "3", "label": "“Kīva·ciraṁ pabbajitosi, āvuso bākulā”ti?", "rows": [{"key": "mn124:3.1", "pali": "“Kīva·ciraṁ pabbajitosi, āvuso bākulā”ti?", "sujato-corrected": "“Reverend Bakkula, how long has it been since you went forth?”", "pts": "\"How long is it since you, reverend Bakkula, went forth?\""}, {"key": "mn124:3.2", "pali": "“Asīti me, āvuso, vassāni pabbajitassā”ti.", "sujato-corrected": "“It has been eighty years, reverend.”", "pts": "\"It must be eighty years, friend, since I went forth.\""}, {"key": "mn124:3.3", "pali": "“Imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ methuno dhammo paṭi·sevito”ti?", "sujato-corrected": "“But in these eighty years, how many times have you had sex?”", "pts": "\"And how many times during these eighty years have you, reverend Bakkula, indulged in sexual intercourse?\""}, {"key": "mn124:3.4", "pali": "“Na kho maṁ, āvuso kassapa, evaṁ pucchitabbaṁ:", "sujato-corrected": "“You shouldn’t ask me such a question.", "pts": "\"Friend Kassapa, you should not question me thus:"}, {"key": "mn124:3.5", "pali": "‘imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ methuno dhammo paṭi·sevito’ti.", "sujato-corrected": "", "pts": "'And how many times during these eighty years have you, reverend Bakkula, indulged in sexual intercourse?'"}, {"key": "mn124:3.6", "pali": "Evañca kho maṁ, āvuso kassapa, pucchitabbaṁ:", "sujato-corrected": "Rather, you should ask me this:", "pts": "But you could question me thus, friend Kassapa:"}, {"key": "mn124:3.7", "pali": "‘imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ kāma·saññā uppanna·pubbā’”ti?", "sujato-corrected": "‘But in these eighty years, how many times have sensual perceptions ever arisen in you?’”", "pts": "'And how many times during these eighty years, reverend Bakkula, did perceptions of sensual pleasure rise in you?\""}, {"key": "mn124:3.8", "pali": "(…)", "sujato-corrected": "“But in these eighty years, how many times have sensual perceptions ever arisen in you?”", "pts": "\"And how many times during these eighty years, reverend Bakkula, did perceptions of sensual pleasure rise in you?\""}, {"key": "mn124:3.9", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nkāma·saññaṁ uppanna·pubbaṁ”.", "sujato-corrected": "“In these eighty years, I don’t recall that any sensual perception has ever arisen in me.”", "pts": "\"During the eighty years that I have gone forth, friend Kassapa,\nI am not aware of (any) perception of sensual pleasure rising in me.\""}, {"key": "mn124:3.10", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nkāma·saññaṁ uppanna·pubbaṁ\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any)\nperception of sensual pleasure rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "4", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi byāpāda·saññaṁ…", "rows": [{"key": "mn124:4-5.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nbyāpāda·saññaṁ …pe…", "sujato-corrected": "“In these eighty years, I don’t recall that any perception of ill will …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of (any) perception of malevolence or (any) perception of harming rising in me.\""}, {"key": "mn124:4-5.2", "pali": "vi·hiṁsā·saññaṁ uppanna·pubbaṁ”.", "sujato-corrected": "or cruelty has ever arisen in me.”", "pts": ""}, {"key": "mn124:4-5.3", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nvi·hiṁsā·saññaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any) perception of\nmalevolence or (any) perception of harming rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "6", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi kāma·vitakkaṁ…", "rows": [{"key": "mn124:6.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nkāma·vitakkaṁ uppanna·pubbaṁ”.", "sujato-corrected": "“In these eighty years, I don’t recall that any thought of sensuality …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of (any) thought of sensual pleasure,\n(any) thought of malevolence or (any) thought of harming rising in me.\""}, {"key": "mn124:6.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nkāma·vitakkaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any) thought of sensual pleasure,\n(any) thought of malevolence or (any) thought of harming rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "7", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi byāpāda·vitakkaṁ…", "rows": [{"key": "mn124:7-8.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nbyāpāda·vitakkaṁ …pe…", "sujato-corrected": "ill will …", "pts": ""}, {"key": "mn124:7-8.2", "pali": "vi·hiṁsā·vitakkaṁ uppanna·pubbaṁ”.", "sujato-corrected": "or cruelty has ever arisen in me.”", "pts": ""}, {"key": "mn124:7-8.3", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nvi·hiṁsā·vitakkaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": ""}]}, {"id": "9", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi gaha·pati·cīvaraṁ…", "rows": [{"key": "mn124:9.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\ngaha·pati·cīvaraṁ sāditā”.", "sujato-corrected": "“In these eighty years, I don’t recall accepting a robe from a householder …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having accepted householder's robe-material.\""}, {"key": "mn124:9.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\ngaha·pati·cīvaraṁ sāditā,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving accepted householder's robe-material - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "10", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi satthena…", "rows": [{"key": "mn124:10.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nsatthena cīvaraṁ chinditā”.", "sujato-corrected": "cutting a robe with a knife …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having cut out robe-material with a knife.\""}, {"key": "mn124:10.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nsatthena cīvaraṁ chinditā …pe… dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving cut out robe-material with a knife - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "11", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi sūciyā…", "rows": [{"key": "mn124:11-15.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nsūciyā cīvaraṁ sibbitā …pe…", "sujato-corrected": "sewing a robe with a needle …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having sewn robe-material with a needle.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving sewn robe-material with a needle - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:11-15.2", "pali": "nābhijānāmi rajanena cīvaraṁ rajitā …", "sujato-corrected": "dying a robe …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having dyed robe-material with dye.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having dyed robe-material with dye - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:11-15.3", "pali": "nābhijānāmi kathine cīvaraṁ sibbitā …", "sujato-corrected": "sewing a robe during the robe-making ceremony …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having sewn robe-material on a kedhina-frame.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving sewn robe-material on a kedhina-frame - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:11-15.4", "pali": "nābhijānāmi sa·brahma·cārīnaṁ cīvara·kamme vicāritā …", "sujato-corrected": "wandering to look for robe material for my companions in the spiritual life when they are making robes …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having been occupied with making up the robe-material of fellow Brahma-farers.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having been occupied\nwith making up the robe-material of fellow Brahma-farers - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "16", "label": "nābhijānāmi nimantanaṁ sāditā …", "rows": [{"key": "mn124:16-19.1", "pali": "nābhijānāmi nimantanaṁ sāditā …", "sujato-corrected": "accepting an invitation …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having accepted an invitation.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having accepted an invitation - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:16-19.2", "pali": "nābhijānāmi evarūpaṁ cittaṁ uppanna·pubbaṁ:", "sujato-corrected": "having such a thought:", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of a thought having ever arisen such as this:"}, {"key": "mn124:16-19.3", "pali": "‘aho vata maṁ koci nimanteyyā’ti …", "sujato-corrected": "‘If only someone would invite me!’ …", "pts": "'O that someone might invite me.'\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of a thought having ever arisen such as this:\n'O that someone might invite me.' - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:16-19.4", "pali": "nābhijānāmi antara·ghare nisīditā …", "sujato-corrected": "sitting down inside a house …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having sat down amid the houses.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having sat down amid the houses - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:16-19.5", "pali": "nābhijānāmi antara·ghare bhuñjitā …", "sujato-corrected": "eating inside a house …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having eaten amid the houses.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having eaten amid the houses - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "20", "label": "nābhijānāmi mātu·gāmassa anubyañjanaso nimittaṁ gahetā …", "rows": [{"key": "mn124:20-25.1", "pali": "nābhijānāmi mātu·gāmassa anubyañjanaso nimittaṁ gahetā …", "sujato-corrected": "getting caught up in the features by way of the details of a lady’s appearance …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having observed in detail the characteristics of women-kind.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\nobserved in detail the characteristics of women-kind - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:20-25.2", "pali": "nābhijānāmi mātu·gāmassa dhammaṁ desitā antamaso catu·p·padampi gāthaṁ …", "sujato-corrected": "teaching a lady, even so much as a four line verse …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to women, even a verse of four feet.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having taught Dhamma to women,\neven a verse of four feet - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:20-25.3", "pali": "nābhijānāmi bhikkhun·upassayaṁ upasaṅkamitā …", "sujato-corrected": "going to the nuns’ quarters …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having approached nuns' quarters.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having approached nuns' quarters - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:20-25.4", "pali": "nābhijānāmi bhikkhuniyā dhammaṁ desitā …", "sujato-corrected": "teaching the nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having taught Dhamma to nuns.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having taught Dhamma to nuns - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:20-25.5", "pali": "nābhijānāmi sikkha·mānāya dhammaṁ desitā …", "sujato-corrected": "teaching the trainee nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to probationers.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving taught Dhamma to probationers - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:20-25.6", "pali": "nābhijānāmi sāmaṇeriyā dhammaṁ desitā …", "sujato-corrected": "teaching the novice nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to female novices.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving taught Dhamma to female novices - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "26", "label": "nābhijānāmi pabbājetā …", "rows": [{"key": "mn124:26-29.1", "pali": "nābhijānāmi pabbājetā …", "sujato-corrected": "giving the going forth …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having let (anyone) go forth.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having let (anyone) go forth - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:26-29.2", "pali": "nābhijānāmi upasam·pādetā …", "sujato-corrected": "giving the ordination …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having ordained (anyone).\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having ordained (anyone) - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:26-29.3", "pali": "nābhijānāmi ni·s·sayaṁ dātā …", "sujato-corrected": "giving dependence …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having given guidance.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having given guidance - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:26-29.4", "pali": "nābhijānāmi sāmaṇeraṁ upaṭṭhāpetā …", "sujato-corrected": "being looked after by a novice …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having had a novice to attend me.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having had a novice to attend me - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "30", "label": "nābhijānāmi jantā·ghare nhāyitā …", "rows": [{"key": "mn124:30-36.1", "pali": "nābhijānāmi jantā·ghare nhāyitā …", "sujato-corrected": "bathing in the sauna …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having bathed in a bathroom.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having bathed in a bathroom - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.2", "pali": "nābhijānāmi cuṇṇena nhāyitā …", "sujato-corrected": "bathing with bath powder …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having bathed with chunam.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having bathed with chunam - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.3", "pali": "nābhijānāmi sa·brahma·cārī·gatta·pari·kamme vicāritā …", "sujato-corrected": "looking for a massage from my companions in the spiritual life …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having had fellow Brahma-farers massage my limbs.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\nhad fellow Brahma-farers massage his limbs - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.4", "pali": "nābhijānāmi ābādhaṁ uppanna·pubbaṁ, antamaso gaddūhana·matt·ampi …", "sujato-corrected": "being ill, even for as long as it takes to pull a cow’s udder …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware that (any) illness has ever arisen even for an instant.\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware that (any)\nillness has ever arisen even for an instant - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.5", "pali": "nābhijānāmi bhesajjaṁ upaharitā, antamaso haritaki·khaṇḍampi …", "sujato-corrected": "being presented with medicine, even as much as a bit of yellow myrobalan …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having carried medicine, even bits from the yellow myrobalan tree.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having carried medicine,\neven bits from the yellow myrobalan tree - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.6", "pali": "nābhijānāmi apassenakaṁ apassayitā …", "sujato-corrected": "leaning on a leaning-board …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having reclined against a reclining board.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving reclined against a reclining board - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.7", "pali": "nābhijānāmi seyyaṁ kappetā”.", "sujato-corrected": "preparing a cot …”", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having lain down to sleep.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having lain down to sleep - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:30-36.8", "pali": "“Yampāyasmā …pe… dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": ""}]}, {"id": "37", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi gāmanta·senāsane…", "rows": [{"key": "mn124:37.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\ngāmanta·senāsane vassaṁ upagantā”.", "sujato-corrected": "“In these eighty years, I don’t recall commencing the rainy season residence within a village.”", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having gone for the rains to a lodging near a village.\""}, {"key": "mn124:37.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\ngāmanta·senāsane vassaṁ upagantā,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\ngone for the rains to a lodging near a village - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "38", "label": "“Sattā·hameva kho ahaṁ, āvuso, saraṇo raṭṭha·piṇḍaṁ bhuñjiṁ;", "rows": [{"key": "mn124:38.1", "pali": "“Sattā·hameva kho ahaṁ, āvuso, saraṇo raṭṭha·piṇḍaṁ bhuñjiṁ;", "sujato-corrected": "“Reverend, for seven days I ate the nation’s almsfood as a debtor.", "pts": "\"For exactly seven days I, your reverence,\n(still) having defilements, ate the country's almsfood;"}, {"key": "mn124:38.2", "pali": "atha a·ṭ·ṭha·miyaṁ aññā udapādi.", "sujato-corrected": "Then on the eighth day I became enlightened.”", "pts": "then on the eighth day profound knowledge arose.\""}, {"key": "mn124:38.3", "pali": "Yampāyasmā bākulo sattā·hameva saraṇo raṭṭha·piṇḍaṁ bhuñji;\natha a·ṭ·ṭha·miyaṁ aññā udapādi\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for exactly seven days, the venerable Bakkula,\n(still) having defilements, ate the country's almsfood;\nthen on the eighth day profound knowledge arose - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "39", "label": "Labheyyāhaṁ, āvuso bākula, imasmiṁ dhamma·vinaye pabbajjaṁ, labheyyaṁ…", "rows": [{"key": "mn124:39.1", "pali": "Labheyyāhaṁ, āvuso bākula, imasmiṁ dhamma·vinaye pabbajjaṁ, labheyyaṁ upasampadan”ti.", "sujato-corrected": "“Reverend Bakkula, may I receive the going forth, the ordination in this teaching and training?”", "pts": "\"May I, reverend Bakkula, receive the going forth in this Dhamma and discipline, may I receive ordination.\""}, {"key": "mn124:39.2", "pali": "Alattha kho a·cela·kassapo imasmiṁ dhamma·vinaye pabbajjaṁ, alattha upasampadaṁ.", "sujato-corrected": "And the naked ascetic Kassapa received the going forth, the ordination in this teaching and training.", "pts": "And Kassapa the Unclothed received the going forth in this Dhamma and discipline, he received ordination."}, {"key": "mn124:39.3", "pali": "Acirū·pasampanno panāyasmā kassapo eko vūpakaṭṭho appa·matto ātāpī pahitatto vi·haranto\nnacirasseva—yassatthāya kula·puttā samma·deva agārasmā an·agār·iyaṁ pabbajanti,\ntad·an·uttaraṁ—brahma·cariya·pari·yosānaṁ diṭṭheva dhamme sayaṁ\nabhiññā sacchi·katvā upasampajja vihāsi.", "sujato-corrected": "Not long after his ordination, Venerable Kassapa, living alone, withdrawn, diligent, keen,\nand resolute, soon realized the supreme end of the spiritual path in this very life.\nHe lived having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.", "pts": "Not long after he had been ordained, living alone, aloof, diligent, ardent, self-resolute,\nthe venerable Kassapa having soon attained here and now through his own super-knowledge that incomparable goal\nof the Brahma-faring for the sake of which young men of family rightly go forth from home into homelessness,\nentering on it, abided in it."}, {"key": "mn124:39.4", "pali": "“Khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ ittha·t·tāyā”ti abbh·aññāsi.", "sujato-corrected": "He understood:\n“Rebirth is ended;\nthe spiritual journey has been completed;\nwhat had to be done has been done;\nthere is nothing further for this place.”", "pts": "And he knew:\n\"Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.\""}, {"key": "mn124:39.5", "pali": "Añña·taro kho panāyasmā kassapo arahataṁ ahosi.", "sujato-corrected": "And Venerable Kassapa became one of the perfected.", "pts": "And the venerable Kassapa was one of the perfected ones."}]}, {"id": "40", "label": "Atha kho āyasmā bākulo aparena samayena avāpura·ṇaṁ…", "rows": [{"key": "mn124:40.1", "pali": "Atha kho āyasmā bākulo aparena samayena avāpura·ṇaṁ ādāya vihārena vihāraṁ upasaṅkamitvā evamāha:", "sujato-corrected": "Then some time later Venerable Bakkula, taking a latchkey, went from dwelling to dwelling, saying,", "pts": "Then after a time the venerable Bakkula took his key and going from dwelling-place to dwelling-place, spoke thus:"}, {"key": "mn124:40.2", "pali": "“abhi·k·kamath·āyasmanto, abhi·k·kamath·āyasmanto.\nAjja me pari·nibbānaṁ bhavissatī”ti.", "sujato-corrected": "\"Come forth, venerables, come forth!\nToday will be my final Nibbāna.\"", "pts": "\"Let the venerable ones come forward, let the venerable ones come forward, today I will attain final nibbāna.\""}, {"key": "mn124:40.3", "pali": "“Yampāyasmā bākulo avāpura·ṇaṁ ādāya vihārena vihāraṁ upasaṅkamitvā evamāha:\n‘abhi·k·kamath·āyasmanto, abhi·k·kamath·āyasmanto;\najja me pari·nibbānaṁ bhavissatī’ti, idampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as the venerable Bakkula took his key and going from dwelling-place to dwelling-place, spoke thus:\n'Let the venerable ones come forward, let the venerable ones come forward,\ntoday I will attain final nibbāna' - we regard this too as a wonder, a marvellous quality in the venerable Bakkula.\"]"}]}, {"id": "41", "label": "Āyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi.", "rows": [{"key": "mn124:41.1", "pali": "Āyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi.", "sujato-corrected": "And Venerable Bakkula attained final Nibbāna while seated right in the middle of the Saṅgha.", "pts": "Then the venerable Bakkula, as he was sitting in the midst of the Order of monks, attained final nibbāna."}, {"key": "mn124:41.2", "pali": "“Yampāyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhāremā”ti.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as that the venerable Bakkula, as he was sitting in the midst of the Order of monks,\nattained final nibbāna - we regard this too as a wonder, a marvellous quality in the venerable Bakkula.\"]"}, {"key": "mn124:41.3", "pali": "Bākula·suttaṁ niṭṭhitaṁ catu·t·thaṁ.", "sujato-corrected": "", "pts": "Discourse by Bakkula The Fourth"}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 124", "rows": [{"key": "mn124:0.1", "pali": "Majjhima Nikāya 124", "sujato-corrected": "Middle Discourses 124", "pts": "", "bodhi-esque": "Majjhima Nikāya 124"}, {"key": "mn124:0.2", "pali": "Bākula·sutta", "sujato-corrected": "With Bakkula", "pts": "", "bodhi-esque": "Bākula Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn124:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:", "bodhi-esque": "Thus have I heard—"}, {"key": "mn124:1.2", "pali": "ekaṁ samayaṁ āyasmā bākulo rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time Venerable Bakkula was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "pts": "At one time the venerable Bakkula was staying near Rājagaha in the Bamboo Grove at the squirrels' feeding place.", "bodhi-esque": "On one occasion the Venerable Bākula was dwelling at Rājagaha in the Bamboo Grove, the Squirrel’s Feeding Ground."}]}, {"id": "2", "label": "Atha kho a·cela·kassapo āyasmato bākulassa purāṇa·gihi·sahāyo yenāyasmā…", "rows": [{"key": "mn124:2.1", "pali": "Atha kho a·cela·kassapo āyasmato bākulassa purāṇa·gihi·sahāyo yenāyasmā bākulo tenupasaṅkami;\nupasaṅkamitvā āyasmatā bākulena saddhiṁ sammodi.", "sujato-corrected": "Then the naked ascetic Kassapa, an old friend of Bakkula in the lay life,\napproached him, and exchanged greetings with him.", "pts": "Then Kassapa the Unclothed (wanderer) who had formerly been a friend of the venerable Bakkula when he was a householder,\napproached the venerable Bakkula;\nhaving approached and exchanged greetings of courtesy and friendliness\nwith the venerable Bakkula be sat down at a respectful distance.", "bodhi-esque": "Then the naked ascetic Kassapa, a former friend of the Venerable Bākula in his lay life,\napproached the Venerable Bākula and exchanged greetings with him."}, {"key": "mn124:2.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho a·cela·kassapo āyasmantaṁ bākulaṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, he sat down to one side and said to Venerable Bakkula,", "pts": "As Kassapa the Unclothed was sitting down at a respectful distance, he spoke thus to the venerable Bakkula:", "bodhi-esque": "After they had concluded their talk and cordial discussion, he sat down to one side.\nSeated to one side, the naked ascetic Kassapa said to the Venerable Bākula:"}]}, {"id": "3", "label": "“Kīva·ciraṁ pabbajitosi, āvuso bākulā”ti?", "rows": [{"key": "mn124:3.1", "pali": "“Kīva·ciraṁ pabbajitosi, āvuso bākulā”ti?", "sujato-corrected": "“Reverend Bakkula, how long has it been since you went forth?”", "pts": "\"How long is it since you, reverend Bakkula, went forth?\"", "bodhi-esque": "“How long have you been gone forth, friend Bākula?”"}, {"key": "mn124:3.2", "pali": "“Asīti me, āvuso, vassāni pabbajitassā”ti.", "sujato-corrected": "“It has been eighty years, reverend.”", "pts": "\"It must be eighty years, friend, since I went forth.\"", "bodhi-esque": "“I have been gone forth for eighty years, friend.”"}, {"key": "mn124:3.3", "pali": "“Imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ methuno dhammo paṭi·sevito”ti?", "sujato-corrected": "“But in these eighty years, how many times have you had sex?”", "pts": "\"And how many times during these eighty years have you, reverend Bakkula, indulged in sexual intercourse?\"", "bodhi-esque": "“But, friend Bākula, during these eighty years, how many times have you engaged in sexual intercourse?”"}, {"key": "mn124:3.4", "pali": "“Na kho maṁ, āvuso kassapa, evaṁ pucchitabbaṁ:", "sujato-corrected": "“You shouldn’t ask me such a question.", "pts": "\"Friend Kassapa, you should not question me thus:", "bodhi-esque": "“Friend Kassapa, I should not be asked thus:"}, {"key": "mn124:3.5", "pali": "‘imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ methuno dhammo paṭi·sevito’ti.", "sujato-corrected": "", "pts": "'And how many times during these eighty years have you, reverend Bakkula, indulged in sexual intercourse?'", "bodhi-esque": "‘But, friend Bākula, during these eighty years, how many times have you engaged in sexual intercourse?’"}, {"key": "mn124:3.6", "pali": "Evañca kho maṁ, āvuso kassapa, pucchitabbaṁ:", "sujato-corrected": "Rather, you should ask me this:", "pts": "But you could question me thus, friend Kassapa:", "bodhi-esque": "Rather, friend Kassapa, I should be asked thus:"}, {"key": "mn124:3.7", "pali": "‘imehi pana te, āvuso bākula, asītiyā vassehi kati·k·khattuṁ kāma·saññā uppanna·pubbā’”ti?", "sujato-corrected": "‘But in these eighty years, how many times have sensual perceptions ever arisen in you?’”", "pts": "'And how many times during these eighty years, reverend Bakkula, did perceptions of sensual pleasure rise in you?\"", "bodhi-esque": "‘But, friend Bākula, during these eighty years, how many times has a sensual perception arisen in you?’”"}, {"key": "mn124:3.8", "pali": "(…)", "sujato-corrected": "“But in these eighty years, how many times have sensual perceptions ever arisen in you?”", "pts": "\"And how many times during these eighty years, reverend Bakkula, did perceptions of sensual pleasure rise in you?\"", "bodhi-esque": "…"}, {"key": "mn124:3.9", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nkāma·saññaṁ uppanna·pubbaṁ”.", "sujato-corrected": "“In these eighty years, I don’t recall that any sensual perception has ever arisen in me.”", "pts": "\"During the eighty years that I have gone forth, friend Kassapa,\nI am not aware of (any) perception of sensual pleasure rising in me.\"", "bodhi-esque": "“I have been gone forth for eighty years, friend, and I do not recall that a sensual perception has ever arisen in me.”"}, {"key": "mn124:3.10", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nkāma·saññaṁ uppanna·pubbaṁ\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any)\nperception of sensual pleasure rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having ever had a perception of sensual desire,\nthis too we hold as a wonderful and marvelous quality of the Venerable Bakkula.”"}]}, {"id": "4", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi byāpāda·saññaṁ…", "rows": [{"key": "mn124:4-5.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nbyāpāda·saññaṁ …pe…", "sujato-corrected": "“In these eighty years, I don’t recall that any perception of ill will …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of (any) perception of malevolence or (any) perception of harming rising in me.\"", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having ever had a perception of ill will …"}, {"key": "mn124:4-5.2", "pali": "vi·hiṁsā·saññaṁ uppanna·pubbaṁ”.", "sujato-corrected": "or cruelty has ever arisen in me.”", "pts": "", "bodhi-esque": "a perception of harm.”"}, {"key": "mn124:4-5.3", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nvi·hiṁsā·saññaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any) perception of\nmalevolence or (any) perception of harming rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having ever had a perception of harm,\nthis too we hold as a wonderful and marvelous quality of the Venerable Bakkula.”"}]}, {"id": "6", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi kāma·vitakkaṁ…", "rows": [{"key": "mn124:6.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nkāma·vitakkaṁ uppanna·pubbaṁ”.", "sujato-corrected": "“In these eighty years, I don’t recall that any thought of sensuality …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of (any) thought of sensual pleasure,\n(any) thought of malevolence or (any) thought of harming rising in me.\"", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having ever had a thought of sensual desire.”"}, {"key": "mn124:6.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nkāma·vitakkaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of (any) thought of sensual pleasure,\n(any) thought of malevolence or (any) thought of harming rising in him - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having ever had a thought of sensual desire,\nthis too we hold as a wonderful and marvelous quality of the Venerable Bakkula.”"}]}, {"id": "7", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi byāpāda·vitakkaṁ…", "rows": [{"key": "mn124:7-8.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nbyāpāda·vitakkaṁ …pe…", "sujato-corrected": "ill will …", "pts": "", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having ever had a thought of ill will …"}, {"key": "mn124:7-8.2", "pali": "vi·hiṁsā·vitakkaṁ uppanna·pubbaṁ”.", "sujato-corrected": "or cruelty has ever arisen in me.”", "pts": "", "bodhi-esque": "a thought of harm.”"}, {"key": "mn124:7-8.3", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nvi·hiṁsā·vitakkaṁ uppanna·pubbaṁ,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having ever had a thought of harm,\nthis too we hold as a wonderful and marvelous quality of the Venerable Bakkula.”"}]}, {"id": "9", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi gaha·pati·cīvaraṁ…", "rows": [{"key": "mn124:9.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\ngaha·pati·cīvaraṁ sāditā”.", "sujato-corrected": "“In these eighty years, I don’t recall accepting a robe from a householder …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having accepted householder's robe-material.\"", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having worn a householder’s robe.”"}, {"key": "mn124:9.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\ngaha·pati·cīvaraṁ sāditā,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving accepted householder's robe-material - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having worn a householder’s robe,\nthis too we hold as a wonderful and marvelous quality of the Venerable Bakkula.”"}]}, {"id": "10", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi satthena…", "rows": [{"key": "mn124:10.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nsatthena cīvaraṁ chinditā”.", "sujato-corrected": "cutting a robe with a knife …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having cut out robe-material with a knife.\"", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having cut a robe with a knife.”"}, {"key": "mn124:10.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\nsatthena cīvaraṁ chinditā …pe… dhārema”.", "sujato-corrected": "", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving cut out robe-material with a knife - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“Whatever the Venerable Bakkula does not recall, in these eighty years, having cut a robe with a knife … we hold.”"}]}, {"id": "11", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi sūciyā…", "rows": [{"key": "mn124:11-15.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\nsūciyā cīvaraṁ sibbitā …pe…", "sujato-corrected": "sewing a robe with a needle …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having sewn robe-material with a needle.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving sewn robe-material with a needle - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“In these eighty years, friends, since I went forth, I do not recall having sewn a robe with a needle …"}, {"key": "mn124:11-15.2", "pali": "nābhijānāmi rajanena cīvaraṁ rajitā …", "sujato-corrected": "dying a robe …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having dyed robe-material with dye.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having dyed robe-material with dye - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having dyed a robe with dye …"}, {"key": "mn124:11-15.3", "pali": "nābhijānāmi kathine cīvaraṁ sibbitā …", "sujato-corrected": "sewing a robe during the robe-making ceremony …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having sewn robe-material on a kedhina-frame.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving sewn robe-material on a kedhina-frame - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having sewn a kathina robe …"}, {"key": "mn124:11-15.4", "pali": "nābhijānāmi sa·brahma·cārīnaṁ cīvara·kamme vicāritā …", "sujato-corrected": "wandering to look for robe material for my companions in the spiritual life when they are making robes …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having been occupied with making up the robe-material of fellow Brahma-farers.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having been occupied\nwith making up the robe-material of fellow Brahma-farers - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having directed the robe-making work for fellow monks …"}]}, {"id": "16", "label": "nābhijānāmi nimantanaṁ sāditā …", "rows": [{"key": "mn124:16-19.1", "pali": "nābhijānāmi nimantanaṁ sāditā …", "sujato-corrected": "accepting an invitation …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having accepted an invitation.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having accepted an invitation - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having accepted an invitation …"}, {"key": "mn124:16-19.2", "pali": "nābhijānāmi evarūpaṁ cittaṁ uppanna·pubbaṁ:", "sujato-corrected": "having such a thought:", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of a thought having ever arisen such as this:", "bodhi-esque": "I do not recall that such a thought had ever arisen:"}, {"key": "mn124:16-19.3", "pali": "‘aho vata maṁ koci nimanteyyā’ti …", "sujato-corrected": "‘If only someone would invite me!’ …", "pts": "'O that someone might invite me.'\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of a thought having ever arisen such as this:\n'O that someone might invite me.' - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "‘Oh, if only someone would invite me!’ …"}, {"key": "mn124:16-19.4", "pali": "nābhijānāmi antara·ghare nisīditā …", "sujato-corrected": "sitting down inside a house …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having sat down amid the houses.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having sat down amid the houses - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having sat down inside a house …"}, {"key": "mn124:16-19.5", "pali": "nābhijānāmi antara·ghare bhuñjitā …", "sujato-corrected": "eating inside a house …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having eaten amid the houses.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having eaten amid the houses - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having eaten inside a house …"}]}, {"id": "20", "label": "nābhijānāmi mātu·gāmassa anubyañjanaso nimittaṁ gahetā …", "rows": [{"key": "mn124:20-25.1", "pali": "nābhijānāmi mātu·gāmassa anubyañjanaso nimittaṁ gahetā …", "sujato-corrected": "getting caught up in the features by way of the details of a lady’s appearance …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having observed in detail the characteristics of women-kind.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\nobserved in detail the characteristics of women-kind - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having grasped the sign of a woman by its particulars …"}, {"key": "mn124:20-25.2", "pali": "nābhijānāmi mātu·gāmassa dhammaṁ desitā antamaso catu·p·padampi gāthaṁ …", "sujato-corrected": "teaching a lady, even so much as a four line verse …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to women, even a verse of four feet.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having taught Dhamma to women,\neven a verse of four feet - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having taught the Dhamma to a woman, even a verse of four lines …"}, {"key": "mn124:20-25.3", "pali": "nābhijānāmi bhikkhun·upassayaṁ upasaṅkamitā …", "sujato-corrected": "going to the nuns’ quarters …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having approached nuns' quarters.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having approached nuns' quarters - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having approached a bhikkhunī's dwelling …"}, {"key": "mn124:20-25.4", "pali": "nābhijānāmi bhikkhuniyā dhammaṁ desitā …", "sujato-corrected": "teaching the nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having taught Dhamma to nuns.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having taught Dhamma to nuns - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having taught the Dhamma to a bhikkhunī …"}, {"key": "mn124:20-25.5", "pali": "nābhijānāmi sikkha·mānāya dhammaṁ desitā …", "sujato-corrected": "teaching the trainee nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to probationers.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving taught Dhamma to probationers - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having taught the Dhamma to a trainee nun …"}, {"key": "mn124:20-25.6", "pali": "nābhijānāmi sāmaṇeriyā dhammaṁ desitā …", "sujato-corrected": "teaching the novice nuns …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having taught Dhamma to female novices.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving taught Dhamma to female novices - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having taught the Dhamma to a novice nun …"}]}, {"id": "26", "label": "nābhijānāmi pabbājetā …", "rows": [{"key": "mn124:26-29.1", "pali": "nābhijānāmi pabbājetā …", "sujato-corrected": "giving the going forth …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having let (anyone) go forth.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having let (anyone) go forth - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having given the going forth …"}, {"key": "mn124:26-29.2", "pali": "nābhijānāmi upasam·pādetā …", "sujato-corrected": "giving the ordination …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having ordained (anyone).\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having ordained (anyone) - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having given the higher ordination …"}, {"key": "mn124:26-29.3", "pali": "nābhijānāmi ni·s·sayaṁ dātā …", "sujato-corrected": "giving dependence …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having given guidance.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having given guidance - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall giving dependence …"}, {"key": "mn124:26-29.4", "pali": "nābhijānāmi sāmaṇeraṁ upaṭṭhāpetā …", "sujato-corrected": "being looked after by a novice …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having had a novice to attend me.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having had a novice to attend me - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having a novice attend on me …"}]}, {"id": "30", "label": "nābhijānāmi jantā·ghare nhāyitā …", "rows": [{"key": "mn124:30-36.1", "pali": "nābhijānāmi jantā·ghare nhāyitā …", "sujato-corrected": "bathing in the sauna …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having bathed in a bathroom.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware\nof having bathed in a bathroom - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall bathing in a bathhouse …"}, {"key": "mn124:30-36.2", "pali": "nābhijānāmi cuṇṇena nhāyitā …", "sujato-corrected": "bathing with bath powder …", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having bathed with chunam.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having bathed with chunam - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall bathing with powder …"}, {"key": "mn124:30-36.3", "pali": "nābhijānāmi sa·brahma·cārī·gatta·pari·kamme vicāritā …", "sujato-corrected": "looking for a massage from my companions in the spiritual life …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having had fellow Brahma-farers massage my limbs.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\nhad fellow Brahma-farers massage his limbs - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall having a fellow monk massage my body …"}, {"key": "mn124:30-36.4", "pali": "nābhijānāmi ābādhaṁ uppanna·pubbaṁ, antamaso gaddūhana·matt·ampi …", "sujato-corrected": "being ill, even for as long as it takes to pull a cow’s udder …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware that (any) illness has ever arisen even for an instant.\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware that (any)\nillness has ever arisen even for an instant - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall ever having had an illness, even so much as a gaddūhana measure …"}, {"key": "mn124:30-36.5", "pali": "nābhijānāmi bhesajjaṁ upaharitā, antamaso haritaki·khaṇḍampi …", "sujato-corrected": "being presented with medicine, even as much as a bit of yellow myrobalan …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having carried medicine, even bits from the yellow myrobalan tree.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having carried medicine,\neven bits from the yellow myrobalan tree - we regard this as a wonder, a marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall ever taking medicine, even a piece of myrobalan …"}, {"key": "mn124:30-36.6", "pali": "nābhijānāmi apassenakaṁ apassayitā …", "sujato-corrected": "leaning on a leaning-board …", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having reclined against a reclining board.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not aware of\nhaving reclined against a reclining board - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall ever using a leaning post …"}, {"key": "mn124:30-36.7", "pali": "nābhijānāmi seyyaṁ kappetā”.", "sujato-corrected": "preparing a cot …”", "pts": "\"During the eighty years that I have gone forth, your reverence, I am not aware of having lain down to sleep.\"\n[\"Inasmuch as for eighty years the venerable Bakkula is not\naware of having lain down to sleep - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "I do not recall ever configuring a bed.”"}, {"key": "mn124:30-36.8", "pali": "“Yampāyasmā …pe… dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "", "bodhi-esque": "“What the venerable … we remember as a wonderful quality.”"}]}, {"id": "37", "label": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi gāmanta·senāsane…", "rows": [{"key": "mn124:37.1", "pali": "“Asīti me, āvuso, vassāni pabbajitassa nābhijānāmi\ngāmanta·senāsane vassaṁ upagantā”.", "sujato-corrected": "“In these eighty years, I don’t recall commencing the rainy season residence within a village.”", "pts": "\"During the eighty years that I have gone forth, your reverence,\nI am not aware of having gone for the rains to a lodging near a village.\"", "bodhi-esque": "“Friends, in my eighty years since going forth,\nI do not recall ever entering the rains retreat in a dwelling near a village.”"}, {"key": "mn124:37.2", "pali": "“Yampāyasmā bākulo asītiyā vassehi nābhijānāti\ngāmanta·senāsane vassaṁ upagantā,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for eighty years the venerable Bakkula is not aware of having\ngone for the rains to a lodging near a village - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“What the venerable Bakkula does not recall in eighty years — entering the rains retreat in a dwelling near a village —\nthis too we remember as a wonderful and marvellous quality of the venerable Bakkula.”"}]}, {"id": "38", "label": "“Sattā·hameva kho ahaṁ, āvuso, saraṇo raṭṭha·piṇḍaṁ bhuñjiṁ;", "rows": [{"key": "mn124:38.1", "pali": "“Sattā·hameva kho ahaṁ, āvuso, saraṇo raṭṭha·piṇḍaṁ bhuñjiṁ;", "sujato-corrected": "“Reverend, for seven days I ate the nation’s almsfood as a debtor.", "pts": "\"For exactly seven days I, your reverence,\n(still) having defilements, ate the country's almsfood;", "bodhi-esque": "“Friends, for only seven days I, having taken refuge, ate the country's almsfood;"}, {"key": "mn124:38.2", "pali": "atha a·ṭ·ṭha·miyaṁ aññā udapādi.", "sujato-corrected": "Then on the eighth day I became enlightened.”", "pts": "then on the eighth day profound knowledge arose.\"", "bodhi-esque": "then on the eighth day final knowledge arose."}, {"key": "mn124:38.3", "pali": "Yampāyasmā bākulo sattā·hameva saraṇo raṭṭha·piṇḍaṁ bhuñji;\natha a·ṭ·ṭha·miyaṁ aññā udapādi\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as for exactly seven days, the venerable Bakkula,\n(still) having defilements, ate the country's almsfood;\nthen on the eighth day profound knowledge arose - we regard this as a wonder,\na marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "“What the venerable Bakkula — for only seven days ate country almsfood after having taken refuge;\nthen on the eighth day final knowledge arose —\nthis too we remember as a wonderful and marvellous quality of the venerable Bakkula.”"}]}, {"id": "39", "label": "Labheyyāhaṁ, āvuso bākula, imasmiṁ dhamma·vinaye pabbajjaṁ, labheyyaṁ…", "rows": [{"key": "mn124:39.1", "pali": "Labheyyāhaṁ, āvuso bākula, imasmiṁ dhamma·vinaye pabbajjaṁ, labheyyaṁ upasampadan”ti.", "sujato-corrected": "“Reverend Bakkula, may I receive the going forth, the ordination in this teaching and training?”", "pts": "\"May I, reverend Bakkula, receive the going forth in this Dhamma and discipline, may I receive ordination.\"", "bodhi-esque": "I might obtain, friend Bākula, the going forth in this Dhamma-and-Discipline, I might obtain the higher ordination."}, {"key": "mn124:39.2", "pali": "Alattha kho a·cela·kassapo imasmiṁ dhamma·vinaye pabbajjaṁ, alattha upasampadaṁ.", "sujato-corrected": "And the naked ascetic Kassapa received the going forth, the ordination in this teaching and training.", "pts": "And Kassapa the Unclothed received the going forth in this Dhamma and discipline, he received ordination.", "bodhi-esque": "Then the naked ascetic Kassapa obtained the going forth in this Dhamma-and-Discipline,\nhe obtained the higher ordination."}, {"key": "mn124:39.3", "pali": "Acirū·pasampanno panāyasmā kassapo eko vūpakaṭṭho appa·matto ātāpī pahitatto vi·haranto\nnacirasseva—yassatthāya kula·puttā samma·deva agārasmā an·agār·iyaṁ pabbajanti,\ntad·an·uttaraṁ—brahma·cariya·pari·yosānaṁ diṭṭheva dhamme sayaṁ\nabhiññā sacchi·katvā upasampajja vihāsi.", "sujato-corrected": "Not long after his ordination, Venerable Kassapa, living alone, withdrawn, diligent, keen,\nand resolute, soon realized the supreme end of the spiritual path in this very life.\nHe lived having achieved with his own insight the goal for which\ngentlemen rightly go forth from the lay life to homelessness.", "pts": "Not long after he had been ordained, living alone, aloof, diligent, ardent, self-resolute,\nthe venerable Kassapa having soon attained here and now through his own super-knowledge that incomparable goal\nof the Brahma-faring for the sake of which young men of family rightly go forth from home into homelessness,\nentering on it, abided in it.", "bodhi-esque": "Soon after being ordained, the Venerable Kassapa, dwelling alone, secluded, heedful, ardent,\nand resolute, before long — that for which clansmen rightly go forth from home to homelessness,\nthat unsurpassed consummation of the holy life — in this very life he himself,\nby direct knowledge, realized and entered upon and dwelt in it."}, {"key": "mn124:39.4", "pali": "“Khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ ittha·t·tāyā”ti abbh·aññāsi.", "sujato-corrected": "He understood:\n“Rebirth is ended;\nthe spiritual journey has been completed;\nwhat had to be done has been done;\nthere is nothing further for this place.”", "pts": "And he knew:\n\"Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.\"", "bodhi-esque": "He directly knew:\n'Destroyed is birth, the holy life has been lived,\nwhat had to be done has been done, there is no more for this state of being.'"}, {"key": "mn124:39.5", "pali": "Añña·taro kho panāyasmā kassapo arahataṁ ahosi.", "sujato-corrected": "And Venerable Kassapa became one of the perfected.", "pts": "And the venerable Kassapa was one of the perfected ones.", "bodhi-esque": "And the Venerable Kassapa became one of the arahants."}]}, {"id": "40", "label": "Atha kho āyasmā bākulo aparena samayena avāpura·ṇaṁ…", "rows": [{"key": "mn124:40.1", "pali": "Atha kho āyasmā bākulo aparena samayena avāpura·ṇaṁ ādāya vihārena vihāraṁ upasaṅkamitvā evamāha:", "sujato-corrected": "Then some time later Venerable Bakkula, taking a latchkey, went from dwelling to dwelling, saying,", "pts": "Then after a time the venerable Bakkula took his key and going from dwelling-place to dwelling-place, spoke thus:", "bodhi-esque": "Then on a later occasion, the Venerable Bākula, taking his cloak, approached from monastery to monastery and said thus:"}, {"key": "mn124:40.2", "pali": "“abhi·k·kamath·āyasmanto, abhi·k·kamath·āyasmanto.\nAjja me pari·nibbānaṁ bhavissatī”ti.", "sujato-corrected": "\"Come forth, venerables, come forth!\nToday will be my final Nibbāna.\"", "pts": "\"Let the venerable ones come forward, let the venerable ones come forward, today I will attain final nibbāna.\"", "bodhi-esque": "Come forward, venerable ones!\nCome forward, venerable ones!\nToday I will attain final Nibbāna."}, {"key": "mn124:40.3", "pali": "“Yampāyasmā bākulo avāpura·ṇaṁ ādāya vihārena vihāraṁ upasaṅkamitvā evamāha:\n‘abhi·k·kamath·āyasmanto, abhi·k·kamath·āyasmanto;\najja me pari·nibbānaṁ bhavissatī’ti, idampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhārema”.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as the venerable Bakkula took his key and going from dwelling-place to dwelling-place, spoke thus:\n'Let the venerable ones come forward, let the venerable ones come forward,\ntoday I will attain final nibbāna' - we regard this too as a wonder, a marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "That the Venerable Bākula, taking his cloak, approached from monastery to monastery and said thus:\n'Come forward, venerable ones!\nCome forward, venerable ones!\nToday I will attain final Nibbāna' — this too we consider a wonderful and marvelous quality of the Venerable Bākula."}]}, {"id": "41", "label": "Āyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi.", "rows": [{"key": "mn124:41.1", "pali": "Āyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi.", "sujato-corrected": "And Venerable Bakkula attained final Nibbāna while seated right in the middle of the Saṅgha.", "pts": "Then the venerable Bakkula, as he was sitting in the midst of the Order of monks, attained final nibbāna.", "bodhi-esque": "The Venerable Bākula attained final Nibbāna while sitting in the midst of the Bhikkhu Saṅgha."}, {"key": "mn124:41.2", "pali": "“Yampāyasmā bākulo majjhe bhikkhu·saṅghassa nisinnakova pari·ni·b·bāyi,\nidampi mayaṁ āyasmato bākulassa acchar·iyaṁ abbhuta·dhammaṁ dhāremā”ti.", "sujato-corrected": "This too we remember as an incredible and amazing quality of Venerable Bakkula.", "pts": "[\"Inasmuch as that the venerable Bakkula, as he was sitting in the midst of the Order of monks,\nattained final nibbāna - we regard this too as a wonder, a marvellous quality in the venerable Bakkula.\"]", "bodhi-esque": "That the Venerable Bākula attained final Nibbāna while sitting in the midst of the Bhikkhu Saṅgha —\nthis too we consider a wonderful and marvelous quality of the Venerable Bākula."}, {"key": "mn124:41.3", "pali": "Bākula·suttaṁ niṭṭhitaṁ catu·t·thaṁ.", "sujato-corrected": "", "pts": "Discourse by Bakkula The Fourth", "bodhi-esque": "The Bākula Sutta is finished, the fourth."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

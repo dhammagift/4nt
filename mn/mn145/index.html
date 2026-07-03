@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 145", "rows": [{"key": "mn145:0.1", "pali": "Majjhima Nikāya 145", "sujato-corrected": "Middle Discourses 145", "pts": ""}, {"key": "mn145:0.2", "pali": "Puṇṇ·ovāda·sutta", "sujato-corrected": "Advice to Puṇṇa", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn145:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:"}, {"key": "mn145:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was once staying near Sāvatthī, in the Jeta Grove, in Anāthapiṇḍika's, monastery."}, {"key": "mn145:1.3", "pali": "Atha kho āyasmā puṇṇo sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā puṇṇo bhagavantaṁ etadavoca:", "sujato-corrected": "Then in the late afternoon, Venerable Puṇṇa came out of retreat and went to the Buddha.\nHe bowed, sat down to one side, and said to the Buddha,", "pts": "Then the venerable Puṇṇa, emerging from solitary meditation towards evening, approached the Lord;\nhaving approached and greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Puṇṇa spoke thus to the Lord:"}]}, {"id": "2", "label": "“sādhu maṁ, bhante, bhagavā saṅkhittena ovādena ovadatu,…", "rows": [{"key": "mn145:2.1", "pali": "“sādhu maṁ, bhante, bhagavā saṅkhittena ovādena ovadatu,\nyamahaṁ bhagavato dhammaṁ sutvā eko vūpakaṭṭho appa·matto ātāpī pahitatto vihareyyan”ti.", "sujato-corrected": "“Sir, may the Buddha please teach me Dhamma in brief.\nWhen I’ve heard it, I’ll live alone, withdrawn, diligent, keen, and resolute.”", "pts": "\"It would be good, revered sir, if the Lord would exhort me with an exhortation in brief so that I,\nhaving heard dhamma from the Lord, might abide alone, aloof, diligent, ardent, self-resolute.\""}, {"key": "mn145:2.2", "pali": "“Tena hi, puṇṇa, suṇāhi,\nsādhukaṁ manasi karohi;\nbhāsi·s·sāmī”ti.", "sujato-corrected": "“Well then, Puṇṇa, listen and apply your mind well, I will speak.”", "pts": "\"Well then, Puṇṇa, listen, attend carefully and I will speak.\""}, {"key": "mn145:2.3", "pali": "“Evaṁ, bhante”ti kho āyasmā puṇṇo bhagavato pacc·assosi.", "sujato-corrected": "“Yes, sir,” replied Puṇṇa.", "pts": "\"Yes, revered sir,\" the venerable Puṇṇa answered the Lord in assent."}, {"key": "mn145:2.4", "pali": "Bhagavā etadavoca:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "3", "label": "“Santi kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā…", "rows": [{"key": "mn145:3.1", "pali": "“Santi kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "“Puṇṇa, there are sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, material shapes cognisable by the eye, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn145:3.2", "pali": "Tañce bhikkhu abhi·nandati abhi·vadati ajjh·osāya tiṭṭhati.", "sujato-corrected": "If a mendicant approves, welcomes, and keeps clinging to them,", "pts": "If a monk delights in these, welcomes them and persists in cleaving to them, then,"}, {"key": "mn145:3.3", "pali": "Tassa taṁ abhi·nandato abhi·vadato ajjh·osāya tiṭṭhato uppajjati nandī.", "sujato-corrected": "this gives rise to relishing.", "pts": "because he delights in them, welcomes them and persists in cleaving to them, delight uprises in him."}, {"key": "mn145:3.4", "pali": "‘Nandī·samudayā dukkha·samudayo, puṇṇā’ti vadāmi.", "sujato-corrected": "Relishing is the origin of suffering, I say.", "pts": "I say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■"}, {"key": "mn145:3.5", "pali": "Santi kho, puṇṇa, sota·viññeyyā saddā …", "sujato-corrected": "There are sounds known by the ear …", "pts": "\"There are, Puṇṇa, sounds cognisable by the ear, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■"}, {"key": "mn145:3.6", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "smells known by the nose …", "pts": "\"There are, Puṇṇa, smells cognisable by the nose, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■"}, {"key": "mn145:3.7", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "tastes known by the tongue …", "pts": "\"There are, Puṇṇa, tastes cognisable by the tongue, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■"}, {"key": "mn145:3.8", "pali": "kāya·viññeyyā phoṭṭhabbā …", "sujato-corrected": "touches known by the body …", "pts": "\"There are, Puṇṇa, touches cognisable by the body, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■"}, {"key": "mn145:3.9", "pali": "mano·viññeyyā dhammā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "ideas known by the mind, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, mental states cognisable by the mind, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn145:3.10", "pali": "Tañce bhikkhu abhi·nandati abhi·vadati ajjh·osāya tiṭṭhati.", "sujato-corrected": "If a mendicant approves, welcomes, and keeps clinging to them,", "pts": "If a monk delights in these, welcomes them and persists in cleaving to them, then,"}, {"key": "mn145:3.11", "pali": "Tassa taṁ abhi·nandato abhi·vadato ajjh·osāya tiṭṭhato uppajjati nandī.", "sujato-corrected": "this gives rise to relishing.", "pts": "because he delights in them, welcomes them and persists in cleaving to them, delight uprises in him."}, {"key": "mn145:3.12", "pali": "‘Nandī·samudayā dukkha·samudayo, puṇṇā’ti vadāmi.", "sujato-corrected": "Relishing is the origin of suffering, I say.", "pts": "I say, Puṇṇa, that from the uprising of delight is the uprising of anguish."}]}, {"id": "4", "label": "Santi ca kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā…", "rows": [{"key": "mn145:4.1", "pali": "Santi ca kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "There are sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, material shapes cognisable by the eye, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn145:4.2", "pali": "Tañce bhikkhu nābhinandati\nnābhivadati nājjhosāya tiṭṭhati.", "sujato-corrected": "If a mendicant doesn’t approve, welcome, and keep clinging to them,", "pts": "If a monk does not delight in these, does not welcome them or persists in cleaving to them, then,"}, {"key": "mn145:4.3", "pali": "Tassa taṁ an·abhi·nandato an·abhi·vadato an·ajjh·osāya tiṭṭhato nandī nirujjhati.", "sujato-corrected": "relishing ceases.", "pts": "because he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him."}, {"key": "mn145:4.4", "pali": "‘Nandī·nirodhā dukkha·nirodho, puṇṇā’ti vadāmi.", "sujato-corrected": "When relishing ceases, suffering ceases, I say.", "pts": "I say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■"}, {"key": "mn145:4.5", "pali": "Santi ca kho, puṇṇa, sota·viññeyyā saddā …", "sujato-corrected": "There are sounds known by the ear …", "pts": "\"There are, Puṇṇa, sounds cognisable by the ear, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■"}, {"key": "mn145:4.6", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "smells known by the nose …", "pts": "\"There are, Puṇṇa, smells cognisable by the nose, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■"}, {"key": "mn145:4.7", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "tastes known by the tongue …", "pts": "\"There are, Puṇṇa, tastes cognisable by the tongue, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■"}, {"key": "mn145:4.8", "pali": "kāya·viññeyyā phoṭṭhabbā …", "sujato-corrected": "touches known by the body …", "pts": "\"There are, Puṇṇa, touches cognisable by the body, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■"}, {"key": "mn145:4.9", "pali": "mano·viññeyyā dhammā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "ideas known by the mind, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, mental states cognisable by the mind, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn145:4.10", "pali": "Tañce bhikkhu nābhinandati\nnābhivadati nājjhosāya tiṭṭhati.", "sujato-corrected": "If a mendicant doesn’t approve, welcome, and keep clinging to them,", "pts": "If a monk does not delight in these, does not welcome them or persists in cleaving to them, then,"}, {"key": "mn145:4.11", "pali": "Tassa taṁ an·abhi·nandato an·abhi·vadato an·ajjh·osāya tiṭṭhato nandī nirujjhati.", "sujato-corrected": "relishing ceases.", "pts": "because he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him."}, {"key": "mn145:4.12", "pali": "‘Nandī·nirodhā dukkha·nirodho, puṇṇā’ti vadāmi.", "sujato-corrected": "When relishing ceases, suffering ceases, I say.", "pts": "I say, Puṇṇa, that from the stopping of delight is the stopping of anguish."}]}, {"id": "5", "label": "Iminā ca tvaṁ, puṇṇa, mayā saṅkhittena ovādena…", "rows": [{"key": "mn145:5.1", "pali": "Iminā ca tvaṁ, puṇṇa, mayā saṅkhittena ovādena ovadito katarasmiṁ jana·pade viharissasī”ti?", "sujato-corrected": "Puṇṇa, now that I’ve given you this brief advice, what country will you live in?”", "pts": "And in what district will you stay, Puṇṇa, now that you have been exhorted by me with this exhortation in brief?\""}, {"key": "mn145:5.2", "pali": "“Imināhaṁ, bhante, bhagavatā saṅkhittena ovādena ovadito, atthi\nsunāparanto nāma jana·pado, tatthāhaṁ vihari·s·sāmī”ti.", "sujato-corrected": "“Sir, there’s a country named Sunāparanta.\nI shall live there.”", "pts": "\"There is a district called Sunāparanta.\nI will stay there, revered sir, now that I have been exhorted by the Lord with this exhortation in brief.\""}, {"key": "mn145:5.3", "pali": "“Caṇḍā kho, puṇṇa, sunāparantakā manussā;", "sujato-corrected": "“The people of Sunāparanta are wild and rough, Puṇṇa.", "pts": "\"Puṇṇa, the people of Sunāparanta are fierce, the people of Sunāparanta are rough."}, {"key": "mn145:5.4", "pali": "pharusā kho, puṇṇa, sunāparantakā manussā.", "sujato-corrected": "", "pts": ""}, {"key": "mn145:5.5", "pali": "Sace taṁ, puṇṇa, sunāparantakā manussā akkosissanti\npari·bhāsissanti, tattha te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "If they abuse and insult you, what will you think of them?”", "pts": "If the people of Sunāparanta revile and abuse you, Puṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.6", "pali": "“Sace maṁ, bhante, sunāparantakā manussā akkosissanti\npari·bhāsissanti, tattha me evaṁ bhavissati:", "sujato-corrected": "“If they abuse and insult me, I will think:", "pts": "\"If the people of Sunāparanta revile and abuse me, revered sir, it will be thus for me there:"}, {"key": "mn145:5.7", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime pāṇinā pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t hit me with their fists.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with their hands.'"}, {"key": "mn145:5.8", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■"}, {"key": "mn145:5.9", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}, {"key": "mn145:5.10", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā pāṇinā pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do hit you with their fists, what will you think of them then?”", "pts": "\"But if the people of Sunāparnata do strike you a blow with their hands, Puṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.11", "pali": "“Sace me, bhante, sunāparantakā manussā pāṇinā pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they hit me with their fists, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with their hands, revered sir, it will be thus for me there:"}, {"key": "mn145:5.12", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime leḍḍunā pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t throw stones at me.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with clods of earth.'"}, {"key": "mn145:5.13", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■"}, {"key": "mn145:5.14", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}, {"key": "mn145:5.15", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā leḍḍunā pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do throw stones at you, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with clods of earth, Puṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.16", "pali": "“Sace me, bhante, sunāparantakā manussā leḍḍunā pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they throw stones at me, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with clods of earth, revered sir, it will be thus for me there:"}, {"key": "mn145:5.17", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime daṇḍena pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t beat me with a club.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with a stick.'"}, {"key": "mn145:5.18", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■"}, {"key": "mn145:5.19", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}, {"key": "mn145:5.20", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā daṇḍena pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do beat you with a club, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with a stick, Puṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.21", "pali": "“Sace me, bhante, sunāparantakā manussā daṇḍena pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they beat me with a club, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with a stick, revered sir, it will be thus for me there:"}, {"key": "mn145:5.22", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā,\nyaṁ me nayime satthena pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t stab me with a knife.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with a knife.'"}, {"key": "mn145:5.23", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■"}, {"key": "mn145:5.24", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}, {"key": "mn145:5.25", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā satthena pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do stab you with a knife, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with a knife, Puṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.26", "pali": "“Sace me, bhante, sunāparantakā manussā satthena pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they stab me with a knife, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with a knife, revered sir, it will be thus for me there:"}, {"key": "mn145:5.27", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā,\nyaṁ maṁ nayime tiṇhena satthena jīvitā voropentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t take my life with a sharp knife.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not deprive me of life with a sharp knife.'"}, {"key": "mn145:5.28", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■"}, {"key": "mn145:5.29", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}, {"key": "mn145:5.30", "pali": "“Sace pana taṁ, puṇṇa, sunāparantakā manussā tiṇhena satthena jīvitā voropessanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do take your life with a sharp knife, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do deprive you of life with a sharp knife,\nPuṇṇa, how will it be for you there, Puṇṇa?\""}, {"key": "mn145:5.31", "pali": "“Sace maṁ, bhante, sunāparantakā manussā tiṇhena satthena jīvitā voropessanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they take my life with a sharp knife, I’ll think:", "pts": "\"If the people of Sunāparanta deprive me of life with a sharp knife, revered sir, it will be thus for me there:"}, {"key": "mn145:5.32", "pali": "‘santi kho bhagavato sāvakā kāye\nca jīvite ca aṭṭīya·mānā harāya·mānā jiguccha·mānā sattha·hārakaṁ pari·yesanti.\nTaṁ me idaṁ a·pari·yiṭṭhaṁ·yeva sattha·hārakaṁ laddhan’ti.", "sujato-corrected": "‘There are disciples of the Buddha who looked for a suicide weapon because they were horrified,\nrepelled, and disgusted with the body and with life.\nAnd I have found this without looking!’", "pts": "I will say,\n'There are disciples of the Lord who, disgusted by the body and the life-principle and ashamed of them,\nlook about for a knife (with which to kill themselves).\nI have come upon this very knife without having looked about for it.'"}, {"key": "mn145:5.33", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\""}, {"key": "mn145:5.34", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": ""}]}, {"id": "6", "label": "“Sādhu sādhu, puṇṇa.", "rows": [{"key": "mn145:6.1", "pali": "“Sādhu sādhu, puṇṇa.", "sujato-corrected": "“Good, good Puṇṇa!", "pts": "\"It is good, Puṇṇa, it is good."}, {"key": "mn145:6.2", "pali": "Sakkhissasi kho tvaṁ, puṇṇa, iminā damū·pasamena samannāgato sunāparantasmiṁ jana·pade viharituṁ.", "sujato-corrected": "Having such self-control and peacefulness, you will be quite capable of living in Sunāparanta.", "pts": "You will be able to live in the district among the people of Sunāparanta possessed as you are of this taming and calm."}, {"key": "mn145:6.3", "pali": "Yassa·dāni tvaṁ, puṇṇa, kālaṁ maññasī”ti.", "sujato-corrected": "Now, Puṇṇa, go at your convenience.”", "pts": "You, Punna, now do that for which you deem the time is right.\""}]}, {"id": "7", "label": "Atha kho āyasmā puṇṇo bhagavato bhāsitaṁ abhi·nand·itvā…", "rows": [{"key": "mn145:7.1", "pali": "Atha kho āyasmā puṇṇo bhagavato bhāsitaṁ abhi·nand·itvā anumoditvā uṭṭhāy·āsanā bhagavantaṁ abhi·vādetvā\npadakkhiṇaṁ katvā senāsanaṁ saṁsāmetvā pattacīvaramādāya yena sunāparanto jana·pado tena cārikaṁ pakkāmi.", "sujato-corrected": "And then Puṇṇa welcomed and agreed with the Buddha’s words.\nHe got up from his seat, bowed, and respectfully circled the Buddha, keeping him on his right.\nThen he set his lodgings in order and, taking his bowl and robe, set out for Sunāparanta.", "pts": "Then the venerable Puṇṇa, having rejoiced in what the Lord had said and having given thanks for it,\nrose from his seat and greeted the Lord keeping his right side towards him,\npacked away his lodging and, taking his bowl and robe, set out on tour for the Sunāparanta district."}, {"key": "mn145:7.2", "pali": "Anu·pubbena cārikaṁ cara·māno yena sunāparanto jana·pado tadavasari.", "sujato-corrected": "Traveling stage by stage, he arrived at Sunāparanta,", "pts": "Walking on tour, he gradually arrived at the Sunāparanta district."}, {"key": "mn145:7.3", "pali": "Tatra su·daṁ āyasmā puṇṇo sunāparantasmiṁ jana·pade viharati.", "sujato-corrected": "and stayed there.", "pts": "While he was there the venerable Punṇa stayed in the district among the people of Sunāparanta."}, {"key": "mn145:7.4", "pali": "Atha kho āyasmā puṇṇo teneva·ntaravassena pañca·mattāni upāsakasatāni paṭi·vedesi,\nteneva·ntaravassena pañca·mattāni upāsika·satāni paṭi·vedesi, teneva·ntaravassena tisso vijjā sacchākāsi.", "sujato-corrected": "Within that rainy season he confirmed around five hundred male and five hundred female lay followers.\nAnd within that same rainy season he realized the three knowledges.", "pts": "And during the same rainy season the venerable Puṇṇa established as many as five hundred lay-devotees,\nas many as five hundred female lay-devotees, and he realized the three knowledges."}, {"key": "mn145:7.5", "pali": "Atha kho āyasmā puṇṇo aparena samayena pari·ni·b·bāyi.", "sujato-corrected": "Some time later he became fully extinguished.", "pts": "Then after a time the venerable Puṇṇa attained final nibbāna."}]}, {"id": "8", "label": "Atha kho sambahulā bhikkhū yena bhagavā tenupasaṅkamiṁsu;…", "rows": [{"key": "mn145:8.1", "pali": "Atha kho sambahulā bhikkhū\nyena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinnā kho te bhikkhū\nbhagavantaṁ etadavocuṁ:", "sujato-corrected": "Then several mendicants went up to the Buddha, bowed, sat down to one side, and said to him,", "pts": "A number of monks approached the Lord;\nhaving approached and greeted the Lord, they sat down at a respectful distance.\nAs they were sitting down at a respectful distance, these monks spoke thus to the Lord:"}, {"key": "mn145:8.2", "pali": "“yo so, bhante, puṇṇo nāma kula·putto bhagavatā saṅkhittena ovādena ovadito so kālaṅkato.", "sujato-corrected": "“Sir, the gentleman named Puṇṇa, who was advised in brief by the Buddha, has passed away.", "pts": "\"Revered sir, that young man of family named Puṇṇa who was exhorted by the Lord with an exhortation in brief, has died."}, {"key": "mn145:8.3", "pali": "Tassa kā gati, ko abhi·samparāyo”ti?", "sujato-corrected": "Where has he been reborn in his next life?”", "pts": "What is his bourn, what his future state?\""}, {"key": "mn145:8.4", "pali": "“Paṇḍito, bhikkhave, puṇṇo kula·putto pacc·apādi dhamm·assā·nudhammaṁ, na ca maṁ dhammā·dhikaraṇaṁ viheṭhesi.", "sujato-corrected": "“Mendicants, Puṇṇa was astute.\nHe practiced in line with the teaching, and did not trouble me about the teachings.", "pts": "\"Clever, monks, was Puṇṇa the young man of family;\nhe followed after dhamma according to the various parts of dhamma;\nand he did not annoy me with questionings about dhamma."}, {"key": "mn145:8.5", "pali": "Pari·nibbuto, bhikkhave, puṇṇo kula·putto”ti.", "sujato-corrected": "Puṇṇa has become fully quenched.”", "pts": "Puṇṇa the young man of family has gained final nibbāna, monks.\""}, {"key": "mn145:8.6", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn145:8.7", "pali": "Atta·manā te bhikkhū\nbhagavato bhāsitaṁ abhi·nandunti.", "sujato-corrected": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said.\nDiscourse on an Exhortation to Puṇṇa:"}, {"key": "mn145:8.8", "pali": "Puṇṇ·ovāda·suttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato-corrected": "", "pts": "The Third"}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 145", "rows": [{"key": "mn145:0.1", "pali": "Majjhima Nikāya 145", "sujato-corrected": "Middle Discourses 145", "pts": "", "bodhi-esque": "Majjhima Nikāya 145"}, {"key": "mn145:0.2", "pali": "Puṇṇ·ovāda·sutta", "sujato-corrected": "Advice to Puṇṇa", "pts": "", "bodhi-esque": "The Exhortation to Puṇṇa"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn145:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:", "bodhi-esque": "Thus have I heard —"}, {"key": "mn145:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was once staying near Sāvatthī, in the Jeta Grove, in Anāthapiṇḍika's, monastery.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta's Grove, Anāthapiṇḍika's Park."}, {"key": "mn145:1.3", "pali": "Atha kho āyasmā puṇṇo sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā puṇṇo bhagavantaṁ etadavoca:", "sujato-corrected": "Then in the late afternoon, Venerable Puṇṇa came out of retreat and went to the Buddha.\nHe bowed, sat down to one side, and said to the Buddha,", "pts": "Then the venerable Puṇṇa, emerging from solitary meditation towards evening, approached the Lord;\nhaving approached and greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Puṇṇa spoke thus to the Lord:", "bodhi-esque": "Then, when it was evening, the Venerable Puṇṇa emerged from seclusion and approached the Blessed One.\nHaving approached, he paid homage to the Blessed One and sat down to one side.\nSitting to one side, the Venerable Puṇṇa said to the Blessed One:"}]}, {"id": "2", "label": "“sādhu maṁ, bhante, bhagavā saṅkhittena ovādena ovadatu,…", "rows": [{"key": "mn145:2.1", "pali": "“sādhu maṁ, bhante, bhagavā saṅkhittena ovādena ovadatu,\nyamahaṁ bhagavato dhammaṁ sutvā eko vūpakaṭṭho appa·matto ātāpī pahitatto vihareyyan”ti.", "sujato-corrected": "“Sir, may the Buddha please teach me Dhamma in brief.\nWhen I’ve heard it, I’ll live alone, withdrawn, diligent, keen, and resolute.”", "pts": "\"It would be good, revered sir, if the Lord would exhort me with an exhortation in brief so that I,\nhaving heard dhamma from the Lord, might abide alone, aloof, diligent, ardent, self-resolute.\"", "bodhi-esque": "“It would be good for me, bhante, if the Blessed One would advise me briefly,\nso that having heard the Dhamma from the Blessed One, I may dwell alone, withdrawn, heedful, ardent, and resolute.”"}, {"key": "mn145:2.2", "pali": "“Tena hi, puṇṇa, suṇāhi,\nsādhukaṁ manasi karohi;\nbhāsi·s·sāmī”ti.", "sujato-corrected": "“Well then, Puṇṇa, listen and apply your mind well, I will speak.”", "pts": "\"Well then, Puṇṇa, listen, attend carefully and I will speak.\"", "bodhi-esque": "“Then listen, Puṇṇa, attend carefully;\nI will speak.”"}, {"key": "mn145:2.3", "pali": "“Evaṁ, bhante”ti kho āyasmā puṇṇo bhagavato pacc·assosi.", "sujato-corrected": "“Yes, sir,” replied Puṇṇa.", "pts": "\"Yes, revered sir,\" the venerable Puṇṇa answered the Lord in assent.", "bodhi-esque": "“Yes, bhante,” the Venerable Puṇṇa replied to the Blessed One."}, {"key": "mn145:2.4", "pali": "Bhagavā etadavoca:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:", "bodhi-esque": "The Blessed One said this:"}]}, {"id": "3", "label": "“Santi kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā…", "rows": [{"key": "mn145:3.1", "pali": "“Santi kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "“Puṇṇa, there are sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, material shapes cognisable by the eye, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "“There are, Puṇṇa, forms cognizable by the eye that are desirable,\nlovely, agreeable, pleasing, sensually enticing, tantalizing."}, {"key": "mn145:3.2", "pali": "Tañce bhikkhu abhi·nandati abhi·vadati ajjh·osāya tiṭṭhati.", "sujato-corrected": "If a mendicant approves, welcomes, and keeps clinging to them,", "pts": "If a monk delights in these, welcomes them and persists in cleaving to them, then,", "bodhi-esque": "If a bhikkhu seeks delight in them, welcomes them, and remains clinging to them,"}, {"key": "mn145:3.3", "pali": "Tassa taṁ abhi·nandato abhi·vadato ajjh·osāya tiṭṭhato uppajjati nandī.", "sujato-corrected": "this gives rise to relishing.", "pts": "because he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.", "bodhi-esque": "For him who delights in them, welcomes them, and remains clinging to them, delight arises."}, {"key": "mn145:3.4", "pali": "‘Nandī·samudayā dukkha·samudayo, puṇṇā’ti vadāmi.", "sujato-corrected": "Relishing is the origin of suffering, I say.", "pts": "I say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■", "bodhi-esque": "‘With the arising of delight, there is the arising of suffering, Puṇṇa,’ I say."}, {"key": "mn145:3.5", "pali": "Santi kho, puṇṇa, sota·viññeyyā saddā …", "sujato-corrected": "There are sounds known by the ear …", "pts": "\"There are, Puṇṇa, sounds cognisable by the ear, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■", "bodhi-esque": "There are, Puṇṇa, sounds cognizable by the ear …"}, {"key": "mn145:3.6", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "smells known by the nose …", "pts": "\"There are, Puṇṇa, smells cognisable by the nose, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■", "bodhi-esque": "odors cognizable by the nose …"}, {"key": "mn145:3.7", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "tastes known by the tongue …", "pts": "\"There are, Puṇṇa, tastes cognisable by the tongue, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■", "bodhi-esque": "tastes cognizable by the tongue …"}, {"key": "mn145:3.8", "pali": "kāya·viññeyyā phoṭṭhabbā …", "sujato-corrected": "touches known by the body …", "pts": "\"There are, Puṇṇa, touches cognisable by the body, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk delights in these, welcomes them and persists in cleaving to them, then,\nbecause he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.\nI say, Puṇṇa, that from the uprising of delight is the uprising of anguish. ■", "bodhi-esque": "tactile objects cognizable by the body …"}, {"key": "mn145:3.9", "pali": "mano·viññeyyā dhammā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "ideas known by the mind, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, mental states cognisable by the mind, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "mental phenomena cognizable by the mind, pleasant, agreeable,\ncharming, endearing, connected with sensual pleasures, enticing."}, {"key": "mn145:3.10", "pali": "Tañce bhikkhu abhi·nandati abhi·vadati ajjh·osāya tiṭṭhati.", "sujato-corrected": "If a mendicant approves, welcomes, and keeps clinging to them,", "pts": "If a monk delights in these, welcomes them and persists in cleaving to them, then,", "bodhi-esque": "If a bhikkhu delights in them, welcomes them, and remains clinging to them."}, {"key": "mn145:3.11", "pali": "Tassa taṁ abhi·nandato abhi·vadato ajjh·osāya tiṭṭhato uppajjati nandī.", "sujato-corrected": "this gives rise to relishing.", "pts": "because he delights in them, welcomes them and persists in cleaving to them, delight uprises in him.", "bodhi-esque": "As he delights in them, welcomes them, and remains clinging to them, delight arises."}, {"key": "mn145:3.12", "pali": "‘Nandī·samudayā dukkha·samudayo, puṇṇā’ti vadāmi.", "sujato-corrected": "Relishing is the origin of suffering, I say.", "pts": "I say, Puṇṇa, that from the uprising of delight is the uprising of anguish.", "bodhi-esque": "‘With the arising of delight comes the arising of suffering,’ I say, Puṇṇa."}]}, {"id": "4", "label": "Santi ca kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā…", "rows": [{"key": "mn145:4.1", "pali": "Santi ca kho, puṇṇa, cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "There are sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, material shapes cognisable by the eye, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "There are, Puṇṇa, forms cognizable by the eye, pleasant, agreeable,\ncharming, endearing, connected with sensual pleasures, enticing."}, {"key": "mn145:4.2", "pali": "Tañce bhikkhu nābhinandati\nnābhivadati nājjhosāya tiṭṭhati.", "sujato-corrected": "If a mendicant doesn’t approve, welcome, and keep clinging to them,", "pts": "If a monk does not delight in these, does not welcome them or persists in cleaving to them, then,", "bodhi-esque": "If a bhikkhu does not delight in them, does not welcome them, does not remain clinging to them."}, {"key": "mn145:4.3", "pali": "Tassa taṁ an·abhi·nandato an·abhi·vadato an·ajjh·osāya tiṭṭhato nandī nirujjhati.", "sujato-corrected": "relishing ceases.", "pts": "because he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.", "bodhi-esque": "As he does not delight in them, does not welcome them, does not remain clinging to them, delight ceases."}, {"key": "mn145:4.4", "pali": "‘Nandī·nirodhā dukkha·nirodho, puṇṇā’ti vadāmi.", "sujato-corrected": "When relishing ceases, suffering ceases, I say.", "pts": "I say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■", "bodhi-esque": "‘With the cessation of delight comes the cessation of suffering,’ I say, Puṇṇa."}, {"key": "mn145:4.5", "pali": "Santi ca kho, puṇṇa, sota·viññeyyā saddā …", "sujato-corrected": "There are sounds known by the ear …", "pts": "\"There are, Puṇṇa, sounds cognisable by the ear, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■", "bodhi-esque": "There are, Puṇṇa, sounds cognizable by the ear …"}, {"key": "mn145:4.6", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "smells known by the nose …", "pts": "\"There are, Puṇṇa, smells cognisable by the nose, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■", "bodhi-esque": "odors cognizable by the nose …"}, {"key": "mn145:4.7", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "tastes known by the tongue …", "pts": "\"There are, Puṇṇa, tastes cognisable by the tongue, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■", "bodhi-esque": "tastes cognizable by the tongue …"}, {"key": "mn145:4.8", "pali": "kāya·viññeyyā phoṭṭhabbā …", "sujato-corrected": "touches known by the body …", "pts": "\"There are, Puṇṇa, touches cognisable by the body, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.\nIf a monk does not delight in these, does not welcome them or persists in cleaving to them, then,\nbecause he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.\nI say, Puṇṇa, that from the stopping of delight is the stopping of anguish. ■", "bodhi-esque": "tactile objects cognizable by the body …"}, {"key": "mn145:4.9", "pali": "mano·viññeyyā dhammā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā.", "sujato-corrected": "ideas known by the mind, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "\"There are, Puṇṇa, mental states cognisable by the mind, agreeable,\npleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "mental phenomena cognizable by the mind, pleasant, agreeable,\ncharming, endearing, connected with sensual pleasures, enticing."}, {"key": "mn145:4.10", "pali": "Tañce bhikkhu nābhinandati\nnābhivadati nājjhosāya tiṭṭhati.", "sujato-corrected": "If a mendicant doesn’t approve, welcome, and keep clinging to them,", "pts": "If a monk does not delight in these, does not welcome them or persists in cleaving to them, then,", "bodhi-esque": "If a bhikkhu does not delight in it, does not welcome it, and does not remain holding to it."}, {"key": "mn145:4.11", "pali": "Tassa taṁ an·abhi·nandato an·abhi·vadato an·ajjh·osāya tiṭṭhato nandī nirujjhati.", "sujato-corrected": "relishing ceases.", "pts": "because he does not delight in them, welcomes them or persists in cleaving to them, delight is stopped in him.", "bodhi-esque": "For him not delighting, not welcoming, not remaining holding to it, delight ceases."}, {"key": "mn145:4.12", "pali": "‘Nandī·nirodhā dukkha·nirodho, puṇṇā’ti vadāmi.", "sujato-corrected": "When relishing ceases, suffering ceases, I say.", "pts": "I say, Puṇṇa, that from the stopping of delight is the stopping of anguish.", "bodhi-esque": "'With the cessation of delight, there is cessation of suffering, Puṇṇa,' I say."}]}, {"id": "5", "label": "Iminā ca tvaṁ, puṇṇa, mayā saṅkhittena ovādena…", "rows": [{"key": "mn145:5.1", "pali": "Iminā ca tvaṁ, puṇṇa, mayā saṅkhittena ovādena ovadito katarasmiṁ jana·pade viharissasī”ti?", "sujato-corrected": "Puṇṇa, now that I’ve given you this brief advice, what country will you live in?”", "pts": "And in what district will you stay, Puṇṇa, now that you have been exhorted by me with this exhortation in brief?\"", "bodhi-esque": "And now, Puṇṇa, being advised by me with this brief advice, in which country will you dwell?"}, {"key": "mn145:5.2", "pali": "“Imināhaṁ, bhante, bhagavatā saṅkhittena ovādena ovadito, atthi\nsunāparanto nāma jana·pado, tatthāhaṁ vihari·s·sāmī”ti.", "sujato-corrected": "“Sir, there’s a country named Sunāparanta.\nI shall live there.”", "pts": "\"There is a district called Sunāparanta.\nI will stay there, revered sir, now that I have been exhorted by the Lord with this exhortation in brief.\"", "bodhi-esque": "'By this brief advice from the Blessed One, bhante, I am advised.\nThere is a country named Sunāparanta;\nthere I will dwell.'"}, {"key": "mn145:5.3", "pali": "“Caṇḍā kho, puṇṇa, sunāparantakā manussā;", "sujato-corrected": "“The people of Sunāparanta are wild and rough, Puṇṇa.", "pts": "\"Puṇṇa, the people of Sunāparanta are fierce, the people of Sunāparanta are rough.", "bodhi-esque": "'The people of Sunāparanta are fierce, Puṇṇa;"}, {"key": "mn145:5.4", "pali": "pharusā kho, puṇṇa, sunāparantakā manussā.", "sujato-corrected": "", "pts": "", "bodhi-esque": "the people of Sunāparanta are harsh, Puṇṇa."}, {"key": "mn145:5.5", "pali": "Sace taṁ, puṇṇa, sunāparantakā manussā akkosissanti\npari·bhāsissanti, tattha te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "If they abuse and insult you, what will you think of them?”", "pts": "If the people of Sunāparanta revile and abuse you, Puṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "If the people of Sunāparanta insult you and revile you, Puṇṇa, what will you think about that?'"}, {"key": "mn145:5.6", "pali": "“Sace maṁ, bhante, sunāparantakā manussā akkosissanti\npari·bhāsissanti, tattha me evaṁ bhavissati:", "sujato-corrected": "“If they abuse and insult me, I will think:", "pts": "\"If the people of Sunāparanta revile and abuse me, revered sir, it will be thus for me there:", "bodhi-esque": "'If the people of Sunāparanta insult me and revile me, bhante, then I will think thus:"}, {"key": "mn145:5.7", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime pāṇinā pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t hit me with their fists.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with their hands.'", "bodhi-esque": "“These people of Sunāparanta are good, these people of Sunāparanta are very good,\nin that they do not give me a blow with the hand.”"}, {"key": "mn145:5.8", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■", "bodhi-esque": "Thus, Blessed One, it will be;"}, {"key": "mn145:5.9", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "thus, Well-Farer, it will be.'"}, {"key": "mn145:5.10", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā pāṇinā pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do hit you with their fists, what will you think of them then?”", "pts": "\"But if the people of Sunāparnata do strike you a blow with their hands, Puṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "'But if the people of Sunāparanta give you a blow with the hand, Puṇṇa, then what will you think about that?'"}, {"key": "mn145:5.11", "pali": "“Sace me, bhante, sunāparantakā manussā pāṇinā pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they hit me with their fists, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with their hands, revered sir, it will be thus for me there:", "bodhi-esque": "'If the people of Sunāparanta give me a blow with the hand, bhante, then I will think thus:"}, {"key": "mn145:5.12", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime leḍḍunā pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t throw stones at me.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with clods of earth.'", "bodhi-esque": "“These people of Sunāparanta are good, these people of Sunāparanta are very good,\nin that they do not give me a blow with a clod of earth.”"}, {"key": "mn145:5.13", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■", "bodhi-esque": "Thus will it be here, Blessed One;"}, {"key": "mn145:5.14", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "thus will it be here, Fortunate One.”"}, {"key": "mn145:5.15", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā leḍḍunā pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do throw stones at you, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with clods of earth, Puṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "“But if, Puṇṇa, the people of Sunāparanta give you a blow with a clod of earth, then how will it be for you there?”"}, {"key": "mn145:5.16", "pali": "“Sace me, bhante, sunāparantakā manussā leḍḍunā pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they throw stones at me, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with clods of earth, revered sir, it will be thus for me there:", "bodhi-esque": "“If, bhante, the people of Sunāparanta give me a blow with a clod of earth, then it will be for me thus:"}, {"key": "mn145:5.17", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā, yaṁ me nayime daṇḍena pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t beat me with a club.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with a stick.'", "bodhi-esque": "‘These people of Sunāparanta are indeed good, these people of Sunāparanta are very good,\nin that they do not give me a blow with a rod.’"}, {"key": "mn145:5.18", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■", "bodhi-esque": "Thus will it be here, Blessed One;"}, {"key": "mn145:5.19", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "thus will it be here, Fortunate One.”"}, {"key": "mn145:5.20", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā daṇḍena pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do beat you with a club, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with a stick, Puṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "“But if, Puṇṇa, the people of Sunāparanta give you a blow with a rod, then how will it be for you there?”"}, {"key": "mn145:5.21", "pali": "“Sace me, bhante, sunāparantakā manussā daṇḍena pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they beat me with a club, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with a stick, revered sir, it will be thus for me there:", "bodhi-esque": "“If, bhante, the people of Sunāparanta give me a blow with a rod, then it will be for me thus:"}, {"key": "mn145:5.22", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā,\nyaṁ me nayime satthena pahāraṁ dentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t stab me with a knife.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not strike me a blow with a knife.'", "bodhi-esque": "‘These people of Sunāparanta are indeed good, these people of Sunāparanta are very good,\nin that they do not give me a blow with a knife.’"}, {"key": "mn145:5.23", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■", "bodhi-esque": "Thus will it be here, Blessed One;"}, {"key": "mn145:5.24", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "thus will it be here, Fortunate One.”"}, {"key": "mn145:5.25", "pali": "“Sace pana te, puṇṇa, sunāparantakā manussā satthena pahāraṁ dassanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do stab you with a knife, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do strike you a blow with a knife, Puṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "“But if, Puṇṇa, the people of Sunāparanta give you a blow with a knife, then how will it be for you there?”"}, {"key": "mn145:5.26", "pali": "“Sace me, bhante, sunāparantakā manussā satthena pahāraṁ dassanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they stab me with a knife, I’ll think:", "pts": "\"If the people of Sunāparanta strike me a blow with a knife, revered sir, it will be thus for me there:", "bodhi-esque": "“If, bhante, the people of Sunāparanta give me a blow with a knife, then it will be for me thus:"}, {"key": "mn145:5.27", "pali": "‘bhaddakā vatime sunāparantakā manussā, subhaddakā vatime sunāparantakā manussā,\nyaṁ maṁ nayime tiṇhena satthena jīvitā voropentī’ti.", "sujato-corrected": "‘These people of Sunāparanta are gracious, truly gracious, since they don’t take my life with a sharp knife.’", "pts": "I will say,\n'Goodly indeed are these people of Sunāparanta,\nindeed very goodly are these people of Sunāparanta in that they do not deprive me of life with a sharp knife.'", "bodhi-esque": "‘These people of Sunāparanta are indeed good, these people of Sunāparanta are very good,\nin that they do not deprive me of life with a sharp knife.’"}, {"key": "mn145:5.28", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\" ■", "bodhi-esque": "Thus, Blessed One, it will be;"}, {"key": "mn145:5.29", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "Thus, Fortunate One, it will be.”"}, {"key": "mn145:5.30", "pali": "“Sace pana taṁ, puṇṇa, sunāparantakā manussā tiṇhena satthena jīvitā voropessanti,\ntattha pana te, puṇṇa, kinti bhavissatī”ti?", "sujato-corrected": "“But if they do take your life with a sharp knife, what will you think of them then?”", "pts": "\"But if the people of Sunāparanta do deprive you of life with a sharp knife,\nPuṇṇa, how will it be for you there, Puṇṇa?\"", "bodhi-esque": "“But if, Puṇṇa, the people of Sunāparanta deprive you of life with a sharp knife, then what will you think, Puṇṇa?”"}, {"key": "mn145:5.31", "pali": "“Sace maṁ, bhante, sunāparantakā manussā tiṇhena satthena jīvitā voropessanti,\ntattha me evaṁ bhavissati:", "sujato-corrected": "“If they take my life with a sharp knife, I’ll think:", "pts": "\"If the people of Sunāparanta deprive me of life with a sharp knife, revered sir, it will be thus for me there:", "bodhi-esque": "“If, bhante, the people of Sunāparanta deprive me of life with a sharp knife, then this will be my thought:"}, {"key": "mn145:5.32", "pali": "‘santi kho bhagavato sāvakā kāye\nca jīvite ca aṭṭīya·mānā harāya·mānā jiguccha·mānā sattha·hārakaṁ pari·yesanti.\nTaṁ me idaṁ a·pari·yiṭṭhaṁ·yeva sattha·hārakaṁ laddhan’ti.", "sujato-corrected": "‘There are disciples of the Buddha who looked for a suicide weapon because they were horrified,\nrepelled, and disgusted with the body and with life.\nAnd I have found this without looking!’", "pts": "I will say,\n'There are disciples of the Lord who, disgusted by the body and the life-principle and ashamed of them,\nlook about for a knife (with which to kill themselves).\nI have come upon this very knife without having looked about for it.'", "bodhi-esque": "‘There are disciples of the Blessed One who, being distressed, ashamed,\nand disgusted with the body and with life, seek a knife-bringer.\nI have obtained this knife-bringer without having sought it.’"}, {"key": "mn145:5.33", "pali": "Evam·ettha, bhagavā, bhavissati;", "sujato-corrected": "That’s what I’ll think, Blessed One.", "pts": "It will be thus for me here, Lord, it will be thus for me here, Well-farer.\"", "bodhi-esque": "Thus, Blessed One, it will be;"}, {"key": "mn145:5.34", "pali": "evam·ettha, sugata, bhavissatī”ti.", "sujato-corrected": "That’s what I’ll think, Holy One.”", "pts": "", "bodhi-esque": "Thus, Fortunate One, it will be.”"}]}, {"id": "6", "label": "“Sādhu sādhu, puṇṇa.", "rows": [{"key": "mn145:6.1", "pali": "“Sādhu sādhu, puṇṇa.", "sujato-corrected": "“Good, good Puṇṇa!", "pts": "\"It is good, Puṇṇa, it is good.", "bodhi-esque": "“Good, good, Puṇṇa."}, {"key": "mn145:6.2", "pali": "Sakkhissasi kho tvaṁ, puṇṇa, iminā damū·pasamena samannāgato sunāparantasmiṁ jana·pade viharituṁ.", "sujato-corrected": "Having such self-control and peacefulness, you will be quite capable of living in Sunāparanta.", "pts": "You will be able to live in the district among the people of Sunāparanta possessed as you are of this taming and calm.", "bodhi-esque": "Being possessed of this self-control and peacefulness, Puṇṇa,\nyou will surely be able to dwell in the Sunāparanta country."}, {"key": "mn145:6.3", "pali": "Yassa·dāni tvaṁ, puṇṇa, kālaṁ maññasī”ti.", "sujato-corrected": "Now, Puṇṇa, go at your convenience.”", "pts": "You, Punna, now do that for which you deem the time is right.\"", "bodhi-esque": "Now, Puṇṇa, you may think it is the time (to go).”"}]}, {"id": "7", "label": "Atha kho āyasmā puṇṇo bhagavato bhāsitaṁ abhi·nand·itvā…", "rows": [{"key": "mn145:7.1", "pali": "Atha kho āyasmā puṇṇo bhagavato bhāsitaṁ abhi·nand·itvā anumoditvā uṭṭhāy·āsanā bhagavantaṁ abhi·vādetvā\npadakkhiṇaṁ katvā senāsanaṁ saṁsāmetvā pattacīvaramādāya yena sunāparanto jana·pado tena cārikaṁ pakkāmi.", "sujato-corrected": "And then Puṇṇa welcomed and agreed with the Buddha’s words.\nHe got up from his seat, bowed, and respectfully circled the Buddha, keeping him on his right.\nThen he set his lodgings in order and, taking his bowl and robe, set out for Sunāparanta.", "pts": "Then the venerable Puṇṇa, having rejoiced in what the Lord had said and having given thanks for it,\nrose from his seat and greeted the Lord keeping his right side towards him,\npacked away his lodging and, taking his bowl and robe, set out on tour for the Sunāparanta district.", "bodhi-esque": "Then the Venerable Puṇṇa, having rejoiced and delighted in the Blessed One's statement,\nrising from his seat, paying homage to the Blessed One,\ncircumambulating him, putting his lodging in order,\nand taking his bowl and robe, set out on a journey to the Sunāparanta country."}, {"key": "mn145:7.2", "pali": "Anu·pubbena cārikaṁ cara·māno yena sunāparanto jana·pado tadavasari.", "sujato-corrected": "Traveling stage by stage, he arrived at Sunāparanta,", "pts": "Walking on tour, he gradually arrived at the Sunāparanta district.", "bodhi-esque": "Traveling by stages, he eventually arrived at the Sunāparanta country."}, {"key": "mn145:7.3", "pali": "Tatra su·daṁ āyasmā puṇṇo sunāparantasmiṁ jana·pade viharati.", "sujato-corrected": "and stayed there.", "pts": "While he was there the venerable Punṇa stayed in the district among the people of Sunāparanta.", "bodhi-esque": "There the Venerable Puṇṇa dwelt in the Sunāparanta country."}, {"key": "mn145:7.4", "pali": "Atha kho āyasmā puṇṇo teneva·ntaravassena pañca·mattāni upāsakasatāni paṭi·vedesi,\nteneva·ntaravassena pañca·mattāni upāsika·satāni paṭi·vedesi, teneva·ntaravassena tisso vijjā sacchākāsi.", "sujato-corrected": "Within that rainy season he confirmed around five hundred male and five hundred female lay followers.\nAnd within that same rainy season he realized the three knowledges.", "pts": "And during the same rainy season the venerable Puṇṇa established as many as five hundred lay-devotees,\nas many as five hundred female lay-devotees, and he realized the three knowledges.", "bodhi-esque": "Then during that same rains retreat, the Venerable Puṇṇa established about five hundred male lay followers,\nduring that same rains retreat about five hundred female lay followers,\nand during that same rains retreat he realized the three true knowledges."}, {"key": "mn145:7.5", "pali": "Atha kho āyasmā puṇṇo aparena samayena pari·ni·b·bāyi.", "sujato-corrected": "Some time later he became fully extinguished.", "pts": "Then after a time the venerable Puṇṇa attained final nibbāna.", "bodhi-esque": "Then at a later time, the Venerable Puṇṇa attained final Nibbāna."}]}, {"id": "8", "label": "Atha kho sambahulā bhikkhū yena bhagavā tenupasaṅkamiṁsu;…", "rows": [{"key": "mn145:8.1", "pali": "Atha kho sambahulā bhikkhū\nyena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinnā kho te bhikkhū\nbhagavantaṁ etadavocuṁ:", "sujato-corrected": "Then several mendicants went up to the Buddha, bowed, sat down to one side, and said to him,", "pts": "A number of monks approached the Lord;\nhaving approached and greeted the Lord, they sat down at a respectful distance.\nAs they were sitting down at a respectful distance, these monks spoke thus to the Lord:", "bodhi-esque": "Then a number of bhikkhus approached the Blessed One;\nhaving approached, they paid homage to the Blessed One and sat down to one side.\nSeated to one side, those bhikkhus said to the Blessed One:"}, {"key": "mn145:8.2", "pali": "“yo so, bhante, puṇṇo nāma kula·putto bhagavatā saṅkhittena ovādena ovadito so kālaṅkato.", "sujato-corrected": "“Sir, the gentleman named Puṇṇa, who was advised in brief by the Buddha, has passed away.", "pts": "\"Revered sir, that young man of family named Puṇṇa who was exhorted by the Lord with an exhortation in brief, has died.", "bodhi-esque": "“Bhante, that clansman named Puṇṇa, who was advised by the Blessed One with a brief exhortation, has passed away."}, {"key": "mn145:8.3", "pali": "Tassa kā gati, ko abhi·samparāyo”ti?", "sujato-corrected": "Where has he been reborn in his next life?”", "pts": "What is his bourn, what his future state?\"", "bodhi-esque": "What is his destination, what is his future state?”"}, {"key": "mn145:8.4", "pali": "“Paṇḍito, bhikkhave, puṇṇo kula·putto pacc·apādi dhamm·assā·nudhammaṁ, na ca maṁ dhammā·dhikaraṇaṁ viheṭhesi.", "sujato-corrected": "“Mendicants, Puṇṇa was astute.\nHe practiced in line with the teaching, and did not trouble me about the teachings.", "pts": "\"Clever, monks, was Puṇṇa the young man of family;\nhe followed after dhamma according to the various parts of dhamma;\nand he did not annoy me with questionings about dhamma.", "bodhi-esque": "“Bhikkhus, the clansman Puṇṇa was wise;\nhe practiced in accordance with the Dhamma, and he did not trouble me with arguments about the Dhamma."}, {"key": "mn145:8.5", "pali": "Pari·nibbuto, bhikkhave, puṇṇo kula·putto”ti.", "sujato-corrected": "Puṇṇa has become fully quenched.”", "pts": "Puṇṇa the young man of family has gained final nibbāna, monks.\"", "bodhi-esque": "Bhikkhus, the clansman Puṇṇa has attained final Nibbāna.”"}, {"key": "mn145:8.6", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord.", "bodhi-esque": "The Blessed One said this."}, {"key": "mn145:8.7", "pali": "Atta·manā te bhikkhū\nbhagavato bhāsitaṁ abhi·nandunti.", "sujato-corrected": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said.\nDiscourse on an Exhortation to Puṇṇa:", "bodhi-esque": "Those bhikkhus were delighted and rejoiced in the Blessed One's statement."}, {"key": "mn145:8.8", "pali": "Puṇṇ·ovāda·suttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato-corrected": "", "pts": "The Third", "bodhi-esque": "The Puṇṇovāda Sutta is finished, the third."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

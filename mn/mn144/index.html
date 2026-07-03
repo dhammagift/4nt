@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 144", "rows": [{"key": "mn144:0.1", "pali": "Majjhima Nikāya 144", "sujato-corrected": "Middle Discourses 144", "pts": ""}, {"key": "mn144:0.2", "pali": "Chann·ovāda·sutta", "sujato-corrected": "Advice to Channa", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn144:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:"}, {"key": "mn144:1.2", "pali": "ekaṁ samayaṁ bhagavā rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "pts": "At one time the Lord was staying near Rājagaha in the Bamboo Grove, at the Squirrels' Feeding-place."}]}, {"id": "2", "label": "Tena kho pana samayena āyasmā ca sāri·putto…", "rows": [{"key": "mn144:2.1", "pali": "Tena kho pana samayena āyasmā ca sāri·putto āyasmā ca mahā·cundo āyasmā ca channo gijjha·kūṭe pabbate viharanti.", "sujato-corrected": "Now at that time the venerables Sāriputta, Mahācunda, and Channa were staying on the Vulture’s Peak Mountain.", "pts": "Now at that time the venerable Sāriputta and the venerable Cunda,\nthe Great and the venerable Channa were staying on Mount Vulture Peak."}]}, {"id": "3", "label": "Tena kho pana samayena āyasmā channo ābādhiko…", "rows": [{"key": "mn144:3.1", "pali": "Tena kho pana samayena āyasmā channo ābādhiko hoti\ndukkhito bāḷha·gilāno.", "sujato-corrected": "Now at that time Venerable Channa was sick, suffering, gravely ill.", "pts": "At that time the venerable Channa was a sick man, in pain, grievously ill."}, {"key": "mn144:3.2", "pali": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yenāyasmā mahā·cundo tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ mahā·cundaṁ etadavoca:", "sujato-corrected": "Then in the late afternoon, Venerable Sāriputta came out of retreat, went to Venerable Mahācunda and said to him,", "pts": "And the venerable Sāriputta, emerging from solitary meditation towards evening,\napproached the venerable Cunda the Great;\nhaving approached, he spoke thus to the venerable Cunda the Great:"}, {"key": "mn144:3.3", "pali": "“āyām·āvuso cunda, yenāyasmā channo tenupasaṅkamissāma\ngilāna·pucchakā”ti.", "sujato-corrected": "“Come, Reverend Cunda, let’s go to see Venerable Channa and ask about his illness.”", "pts": "\"Let us go on, reverend Cunda, and approach the venerable Channa so as to ask about his illness.\""}, {"key": "mn144:3.4", "pali": "“Evam·āvuso”ti kho āyasmā mahā·cundo āyasmato sāri·puttassa pacc·assosi.", "sujato-corrected": "“Yes, reverend,” replied Mahācunda.", "pts": "\"Yes, reverend sir,\" the venerable Cunda the Great answered the venerable Sāriputta in assent."}]}, {"id": "4", "label": "Atha kho āyasmā ca sāri·putto āyasmā ca…", "rows": [{"key": "mn144:4.1", "pali": "Atha kho āyasmā ca sāri·putto āyasmā ca mahā·cundo yenāyasmā channo tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmatā channena saddhiṁ sammodiṁsu.", "sujato-corrected": "And then Sāriputta and Mahācunda went to see Channa and exchanged greetings with him.", "pts": "Then the venerable Sāriputta and the venerable Cunda the Great approached the venerable Channa;\nhaving approached, they exchanged greetings with the venerable Channa;\nhaving conversed in a friendly and courteous way, they sat down at a respectful distance."}, {"key": "mn144:4.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinno kho āyasmā sāri·putto āyasmantaṁ cha·n·naṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, they sat down to one side.\nThen Sāriputta said to Channa,", "pts": "As they were sitting down at a respectful distance, the venerable Sāriputta spoke thus to the venerable Channa:"}, {"key": "mn144:4.3", "pali": "“kacci te, āvuso channa, khamanīyaṁ, kacci yāpanīyaṁ?\nKacci te dukkhā vedanā paṭi·k·kamanti, no abhi·k·kamanti;\npaṭi·k·kamo·sānaṁ paññāyati,\nno abhi·k·kamo”ti?", "sujato-corrected": "“I hope you’re keeping well, Reverend Channa;\nI hope you’re all right.\nI hope that your pain is fading, not growing, that its fading is evident, not its growing.”", "pts": "\"I hope that you, reverend Channa, are getting better, I hope you are keeping going,\nI hope the painful feelings are lessening, not increasing, that a lessening in them is apparent, not an increase?\""}]}, {"id": "5", "label": "“Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.…", "rows": [{"key": "mn144:5.1", "pali": "“Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "“Reverend Sāriputta, I’m not keeping well, I’m not getting by.\nThe pain is terrible and growing, not fading;\nits growing is evident, not its fading.", "pts": "\"I am not getting better, reverend Sāriputta, I am not keeping going;\nmy grievously painful feelings are increasing, not lessening, an increasing in them is apparent, not a lessening."}, {"key": "mn144:5.2", "pali": "Seyyathāpi, āvuso sāri·putta, balavā puriso tiṇhena sikh·a·rena muddha·ni abhi·mattheyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā vātā muddha·ni ūhananti.", "sujato-corrected": "The winds piercing my head are so severe, it feels like a strong man drilling into my head with a sharp point.", "pts": ""}, {"key": "mn144:5.3", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati no paṭi·k·kamo.", "sujato-corrected": "", "pts": ""}, {"key": "mn144:5.4", "pali": "Seyyathāpi, āvuso sāri·putta, balavā puriso daḷhena varatta·k·khaṇḍena sīse sīsa·veṭhaṁ dadeyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā sīse sīsa·vedanā.", "sujato-corrected": "The pain in my head is so severe, it feels like a strong man tightening a strong leather strap around my head.", "pts": ""}, {"key": "mn144:5.5", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "", "pts": ""}, {"key": "mn144:5.6", "pali": "Seyyathāpi, āvuso sāri·putta, dakkho\ngoghātako vā goghātaka·ntevāsī vā tiṇhena govikantanena kucchiṁ pari·kanteyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā vātā kucchiṁ pari·kantanti.", "sujato-corrected": "The winds slicing my belly are so severe,\nlike a deft butcher or their apprentice were slicing open a cows’s belly with a sharp meat cleaver.", "pts": ""}, {"key": "mn144:5.7", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "", "pts": ""}, {"key": "mn144:5.8", "pali": "Seyyathāpi, āvuso sāri·putta,\ndve balavanto purisā dubbalataraṁ purisaṁ nānā·bāhāsu gahetvā aṅgāra·kāsuyā santāpeyyuṁ samparitāpeyyuṁ;\nevameva kho me, āvuso sāri·putta, adhi·matto kāyasmiṁ ḍāho.", "sujato-corrected": "The burning in my body is so severe,\nit feels like two strong men grabbing a weaker man by the arms to burn and scorch him on a pit of glowing coals.", "pts": ""}, {"key": "mn144:5.9", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "I’m not keeping well, I’m not getting by.\nThe pain is terrible and growing, not fading;\nits growing is evident, not its fading.", "pts": ""}, {"key": "mn144:5.10", "pali": "Satthaṁ, āvuso sāri·putta, āharissāmi,\nnāvakaṅkhāmi jīvitan”ti.", "sujato-corrected": "Reverend Sāriputta, I will commit suicide.\nI don’t wish to live.”", "pts": "I will take a knife (to myself), I do not desire life.\""}]}, {"id": "6", "label": "“Māyasmā channo satthaṁ āharesi.", "rows": [{"key": "mn144:6.1", "pali": "“Māyasmā channo satthaṁ āharesi.", "sujato-corrected": "“Please don’t commit suicide!", "pts": "\"Do not let the venerable Channa take a knife (to himself)."}, {"key": "mn144:6.2", "pali": "Yāpet·āyasmā channo.\nYāpentaṁ mayaṁ āyasmantaṁ cha·n·naṁ icchāma.", "sujato-corrected": "Venerable Channa, keep going!\nWe want you to keep going.", "pts": "The venerable Channa must go on living.\nWe want the venerable Channa to go on living."}, {"key": "mn144:6.3", "pali": "Sace āyasmato channassa natthi\nsappāyāni bhojanāni, ahaṁ āyasmato channassa sappāyāni bhojanāni pari·yesissāmi.", "sujato-corrected": "If you don’t have any suitable food, we’ll find it for you.", "pts": "If the venerable Channa has no beneficial foods, I will search for beneficial foods for the venerable Channa."}, {"key": "mn144:6.4", "pali": "Sace āyasmato channassa natthi\nsappāyāni bhesajjāni, ahaṁ āyasmato channassa sappāyāni bhesajjāni pari·yesissāmi.", "sujato-corrected": "If you don’t have suitable medicine, we’ll find it for you.", "pts": "If the venerable Channa has no beneficial medicines, I will search for beneficial medicines for the venerable Channa."}, {"key": "mn144:6.5", "pali": "Sace āyasmato channassa natthi\npati·rūpā upaṭṭhākā, ahaṁ āyasmantaṁ cha·n·naṁ upaṭṭhahissāmi.", "sujato-corrected": "If you don’t have a capable carer, we’ll find one for you.", "pts": "If the venerable Channa has no suitable attendant, I will attend to the venerable Channa."}, {"key": "mn144:6.6", "pali": "Māyasmā channo satthaṁ āharesi.", "sujato-corrected": "Please don’t commit suicide!", "pts": "Do not let the venerable Channa take a knife (to himself)."}, {"key": "mn144:6.7", "pali": "Yāpet·āyasmā channo.\nYāpentaṁ mayaṁ āyasmantaṁ cha·n·naṁ icchāmā”ti.", "sujato-corrected": "Venerable Channa, keep going!\nWe want you to keep going.”", "pts": "The venerable Channa must go on living.\nWe want the venerable Channa to go on living.\""}]}, {"id": "7", "label": "“Napi me, āvuso sāri·putta, natthi sappāyāni bhojanāni;", "rows": [{"key": "mn144:7.1", "pali": "“Napi me, āvuso sāri·putta, natthi\nsappāyāni bhojanāni;", "sujato-corrected": "“Reverend Sāriputta, it’s not that I don’t have suitable food,", "pts": "\"Reverend Sāriputta, I am not without beneficial foods,"}, {"key": "mn144:7.2", "pali": "napi me natthi sappāyāni bhesajjāni;", "sujato-corrected": "or suitable medicine,", "pts": "I am not without beneficial medicines, nor am I without a suitable attendant."}, {"key": "mn144:7.3", "pali": "napi me natthi pati·rūpā upaṭṭhākā;", "sujato-corrected": "or a capable carer.", "pts": ""}, {"key": "mn144:7.4", "pali": "api cāvuso sāri·putta, pari·ciṇṇo me satthā dīgha·rattaṁ manāp·eneva no a·manāpena.", "sujato-corrected": "Moreover, for a long time now I have served the Teacher with love, not without love.", "pts": "Moreover, reverend Sāriputta, for a long time have I waited on the Teacher with satisfaction (to him),\nnot with lack of satisfaction (to him)."}, {"key": "mn144:7.5", "pali": "Etañhi, āvuso sāri·putta, sāvakassa patirūpaṁ yaṁ satthāraṁ pari·careyya manāp·eneva no a·manāpena.", "sujato-corrected": "For it is proper for a disciple to serve the Teacher with love, not without love.", "pts": "For this, reverend Sāriputta, is suitable in a disciple,\nthat he should wait on the Teacher with satisfaction (to him), not with lack of satisfaction (to him)."}, {"key": "mn144:7.6", "pali": "‘An·upavajjaṁ channo bhikkhu satthaṁ āharissatī’ti evam·etaṁ, āvuso sāri·putta, dhārehī”ti.", "sujato-corrected": "You should remember this:\n‘The mendicant Channa will commit suicide blamelessly.’”", "pts": "'Channa the monk will take a knife (to himself) without incurring blame' - remember this thus, reverend Sāriputta.\""}]}, {"id": "8", "label": "“Puccheyyāma mayaṁ āyasmantaṁ cha·n·naṁ kañci·deva desaṁ, sace…", "rows": [{"key": "mn144:8.1", "pali": "“Puccheyyāma mayaṁ āyasmantaṁ cha·n·naṁ kañci·deva desaṁ, sace āyasmā channo okāsaṁ karoti\npañhassa veyy·ākaraṇāyā”ti.", "sujato-corrected": "“I’d like to ask you about a certain point, if you’d take the time to answer.”", "pts": "\"We would question the venerable Channa on a particular matter if the\nvenerable Channa grants us the opportunity for setting forth the question.\""}, {"key": "mn144:8.2", "pali": "“Pucch·āvuso sāri·putta, sutvā vedissāmī”ti.", "sujato-corrected": "“Ask, Reverend Sāriputta.\nWhen I’ve heard it I’ll know.”", "pts": "\"Ask, reverend Sāriputta;\nhaving heard (you) we will know (what to say).\""}]}, {"id": "9", "label": "“Cakkhuṁ, āvuso channa, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘etaṁ…", "rows": [{"key": "mn144:9.1", "pali": "“Cakkhuṁ, āvuso channa, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘etaṁ mama,\nesohamasmi, eso me attā’ti samanupassasi?", "sujato-corrected": "“Reverend Channa, do you regard the eye, eye consciousness, and things knowable by eye consciousness in this way:\n‘This is mine, I am this, this is my self’?", "pts": "\"Reverend Channa, do you regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.2", "pali": "Sotaṁ, āvuso channa, sota·viññāṇaṁ …pe…", "sujato-corrected": "Do you regard the ear …", "pts": "■ Do you regard the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.3", "pali": "ghānaṁ, āvuso channa, ghāna·viññāṇaṁ …", "sujato-corrected": "nose …", "pts": "■ Do you regard the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.4", "pali": "jivhaṁ, āvuso channa, jivhā·viññāṇaṁ …", "sujato-corrected": "tongue …", "pts": "■ Do you regard the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.5", "pali": "kāyaṁ, āvuso channa, kāya·viññāṇaṁ …", "sujato-corrected": "body …", "pts": "■ Do you regard the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.6", "pali": "manaṁ, āvuso channa, mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘etaṁ mama,\nesohamasmi, eso me attā’ti samanupassasī”ti?", "sujato-corrected": "mind, mind consciousness, and things knowable by mind consciousness in this way:\n‘This is mine, I am this, this is my self’?”", "pts": "■ Do you regard the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is mine, this am I, this is my self'?"}, {"key": "mn144:9.7", "pali": "“Cakkhuṁ, āvuso sāri·putta, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmi.", "sujato-corrected": "“Reverend Sāriputta, I regard the eye, eye consciousness, and things knowable by eye consciousness in this way:\n‘This is not mine, I am not this, this is not my self.’", "pts": "\"Reverend Sāriputta, I regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:9.8", "pali": "Sotaṁ, āvuso sāri·putta …pe…", "sujato-corrected": "I regard the ear …", "pts": "■ I regard the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:9.9", "pali": "ghānaṁ, āvuso sāri·putta …", "sujato-corrected": "nose …", "pts": "■ I regard the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:9.10", "pali": "jivhaṁ, āvuso sāri·putta …", "sujato-corrected": "tongue …", "pts": "■ I regard the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:9.11", "pali": "kāyaṁ, āvuso sāri·putta …", "sujato-corrected": "body …", "pts": "■ I regard the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:9.12", "pali": "manaṁ, āvuso sāri·putta, mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmī”ti.", "sujato-corrected": "mind, mind consciousness, and things knowable by mind consciousness in this way:\n‘This is not mine, I am not this, this is not my self’.”", "pts": "■ I regard the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is not mine, this am I not, this is not my self'."}]}, {"id": "10", "label": "“Cakkhusmiṁ, āvuso channa, cakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu kiṁ…", "rows": [{"key": "mn144:10.1", "pali": "“Cakkhusmiṁ, āvuso channa,\ncakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu kiṁ disvā kiṁ abhi·ñ·ñāya\ncakkhuṁ cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassasi?", "sujato-corrected": "“Reverend Channa, what have you seen, what have you directly known in these things that you regard them in this way:\n‘This is not mine, I am not this, this is not my self’?”", "pts": "\"Reverend Channa, what do you see, what do you understand there is in the eye, in visual consciousness,\nin the things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.2", "pali": "Sotasmiṁ, āvuso channa, sota·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.3", "pali": "ghānasmiṁ, āvuso channa, ghāna·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.4", "pali": "jivhāya, āvuso channa, jivhā·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.5", "pali": "kāyasmiṁ, āvuso channa, kāya·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.6", "pali": "manasmiṁ, āvuso channa,\nmano·viññāṇe mano·viññāṇa·viññātabbesu dhammesu kiṁ disvā kiṁ abhi·ñ·ñāya\nmanaṁ mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassasī”ti?", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is not mine, this am I not, this is not my self'?"}, {"key": "mn144:10.7", "pali": "“Cakkhusmiṁ, āvuso sāri·putta,\ncakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu nirodhaṁ disvā nirodhaṁ\nabhi·ñ·ñāya cakkhuṁ cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmi.", "sujato-corrected": "“Reverend Sāriputta, after seeing cessation, after directly knowing cessation in these things I regard them in this way:\n‘This is not mine, I am not this, this is not my self’.”", "pts": "\"It is because I see cessation, understand that there is cessation in the eye, reverend Sāriputta,\nin visual consciousness, in the things cognisable by visual consciousness that I,\nreverend Sāriputta, regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'."}, {"key": "mn144:10.8", "pali": "Sotasmiṁ, āvuso sāri·putta, sota·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the ear,\nauditory consciousness, the things cognisable by auditory consciousness that I regard the ear,\nauditory consciousness, the things cognisable by auditory consciousness as 'This is not mine,\nthis am I not, this is not my self'."}, {"key": "mn144:10.9", "pali": "ghānasmiṁ, āvuso sāri·putta, ghāna·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the nose,\nolfactory consciousness, the things cognisable by olfactory consciousness that I regard the nose,\nolfactory consciousness, the things cognisable by olfactory consciousness as 'This is not mine,\nthis am I not, this is not my self'."}, {"key": "mn144:10.10", "pali": "jivhāya, āvuso sāri·putta, jivhā·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the tongue,\ngustatory consciousness, the things cognisable by gustatory consciousness that I regard the tongue,\ngustatory consciousness, the things cognisable by gustatory consciousness as 'This is not mine,\nthis am I not, this is not my self'."}, {"key": "mn144:10.11", "pali": "kāyasmiṁ, āvuso sāri·putta, kāya·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the body,\ntactile consciousness, the things cognisable by tactile consciousness that I regard the body,\ntactile consciousness, the things cognisable by tactile consciousness as 'This is not mine,\nthis am I not, this is not my self'."}, {"key": "mn144:10.12", "pali": "manasmiṁ, āvuso sāri·putta,\nmano·viññāṇe mano·viññāṇa·viññātabbesu dhammesu nirodhaṁ disvā nirodhaṁ\nabhi·ñ·ñāya manaṁ mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmī”ti.", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the mind,\nmental consciousness, the things cognisable by mental consciousness that I regard the mind,\nmental consciousness, the things cognisable by mental consciousness as 'This is not mine,\nthis am I not, this is not my self'.\""}]}, {"id": "11", "label": "Evaṁ vutte, āyasmā mahā·cundo āyasmantaṁ cha·n·naṁ etadavoca:", "rows": [{"key": "mn144:11.1", "pali": "Evaṁ vutte, āyasmā mahā·cundo āyasmantaṁ cha·n·naṁ etadavoca:", "sujato-corrected": "When he said this, Venerable Mahācunda said to Venerable Channa:", "pts": "When this had been said, the venerable Cunda the Great spoke thus to the venerable Channa:"}, {"key": "mn144:11.2", "pali": "“tasmā·tiha, āvuso channa, idampi tassa bhagavato sāsanaṁ, nicca·kappaṁ manasi kātabbaṁ:", "sujato-corrected": "“So, Reverend Channa, you should regularly apply your mind to this instruction of the Buddha:", "pts": "\"Wherefore, reverend Channa, this teaching of the Lord should always be attended to:"}, {"key": "mn144:11.3", "pali": "‘nissitassa calitaṁ, a·nissitassa calitaṁ natthi.", "sujato-corrected": "‘For the dependent there is agitation.\nFor the independent there’s no agitation.", "pts": "'For him who clings there is wavering;\nfor him who clings not there is no wavering;"}, {"key": "mn144:11.4", "pali": "Calite asati passaddhi,", "sujato-corrected": "When there’s no agitation there is tranquility.", "pts": "if there is no wavering there is impassibility;"}, {"key": "mn144:11.5", "pali": "passaddhiyā sati nati na hoti.", "sujato-corrected": "When there is tranquility there’s no inclination.", "pts": "if there is impassibility there is no yearning;"}, {"key": "mn144:11.6", "pali": "Natiyā asati āgati·gati na hoti.", "sujato-corrected": "When there’s no inclination there’s no coming and going.", "pts": "if there is no yearning, there is no coming and going;"}, {"key": "mn144:11.7", "pali": "Āgati·gatiyā asati cutū·papāto na hoti.", "sujato-corrected": "When there’s no coming and going there’s no passing away and reappearing.", "pts": "if there is no coming and going, there is no deceasing and uprising;"}, {"key": "mn144:11.8", "pali": "Cutū·papāte asati nevidha na huraṁ na ubhayam·anta·rena.", "sujato-corrected": "When there’s no passing away and reappearing there’s no this life or the next or between the two.", "pts": "if there is no deceasing and uprising, there is no \"here\" itself nor \"yonder\" nor \"in between the two.\""}, {"key": "mn144:11.9", "pali": "Esevanto dukkh·assā’”ti.", "sujato-corrected": "Just this is the end of suffering.’”", "pts": "This is itself the end of anguish.'"}, {"key": "mn144:11.10", "pali": "Atha kho āyasmā ca sāri·putto āyasmā ca mahā·cundo āyasmantaṁ cha·n·naṁ iminā ovādena ovaditvā uṭṭhāy·āsanā pakkamiṁsu.", "sujato-corrected": "And when the venerables Sāriputta and Mahācunda had given\nVenerable Channa this advice they got up from their seat and left.", "pts": "Then the venerable Sāriputta and the venerable Cunda the Great,\nhaving exhorted the venerable Channa with this exhortation, rose from their seats and departed."}]}, {"id": "12", "label": "Atha kho āyasmā channo a·cira·pakkante āyasmante ca…", "rows": [{"key": "mn144:12.1", "pali": "Atha kho āyasmā channo a·cira·pakkante āyasmante ca sāri·putte āyasmante ca mahā·cunde satthaṁ āharesi.", "sujato-corrected": "Not long after those venerables had left, Venerable Channa committed suicide.", "pts": "And not long after the departure of the venerable Sāriputta and the venerable Cunda the Great,\nthe venerable Channa took a knife (to himself)."}]}, {"id": "13", "label": "Atha kho āyasmā sāri·putto yena bhagavā tenupasaṅkami;…", "rows": [{"key": "mn144:13.1", "pali": "Atha kho āyasmā sāri·putto yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā sāri·putto bhagavantaṁ etadavoca:", "sujato-corrected": "Then Sāriputta went up to the Buddha, bowed, sat down to one side, and said to him,", "pts": "Then the venerable Sāriputta approached the Lord;\nhaving approached and greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Sāriputta spoke thus to the Lord:"}, {"key": "mn144:13.2", "pali": "“āyasmatā, bhante, channena satthaṁ āharitaṁ.", "sujato-corrected": "“Sir, Venerable Channa has committed suicide.", "pts": "\"Revered sir, a knife has been taken by the venerable Channa to himself."}, {"key": "mn144:13.3", "pali": "Tassa kā gati, ko abhi·samparāyo”ti?", "sujato-corrected": "Where has he been reborn in his next life?”", "pts": "What is his bourn, what his future state?\""}, {"key": "mn144:13.4", "pali": "“Nanu te, sāri·putta, channena bhikkhunā sammukhā·yeva anupavajjatā by·ākatā”ti?", "sujato-corrected": "“Sāriputta, didn’t the mendicant Channa declare his blamelessness to you personally?”", "pts": "\"Was it not face to face with you, Sāriputta, that the monk Channa declared (his) blamelessness?\""}, {"key": "mn144:13.5", "pali": "“Atthi, bhante, pubbajiraṁ nāma vajji·gāmo.", "sujato-corrected": "“Sir, there is a Vajjian village named Pubbajira.", "pts": "\"There is, revered sir, a village of the Vajjis called Pubbajira."}, {"key": "mn144:13.6", "pali": "Tatth·āyasmato channassa mitta·kulāni suhajja·kulāni upavajjakulānī”ti.", "sujato-corrected": "There Channa had families who were friendly, intimate, and hospitable.”", "pts": "There are families there who were friends of the venerable Channa,\nfamilies which sustained him, families to be visited.\""}, {"key": "mn144:13.7", "pali": "“Honti hete, sāri·putta, channassa bhikkhuno mitta·kulāni suhajja·kulāni upavajja·kulāni.", "sujato-corrected": "“The mendicant Channa did indeed have such families.", "pts": "\"Indeed, Sāriputta, these families were friends of the monk Channa, families who sustained him, families to be visited."}, {"key": "mn144:13.8", "pali": "Nāhaṁ, sāri·putta, ettāvatā ‘saupavajjo’ti vadāmi.", "sujato-corrected": "But this is not enough for me to call someone ‘blameworthy’.", "pts": "As far as this, Sāriputta, I do not say he was to be blamed."}, {"key": "mn144:13.9", "pali": "Yo kho, sāri·putta, imañca kāyaṁ nikkhipati\naññañca kāyaṁ upādiyati\ntamahaṁ ‘saupavajjo’ti vadāmi.", "sujato-corrected": "When someone lays down this body and takes up another body, I call them ‘blameworthy’.", "pts": "But whoever, Sāriputta, lays down this body and grasps after another body, of him I say he is to be blamed."}, {"key": "mn144:13.10", "pali": "Taṁ channassa bhikkhuno natthi.", "sujato-corrected": "But the mendicant Channa did no such thing.", "pts": "The monk Channa did not do this;"}, {"key": "mn144:13.11", "pali": "‘An·upavajjo channo bhikkhu satthaṁ āharesī’ti evam·etaṁ, sāri·putta, dhārehī”ti.", "sujato-corrected": "You should remember this:\n‘The mendicant Channa committed suicide blamelessly.’”", "pts": "the monk Channa took the knife (to himself) without incurring blame.\""}, {"key": "mn144:13.12", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn144:13.13", "pali": "Atta·mano āyasmā sāri·putto bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Sāriputta approved what the Buddha said.", "pts": "Delighted, the venerable Sāriputta rejoiced in what the Lord had said.\nDiscourse on an Exhortation to Channa;\nThe Second"}, {"key": "mn144:13.14", "pali": "Chann·ovāda·suttaṁ niṭṭhitaṁ dutiyaṁ.", "sujato-corrected": "", "pts": ""}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 144", "rows": [{"key": "mn144:0.1", "pali": "Majjhima Nikāya 144", "sujato-corrected": "Middle Discourses 144", "pts": "", "bodhi-esque": "Majjhima Nikāya 144"}, {"key": "mn144:0.2", "pali": "Chann·ovāda·sutta", "sujato-corrected": "Advice to Channa", "pts": "", "bodhi-esque": "Channovāda Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn144:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:", "bodhi-esque": "Thus have I heard —"}, {"key": "mn144:1.2", "pali": "ekaṁ samayaṁ bhagavā rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time the Buddha was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "pts": "At one time the Lord was staying near Rājagaha in the Bamboo Grove, at the Squirrels' Feeding-place.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Rājagaha, in the Bamboo Grove, the Squirrel Sanctuary."}]}, {"id": "2", "label": "Tena kho pana samayena āyasmā ca sāri·putto…", "rows": [{"key": "mn144:2.1", "pali": "Tena kho pana samayena āyasmā ca sāri·putto āyasmā ca mahā·cundo āyasmā ca channo gijjha·kūṭe pabbate viharanti.", "sujato-corrected": "Now at that time the venerables Sāriputta, Mahācunda, and Channa were staying on the Vulture’s Peak Mountain.", "pts": "Now at that time the venerable Sāriputta and the venerable Cunda,\nthe Great and the venerable Channa were staying on Mount Vulture Peak.", "bodhi-esque": "Now on that occasion the Venerable Sāriputta, the Venerable Mahācunda,\nand the Venerable Channa were dwelling on Mount Vulture Peak."}]}, {"id": "3", "label": "Tena kho pana samayena āyasmā channo ābādhiko…", "rows": [{"key": "mn144:3.1", "pali": "Tena kho pana samayena āyasmā channo ābādhiko hoti\ndukkhito bāḷha·gilāno.", "sujato-corrected": "Now at that time Venerable Channa was sick, suffering, gravely ill.", "pts": "At that time the venerable Channa was a sick man, in pain, grievously ill.", "bodhi-esque": "Now on that occasion the Venerable Channa was sick,\nafflicted, severely ill."}, {"key": "mn144:3.2", "pali": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yenāyasmā mahā·cundo tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ mahā·cundaṁ etadavoca:", "sujato-corrected": "Then in the late afternoon, Venerable Sāriputta came out of retreat, went to Venerable Mahācunda and said to him,", "pts": "And the venerable Sāriputta, emerging from solitary meditation towards evening,\napproached the venerable Cunda the Great;\nhaving approached, he spoke thus to the venerable Cunda the Great:", "bodhi-esque": "Then, in the evening,\nthe Venerable Sāriputta emerged from seclusion and approached the Venerable Mahācunda;\nhaving approached,\nhe said to the Venerable Mahācunda:"}, {"key": "mn144:3.3", "pali": "“āyām·āvuso cunda, yenāyasmā channo tenupasaṅkamissāma\ngilāna·pucchakā”ti.", "sujato-corrected": "“Come, Reverend Cunda, let’s go to see Venerable Channa and ask about his illness.”", "pts": "\"Let us go on, reverend Cunda, and approach the venerable Channa so as to ask about his illness.\"", "bodhi-esque": "“Come, friend Cunda, let us approach the Venerable Channa\nto inquire about his illness.”"}, {"key": "mn144:3.4", "pali": "“Evam·āvuso”ti kho āyasmā mahā·cundo āyasmato sāri·puttassa pacc·assosi.", "sujato-corrected": "“Yes, reverend,” replied Mahācunda.", "pts": "\"Yes, reverend sir,\" the venerable Cunda the Great answered the venerable Sāriputta in assent.", "bodhi-esque": "“Yes, friend,” the Venerable Mahācunda replied to the Venerable Sāriputta."}]}, {"id": "4", "label": "Atha kho āyasmā ca sāri·putto āyasmā ca…", "rows": [{"key": "mn144:4.1", "pali": "Atha kho āyasmā ca sāri·putto āyasmā ca mahā·cundo yenāyasmā channo tenupasaṅkamiṁsu;\nupasaṅkamitvā āyasmatā channena saddhiṁ sammodiṁsu.", "sujato-corrected": "And then Sāriputta and Mahācunda went to see Channa and exchanged greetings with him.", "pts": "Then the venerable Sāriputta and the venerable Cunda the Great approached the venerable Channa;\nhaving approached, they exchanged greetings with the venerable Channa;\nhaving conversed in a friendly and courteous way, they sat down at a respectful distance.", "bodhi-esque": "Then the Venerable Sāriputta and the Venerable Mahācunda approached the Venerable Channa;\nhaving approached,\nthey exchanged greetings with the Venerable Channa."}, {"key": "mn144:4.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinno kho āyasmā sāri·putto āyasmantaṁ cha·n·naṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, they sat down to one side.\nThen Sāriputta said to Channa,", "pts": "As they were sitting down at a respectful distance, the venerable Sāriputta spoke thus to the venerable Channa:", "bodhi-esque": "After exchanging polite greetings and courteous talk, they sat down to one side.\nSitting to one side,\nthe Venerable Sāriputta said to the Venerable Channa:"}, {"key": "mn144:4.3", "pali": "“kacci te, āvuso channa, khamanīyaṁ, kacci yāpanīyaṁ?\nKacci te dukkhā vedanā paṭi·k·kamanti, no abhi·k·kamanti;\npaṭi·k·kamo·sānaṁ paññāyati,\nno abhi·k·kamo”ti?", "sujato-corrected": "“I hope you’re keeping well, Reverend Channa;\nI hope you’re all right.\nI hope that your pain is fading, not growing, that its fading is evident, not its growing.”", "pts": "\"I hope that you, reverend Channa, are getting better, I hope you are keeping going,\nI hope the painful feelings are lessening, not increasing, that a lessening in them is apparent, not an increase?\"", "bodhi-esque": "“I hope, friend Channa, you are bearing up, I hope you are getting better?\nI hope your painful feelings are subsiding,\nnot increasing;\nsigns of subsiding are evident,\nnot of increasing.”"}]}, {"id": "5", "label": "“Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.…", "rows": [{"key": "mn144:5.1", "pali": "“Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "“Reverend Sāriputta, I’m not keeping well, I’m not getting by.\nThe pain is terrible and growing, not fading;\nits growing is evident, not its fading.", "pts": "\"I am not getting better, reverend Sāriputta, I am not keeping going;\nmy grievously painful feelings are increasing, not lessening, an increasing in them is apparent, not a lessening.", "bodhi-esque": "“I am not bearing up, friend Sāriputta, I am not getting better.\nIntense painful feelings are increasing in me,\nnot subsiding;\nsigns of increasing are evident, not of subsiding."}, {"key": "mn144:5.2", "pali": "Seyyathāpi, āvuso sāri·putta, balavā puriso tiṇhena sikh·a·rena muddha·ni abhi·mattheyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā vātā muddha·ni ūhananti.", "sujato-corrected": "The winds piercing my head are so severe, it feels like a strong man drilling into my head with a sharp point.", "pts": "", "bodhi-esque": "Just as, friend Sāriputta, a strong man might split open my head with a sharp sword;\nso too,\nfriend Sāriputta, fierce winds are pressing upon my head."}, {"key": "mn144:5.3", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati no paṭi·k·kamo.", "sujato-corrected": "", "pts": "", "bodhi-esque": "I am not bearing up, friend Sāriputta, I am not getting better.\nIntense painful feelings are increasing in me,\nnot subsiding;\nsigns of increasing are evident, not of subsiding."}, {"key": "mn144:5.4", "pali": "Seyyathāpi, āvuso sāri·putta, balavā puriso daḷhena varatta·k·khaṇḍena sīse sīsa·veṭhaṁ dadeyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā sīse sīsa·vedanā.", "sujato-corrected": "The pain in my head is so severe, it feels like a strong man tightening a strong leather strap around my head.", "pts": "", "bodhi-esque": "Just as if, friend Sāriputta, a strong man were to give a head-binding with a strong rope-twist on the head;\nso too, friend Sāriputta, extremely severe head-pains are in my head."}, {"key": "mn144:5.5", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "", "pts": "", "bodhi-esque": "Friend Sāriputta, it is not bearable for me, it is not endurable.\nSevere painful feelings are increasing in me, not subsiding;\ntheir increase is evident, not their subsiding."}, {"key": "mn144:5.6", "pali": "Seyyathāpi, āvuso sāri·putta, dakkho\ngoghātako vā goghātaka·ntevāsī vā tiṇhena govikantanena kucchiṁ pari·kanteyya;\nevameva kho me, āvuso sāri·putta, adhi·mattā vātā kucchiṁ pari·kantanti.", "sujato-corrected": "The winds slicing my belly are so severe,\nlike a deft butcher or their apprentice were slicing open a cows’s belly with a sharp meat cleaver.", "pts": "", "bodhi-esque": "Just as if, friend Sāriputta,\na skilled butcher or a butcher’s apprentice were to cut open the belly with a sharp butcher’s knife;\nso too, friend Sāriputta, extremely severe winds are cutting open my belly."}, {"key": "mn144:5.7", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "", "pts": "", "bodhi-esque": "Friend Sāriputta, it is not bearable for me, it is not endurable.\nSevere painful feelings are increasing in me, not subsiding;\ntheir increase is evident, not their subsiding."}, {"key": "mn144:5.8", "pali": "Seyyathāpi, āvuso sāri·putta,\ndve balavanto purisā dubbalataraṁ purisaṁ nānā·bāhāsu gahetvā aṅgāra·kāsuyā santāpeyyuṁ samparitāpeyyuṁ;\nevameva kho me, āvuso sāri·putta, adhi·matto kāyasmiṁ ḍāho.", "sujato-corrected": "The burning in my body is so severe,\nit feels like two strong men grabbing a weaker man by the arms to burn and scorch him on a pit of glowing coals.", "pts": "", "bodhi-esque": "Just as if, friend Sāriputta,\ntwo strong men were to seize a weaker man by both arms and heat and scorch him over a pit of glowing coals;\nso too, friend Sāriputta, there is an extremely severe burning in my body."}, {"key": "mn144:5.9", "pali": "Na me, āvuso sāri·putta, khamanīyaṁ na yāpanīyaṁ.\nBāḷhā me dukkhā vedanā abhi·k·kamanti, no paṭi·k·kamanti;\nabhi·k·kamo·sānaṁ paññāyati, no paṭi·k·kamo.", "sujato-corrected": "I’m not keeping well, I’m not getting by.\nThe pain is terrible and growing, not fading;\nits growing is evident, not its fading.", "pts": "", "bodhi-esque": "Friend Sāriputta, it is not bearable for me, it is not endurable.\nSevere painful feelings are increasing in me, not subsiding;\ntheir increase is evident, not their subsiding."}, {"key": "mn144:5.10", "pali": "Satthaṁ, āvuso sāri·putta, āharissāmi,\nnāvakaṅkhāmi jīvitan”ti.", "sujato-corrected": "Reverend Sāriputta, I will commit suicide.\nI don’t wish to live.”", "pts": "I will take a knife (to myself), I do not desire life.\"", "bodhi-esque": "Friend Sāriputta, I will take the knife;\nI do not desire life."}]}, {"id": "6", "label": "“Māyasmā channo satthaṁ āharesi.", "rows": [{"key": "mn144:6.1", "pali": "“Māyasmā channo satthaṁ āharesi.", "sujato-corrected": "“Please don’t commit suicide!", "pts": "\"Do not let the venerable Channa take a knife (to himself).", "bodhi-esque": "May the venerable Channa not take the knife."}, {"key": "mn144:6.2", "pali": "Yāpet·āyasmā channo.\nYāpentaṁ mayaṁ āyasmantaṁ cha·n·naṁ icchāma.", "sujato-corrected": "Venerable Channa, keep going!\nWe want you to keep going.", "pts": "The venerable Channa must go on living.\nWe want the venerable Channa to go on living.", "bodhi-esque": "Let the venerable Channa live on.\nWe wish for the venerable Channa to live on."}, {"key": "mn144:6.3", "pali": "Sace āyasmato channassa natthi\nsappāyāni bhojanāni, ahaṁ āyasmato channassa sappāyāni bhojanāni pari·yesissāmi.", "sujato-corrected": "If you don’t have any suitable food, we’ll find it for you.", "pts": "If the venerable Channa has no beneficial foods, I will search for beneficial foods for the venerable Channa.", "bodhi-esque": "If the venerable Channa does not have suitable foods, I will search for suitable foods for the venerable Channa."}, {"key": "mn144:6.4", "pali": "Sace āyasmato channassa natthi\nsappāyāni bhesajjāni, ahaṁ āyasmato channassa sappāyāni bhesajjāni pari·yesissāmi.", "sujato-corrected": "If you don’t have suitable medicine, we’ll find it for you.", "pts": "If the venerable Channa has no beneficial medicines, I will search for beneficial medicines for the venerable Channa.", "bodhi-esque": "If the venerable Channa does not have suitable medicines, I will search for suitable medicines for the venerable Channa."}, {"key": "mn144:6.5", "pali": "Sace āyasmato channassa natthi\npati·rūpā upaṭṭhākā, ahaṁ āyasmantaṁ cha·n·naṁ upaṭṭhahissāmi.", "sujato-corrected": "If you don’t have a capable carer, we’ll find one for you.", "pts": "If the venerable Channa has no suitable attendant, I will attend to the venerable Channa.", "bodhi-esque": "If the venerable Channa does not have suitable attendants, I will attend on the venerable Channa."}, {"key": "mn144:6.6", "pali": "Māyasmā channo satthaṁ āharesi.", "sujato-corrected": "Please don’t commit suicide!", "pts": "Do not let the venerable Channa take a knife (to himself).", "bodhi-esque": "May the venerable Channa not take the knife."}, {"key": "mn144:6.7", "pali": "Yāpet·āyasmā channo.\nYāpentaṁ mayaṁ āyasmantaṁ cha·n·naṁ icchāmā”ti.", "sujato-corrected": "Venerable Channa, keep going!\nWe want you to keep going.”", "pts": "The venerable Channa must go on living.\nWe want the venerable Channa to go on living.\"", "bodhi-esque": "Let the venerable Channa live on.\nWe wish for the venerable Channa to live on."}]}, {"id": "7", "label": "“Napi me, āvuso sāri·putta, natthi sappāyāni bhojanāni;", "rows": [{"key": "mn144:7.1", "pali": "“Napi me, āvuso sāri·putta, natthi\nsappāyāni bhojanāni;", "sujato-corrected": "“Reverend Sāriputta, it’s not that I don’t have suitable food,", "pts": "\"Reverend Sāriputta, I am not without beneficial foods,", "bodhi-esque": "Friend Sāriputta, it is not that I do not have suitable foods."}, {"key": "mn144:7.2", "pali": "napi me natthi sappāyāni bhesajjāni;", "sujato-corrected": "or suitable medicine,", "pts": "I am not without beneficial medicines, nor am I without a suitable attendant.", "bodhi-esque": "Nor, indeed, are there suitable medicines for me;"}, {"key": "mn144:7.3", "pali": "napi me natthi pati·rūpā upaṭṭhākā;", "sujato-corrected": "or a capable carer.", "pts": "", "bodhi-esque": "Nor are there proper attendants for me;"}, {"key": "mn144:7.4", "pali": "api cāvuso sāri·putta, pari·ciṇṇo me satthā dīgha·rattaṁ manāp·eneva no a·manāpena.", "sujato-corrected": "Moreover, for a long time now I have served the Teacher with love, not without love.", "pts": "Moreover, reverend Sāriputta, for a long time have I waited on the Teacher with satisfaction (to him),\nnot with lack of satisfaction (to him).", "bodhi-esque": "However, friend Sāriputta, the Teacher has been attended upon by me for a long time with what is pleasing,\nnot with what is displeasing."}, {"key": "mn144:7.5", "pali": "Etañhi, āvuso sāri·putta, sāvakassa patirūpaṁ yaṁ satthāraṁ pari·careyya manāp·eneva no a·manāpena.", "sujato-corrected": "For it is proper for a disciple to serve the Teacher with love, not without love.", "pts": "For this, reverend Sāriputta, is suitable in a disciple,\nthat he should wait on the Teacher with satisfaction (to him), not with lack of satisfaction (to him).", "bodhi-esque": "For, friend Sāriputta, it is proper for a disciple that he should attend upon the Teacher with what is pleasing,\nnot with what is displeasing."}, {"key": "mn144:7.6", "pali": "‘An·upavajjaṁ channo bhikkhu satthaṁ āharissatī’ti evam·etaṁ, āvuso sāri·putta, dhārehī”ti.", "sujato-corrected": "You should remember this:\n‘The mendicant Channa will commit suicide blamelessly.’”", "pts": "'Channa the monk will take a knife (to himself) without incurring blame' - remember this thus, reverend Sāriputta.\"", "bodhi-esque": "‘The bhikkhu Channa will take up the knife blamelessly.’\nThus should you remember it, friend Sāriputta."}]}, {"id": "8", "label": "“Puccheyyāma mayaṁ āyasmantaṁ cha·n·naṁ kañci·deva desaṁ, sace…", "rows": [{"key": "mn144:8.1", "pali": "“Puccheyyāma mayaṁ āyasmantaṁ cha·n·naṁ kañci·deva desaṁ, sace āyasmā channo okāsaṁ karoti\npañhassa veyy·ākaraṇāyā”ti.", "sujato-corrected": "“I’d like to ask you about a certain point, if you’d take the time to answer.”", "pts": "\"We would question the venerable Channa on a particular matter if the\nvenerable Channa grants us the opportunity for setting forth the question.\"", "bodhi-esque": "We would like to ask the Venerable Channa about a certain point,\nif the Venerable Channa would give permission for an answer to the question."}, {"key": "mn144:8.2", "pali": "“Pucch·āvuso sāri·putta, sutvā vedissāmī”ti.", "sujato-corrected": "“Ask, Reverend Sāriputta.\nWhen I’ve heard it I’ll know.”", "pts": "\"Ask, reverend Sāriputta;\nhaving heard (you) we will know (what to say).\"", "bodhi-esque": "Ask, friend Sāriputta;\nhaving heard, I will understand."}]}, {"id": "9", "label": "“Cakkhuṁ, āvuso channa, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘etaṁ…", "rows": [{"key": "mn144:9.1", "pali": "“Cakkhuṁ, āvuso channa, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘etaṁ mama,\nesohamasmi, eso me attā’ti samanupassasi?", "sujato-corrected": "“Reverend Channa, do you regard the eye, eye consciousness, and things knowable by eye consciousness in this way:\n‘This is mine, I am this, this is my self’?", "pts": "\"Reverend Channa, do you regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "Do you regard the eye, friend Channa, eye-consciousness, and phenomena cognizable by eye-consciousness thus:\n‘This is mine, this I am, this is my self’?"}, {"key": "mn144:9.2", "pali": "Sotaṁ, āvuso channa, sota·viññāṇaṁ …pe…", "sujato-corrected": "Do you regard the ear …", "pts": "■ Do you regard the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "The ear, friend Channa, ear-consciousness …"}, {"key": "mn144:9.3", "pali": "ghānaṁ, āvuso channa, ghāna·viññāṇaṁ …", "sujato-corrected": "nose …", "pts": "■ Do you regard the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "The nose, friend Channa, nose-consciousness …"}, {"key": "mn144:9.4", "pali": "jivhaṁ, āvuso channa, jivhā·viññāṇaṁ …", "sujato-corrected": "tongue …", "pts": "■ Do you regard the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "The tongue, friend Channa, tongue-consciousness …"}, {"key": "mn144:9.5", "pali": "kāyaṁ, āvuso channa, kāya·viññāṇaṁ …", "sujato-corrected": "body …", "pts": "■ Do you regard the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "The body, friend Channa, body-consciousness …"}, {"key": "mn144:9.6", "pali": "manaṁ, āvuso channa, mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘etaṁ mama,\nesohamasmi, eso me attā’ti samanupassasī”ti?", "sujato-corrected": "mind, mind consciousness, and things knowable by mind consciousness in this way:\n‘This is mine, I am this, this is my self’?”", "pts": "■ Do you regard the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is mine, this am I, this is my self'?", "bodhi-esque": "The mind, friend Channa, mind-consciousness, and phenomena cognizable by mind-consciousness:\ndo you regard them thus:\n‘This is mine, this I am, this is my self’?"}, {"key": "mn144:9.7", "pali": "“Cakkhuṁ, āvuso sāri·putta, cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmi.", "sujato-corrected": "“Reverend Sāriputta, I regard the eye, eye consciousness, and things knowable by eye consciousness in this way:\n‘This is not mine, I am not this, this is not my self.’", "pts": "\"Reverend Sāriputta, I regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "I do not regard the eye, friend Sāriputta, eye-consciousness, and phenomena cognizable by eye-consciousness thus:\n‘This is not mine, this I am not, this is not my self.’"}, {"key": "mn144:9.8", "pali": "Sotaṁ, āvuso sāri·putta …pe…", "sujato-corrected": "I regard the ear …", "pts": "■ I regard the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "The ear, friend Sāriputta …"}, {"key": "mn144:9.9", "pali": "ghānaṁ, āvuso sāri·putta …", "sujato-corrected": "nose …", "pts": "■ I regard the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "The nose, friend Sāriputta, …"}, {"key": "mn144:9.10", "pali": "jivhaṁ, āvuso sāri·putta …", "sujato-corrected": "tongue …", "pts": "■ I regard the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "The tongue, friend Sāriputta, …"}, {"key": "mn144:9.11", "pali": "kāyaṁ, āvuso sāri·putta …", "sujato-corrected": "body …", "pts": "■ I regard the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "The body, friend Sāriputta, …"}, {"key": "mn144:9.12", "pali": "manaṁ, āvuso sāri·putta, mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmī”ti.", "sujato-corrected": "mind, mind consciousness, and things knowable by mind consciousness in this way:\n‘This is not mine, I am not this, this is not my self’.”", "pts": "■ I regard the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "The mind, friend Sāriputta, I see the mind, mind-consciousness,\nand things cognizable by mind-consciousness as 'this is not mine, I am not this, this is not my self.'"}]}, {"id": "10", "label": "“Cakkhusmiṁ, āvuso channa, cakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu kiṁ…", "rows": [{"key": "mn144:10.1", "pali": "“Cakkhusmiṁ, āvuso channa,\ncakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu kiṁ disvā kiṁ abhi·ñ·ñāya\ncakkhuṁ cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassasi?", "sujato-corrected": "“Reverend Channa, what have you seen, what have you directly known in these things that you regard them in this way:\n‘This is not mine, I am not this, this is not my self’?”", "pts": "\"Reverend Channa, what do you see, what do you understand there is in the eye, in visual consciousness,\nin the things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the eye, friend Channa, what have you seen and fully understood in the eye,\neye-consciousness, and things cognizable by eye-consciousness,\nthat you see the eye, eye-consciousness,\nand things cognizable by eye-consciousness as 'this is not mine, I am not this, this is not my self'?"}, {"key": "mn144:10.2", "pali": "Sotasmiṁ, āvuso channa, sota·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the ear, auditory consciousness,\nthe things cognisable by auditory consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the ear, friend Channa, ear-consciousness …"}, {"key": "mn144:10.3", "pali": "ghānasmiṁ, āvuso channa, ghāna·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the nose, olfactory consciousness,\nthe things cognisable by olfactory consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the nose, friend Channa, nose-consciousness …"}, {"key": "mn144:10.4", "pali": "jivhāya, āvuso channa, jivhā·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the tongue, gustatory consciousness,\nthe things cognisable by gustatory consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the tongue, friend Channa, tongue-consciousness …"}, {"key": "mn144:10.5", "pali": "kāyasmiṁ, āvuso channa, kāya·viññāṇe …", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the body, tactile consciousness,\nthe things cognisable by tactile consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the body, friend Channa, body-consciousness …"}, {"key": "mn144:10.6", "pali": "manasmiṁ, āvuso channa,\nmano·viññāṇe mano·viññāṇa·viññātabbesu dhammesu kiṁ disvā kiṁ abhi·ñ·ñāya\nmanaṁ mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassasī”ti?", "sujato-corrected": "", "pts": "■ What do you see, what do you understand there is in the mind, mental consciousness,\nthe things cognisable by mental consciousness as 'This is not mine, this am I not, this is not my self'?", "bodhi-esque": "In the mind, friend Channa, having seen what and having fully understood what in the mind,\nmind-consciousness, and things cognizable by mind-consciousness,\ndo you see the mind, mind-consciousness,\nand things cognizable by mind-consciousness as 'this is not mine, I am not this, this is not my self'?"}, {"key": "mn144:10.7", "pali": "“Cakkhusmiṁ, āvuso sāri·putta,\ncakkhu·viññāṇe cakkhu·viññāṇa·viññātabbesu dhammesu nirodhaṁ disvā nirodhaṁ\nabhi·ñ·ñāya cakkhuṁ cakkhu·viññāṇaṁ cakkhu·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmi.", "sujato-corrected": "“Reverend Sāriputta, after seeing cessation, after directly knowing cessation in these things I regard them in this way:\n‘This is not mine, I am not this, this is not my self’.”", "pts": "\"It is because I see cessation, understand that there is cessation in the eye, reverend Sāriputta,\nin visual consciousness, in the things cognisable by visual consciousness that I,\nreverend Sāriputta, regard the eye, visual consciousness,\nthe things cognisable by visual consciousness as 'This is not mine, this am I not, this is not my self'.", "bodhi-esque": "In the eye, friend Sāriputta, having seen the cessation of the eye, eye-consciousness,\nand things cognizable by eye-consciousness, having fully understood cessation,\nI see the eye, eye-consciousness, and things cognizable by eye-consciousness as 'this is not mine,\nI am not this, this is not my self.'"}, {"key": "mn144:10.8", "pali": "Sotasmiṁ, āvuso sāri·putta, sota·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the ear,\nauditory consciousness, the things cognisable by auditory consciousness that I regard the ear,\nauditory consciousness, the things cognisable by auditory consciousness as 'This is not mine,\nthis am I not, this is not my self'.", "bodhi-esque": "In the ear, friend Sāriputta, ear-consciousness …"}, {"key": "mn144:10.9", "pali": "ghānasmiṁ, āvuso sāri·putta, ghāna·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the nose,\nolfactory consciousness, the things cognisable by olfactory consciousness that I regard the nose,\nolfactory consciousness, the things cognisable by olfactory consciousness as 'This is not mine,\nthis am I not, this is not my self'.", "bodhi-esque": "In the nose, friend Sāriputta, nose-consciousness …"}, {"key": "mn144:10.10", "pali": "jivhāya, āvuso sāri·putta, jivhā·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the tongue,\ngustatory consciousness, the things cognisable by gustatory consciousness that I regard the tongue,\ngustatory consciousness, the things cognisable by gustatory consciousness as 'This is not mine,\nthis am I not, this is not my self'.", "bodhi-esque": "In the tongue, friend Sāriputta, tongue-consciousness …"}, {"key": "mn144:10.11", "pali": "kāyasmiṁ, āvuso sāri·putta, kāya·viññāṇe …", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the body,\ntactile consciousness, the things cognisable by tactile consciousness that I regard the body,\ntactile consciousness, the things cognisable by tactile consciousness as 'This is not mine,\nthis am I not, this is not my self'.", "bodhi-esque": "In the body, friend Sāriputta, body-consciousness …"}, {"key": "mn144:10.12", "pali": "manasmiṁ, āvuso sāri·putta,\nmano·viññāṇe mano·viññāṇa·viññātabbesu dhammesu nirodhaṁ disvā nirodhaṁ\nabhi·ñ·ñāya manaṁ mano·viññāṇaṁ mano·viññāṇa·viññātabbe dhamme ‘netaṁ mama,\nnesohamasmi, na meso attā’ti samanupassāmī”ti.", "sujato-corrected": "", "pts": "■ It is because I see cessation, understand that there is cessation in the mind,\nmental consciousness, the things cognisable by mental consciousness that I regard the mind,\nmental consciousness, the things cognisable by mental consciousness as 'This is not mine,\nthis am I not, this is not my self'.\"", "bodhi-esque": "In the mind, friend Sāriputta, in the mind-consciousness,\nhaving seen cessation in the mind-consciousness and in the states cognizable by mind-consciousness,\nand having directly known cessation, I regard mind,\nmind-consciousness, and states cognizable by mind-consciousness thus:\n'This is not mine, this I am not, this is not my self.'"}]}, {"id": "11", "label": "Evaṁ vutte, āyasmā mahā·cundo āyasmantaṁ cha·n·naṁ etadavoca:", "rows": [{"key": "mn144:11.1", "pali": "Evaṁ vutte, āyasmā mahā·cundo āyasmantaṁ cha·n·naṁ etadavoca:", "sujato-corrected": "When he said this, Venerable Mahācunda said to Venerable Channa:", "pts": "When this had been said, the venerable Cunda the Great spoke thus to the venerable Channa:", "bodhi-esque": "When this was said, the Venerable Mahācunda said to the Venerable Channa:"}, {"key": "mn144:11.2", "pali": "“tasmā·tiha, āvuso channa, idampi tassa bhagavato sāsanaṁ, nicca·kappaṁ manasi kātabbaṁ:", "sujato-corrected": "“So, Reverend Channa, you should regularly apply your mind to this instruction of the Buddha:", "pts": "\"Wherefore, reverend Channa, this teaching of the Lord should always be attended to:", "bodhi-esque": "“Therefore, friend Channa, this too is the Blessed One's teaching that should always be borne in mind:"}, {"key": "mn144:11.3", "pali": "‘nissitassa calitaṁ, a·nissitassa calitaṁ natthi.", "sujato-corrected": "‘For the dependent there is agitation.\nFor the independent there’s no agitation.", "pts": "'For him who clings there is wavering;\nfor him who clings not there is no wavering;", "bodhi-esque": "'For one who is dependent, there is vacillation;\nfor one who is independent, there is no vacillation."}, {"key": "mn144:11.4", "pali": "Calite asati passaddhi,", "sujato-corrected": "When there’s no agitation there is tranquility.", "pts": "if there is no wavering there is impassibility;", "bodhi-esque": "When there is no vacillation, there is calm;"}, {"key": "mn144:11.5", "pali": "passaddhiyā sati nati na hoti.", "sujato-corrected": "When there is tranquility there’s no inclination.", "pts": "if there is impassibility there is no yearning;", "bodhi-esque": "when there is calm, there is no inclination."}, {"key": "mn144:11.6", "pali": "Natiyā asati āgati·gati na hoti.", "sujato-corrected": "When there’s no inclination there’s no coming and going.", "pts": "if there is no yearning, there is no coming and going;", "bodhi-esque": "When there is no inclination, there is no coming and going."}, {"key": "mn144:11.7", "pali": "Āgati·gatiyā asati cutū·papāto na hoti.", "sujato-corrected": "When there’s no coming and going there’s no passing away and reappearing.", "pts": "if there is no coming and going, there is no deceasing and uprising;", "bodhi-esque": "When there is no coming and going, there is no passing away and rebirth."}, {"key": "mn144:11.8", "pali": "Cutū·papāte asati nevidha na huraṁ na ubhayam·anta·rena.", "sujato-corrected": "When there’s no passing away and reappearing there’s no this life or the next or between the two.", "pts": "if there is no deceasing and uprising, there is no \"here\" itself nor \"yonder\" nor \"in between the two.\"", "bodhi-esque": "When there is no passing away and rebirth, there is neither here nor beyond nor in between the two."}, {"key": "mn144:11.9", "pali": "Esevanto dukkh·assā’”ti.", "sujato-corrected": "Just this is the end of suffering.’”", "pts": "This is itself the end of anguish.'", "bodhi-esque": "This itself is the end of suffering.'"}, {"key": "mn144:11.10", "pali": "Atha kho āyasmā ca sāri·putto āyasmā ca mahā·cundo āyasmantaṁ cha·n·naṁ iminā ovādena ovaditvā uṭṭhāy·āsanā pakkamiṁsu.", "sujato-corrected": "And when the venerables Sāriputta and Mahācunda had given\nVenerable Channa this advice they got up from their seat and left.", "pts": "Then the venerable Sāriputta and the venerable Cunda the Great,\nhaving exhorted the venerable Channa with this exhortation, rose from their seats and departed.", "bodhi-esque": "Then the Venerable Sāriputta and the Venerable Mahācunda,\nhaving instructed the Venerable Channa with this advice, rose from their seats and departed."}]}, {"id": "12", "label": "Atha kho āyasmā channo a·cira·pakkante āyasmante ca…", "rows": [{"key": "mn144:12.1", "pali": "Atha kho āyasmā channo a·cira·pakkante āyasmante ca sāri·putte āyasmante ca mahā·cunde satthaṁ āharesi.", "sujato-corrected": "Not long after those venerables had left, Venerable Channa committed suicide.", "pts": "And not long after the departure of the venerable Sāriputta and the venerable Cunda the Great,\nthe venerable Channa took a knife (to himself).", "bodhi-esque": "Then, not long after the Venerable Sāriputta and the Venerable Mahācunda had left, the Venerable Channa used the knife."}]}, {"id": "13", "label": "Atha kho āyasmā sāri·putto yena bhagavā tenupasaṅkami;…", "rows": [{"key": "mn144:13.1", "pali": "Atha kho āyasmā sāri·putto yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā sāri·putto bhagavantaṁ etadavoca:", "sujato-corrected": "Then Sāriputta went up to the Buddha, bowed, sat down to one side, and said to him,", "pts": "Then the venerable Sāriputta approached the Lord;\nhaving approached and greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Sāriputta spoke thus to the Lord:", "bodhi-esque": "Then the Venerable Sāriputta approached the Blessed One;\nhaving approached, he paid homage to the Blessed One and sat down to one side.\nSeated to one side, the Venerable Sāriputta said to the Blessed One:"}, {"key": "mn144:13.2", "pali": "“āyasmatā, bhante, channena satthaṁ āharitaṁ.", "sujato-corrected": "“Sir, Venerable Channa has committed suicide.", "pts": "\"Revered sir, a knife has been taken by the venerable Channa to himself.", "bodhi-esque": "“Bhante, the Venerable Channa has used the knife."}, {"key": "mn144:13.3", "pali": "Tassa kā gati, ko abhi·samparāyo”ti?", "sujato-corrected": "Where has he been reborn in his next life?”", "pts": "What is his bourn, what his future state?\"", "bodhi-esque": "What is his destination, what is his future state?”"}, {"key": "mn144:13.4", "pali": "“Nanu te, sāri·putta, channena bhikkhunā sammukhā·yeva anupavajjatā by·ākatā”ti?", "sujato-corrected": "“Sāriputta, didn’t the mendicant Channa declare his blamelessness to you personally?”", "pts": "\"Was it not face to face with you, Sāriputta, that the monk Channa declared (his) blamelessness?\"", "bodhi-esque": "“But, Sāriputta, was it not declared in the very presence of the bhikkhu Channa that he is without offense?”"}, {"key": "mn144:13.5", "pali": "“Atthi, bhante, pubbajiraṁ nāma vajji·gāmo.", "sujato-corrected": "“Sir, there is a Vajjian village named Pubbajira.", "pts": "\"There is, revered sir, a village of the Vajjis called Pubbajira.", "bodhi-esque": "“There is, bhante, a village of the Vajjis named Pubbajira.”"}, {"key": "mn144:13.6", "pali": "Tatth·āyasmato channassa mitta·kulāni suhajja·kulāni upavajjakulānī”ti.", "sujato-corrected": "There Channa had families who were friendly, intimate, and hospitable.”", "pts": "There are families there who were friends of the venerable Channa,\nfamilies which sustained him, families to be visited.\"", "bodhi-esque": "“There the venerable Channa has friendly families, hospitable families, families that support him.”"}, {"key": "mn144:13.7", "pali": "“Honti hete, sāri·putta, channassa bhikkhuno mitta·kulāni suhajja·kulāni upavajja·kulāni.", "sujato-corrected": "“The mendicant Channa did indeed have such families.", "pts": "\"Indeed, Sāriputta, these families were friends of the monk Channa, families who sustained him, families to be visited.", "bodhi-esque": "“There are, Sāriputta, these friendly families, hospitable families, families that support the bhikkhu Channa.”"}, {"key": "mn144:13.8", "pali": "Nāhaṁ, sāri·putta, ettāvatā ‘saupavajjo’ti vadāmi.", "sujato-corrected": "But this is not enough for me to call someone ‘blameworthy’.", "pts": "As far as this, Sāriputta, I do not say he was to be blamed.", "bodhi-esque": "“But I do not, Sāriputta, thereby say that he is one who has an offense.”"}, {"key": "mn144:13.9", "pali": "Yo kho, sāri·putta, imañca kāyaṁ nikkhipati\naññañca kāyaṁ upādiyati\ntamahaṁ ‘saupavajjo’ti vadāmi.", "sujato-corrected": "When someone lays down this body and takes up another body, I call them ‘blameworthy’.", "pts": "But whoever, Sāriputta, lays down this body and grasps after another body, of him I say he is to be blamed.", "bodhi-esque": "“For I say, Sāriputta, that one is ‘with offense’ who gives up this body and takes up another body.”"}, {"key": "mn144:13.10", "pali": "Taṁ channassa bhikkhuno natthi.", "sujato-corrected": "But the mendicant Channa did no such thing.", "pts": "The monk Channa did not do this;", "bodhi-esque": "“That is not present in the bhikkhu Channa.”"}, {"key": "mn144:13.11", "pali": "‘An·upavajjo channo bhikkhu satthaṁ āharesī’ti evam·etaṁ, sāri·putta, dhārehī”ti.", "sujato-corrected": "You should remember this:\n‘The mendicant Channa committed suicide blamelessly.’”", "pts": "the monk Channa took the knife (to himself) without incurring blame.\"", "bodhi-esque": "“So you should, Sāriputta, remember it thus:\n‘The bhikkhu Channa is without offense;\nhe has taken up the knife.’”"}, {"key": "mn144:13.12", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord.", "bodhi-esque": "This is what the Blessed One said."}, {"key": "mn144:13.13", "pali": "Atta·mano āyasmā sāri·putto bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Sāriputta approved what the Buddha said.", "pts": "Delighted, the venerable Sāriputta rejoiced in what the Lord had said.\nDiscourse on an Exhortation to Channa;\nThe Second", "bodhi-esque": "The venerable Sāriputta, having delighted, rejoiced in the Blessed One’s statement."}, {"key": "mn144:13.14", "pali": "Chann·ovāda·suttaṁ niṭṭhitaṁ dutiyaṁ.", "sujato-corrected": "", "pts": "", "bodhi-esque": "The Discourse of Advice to Channa is finished, the second."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

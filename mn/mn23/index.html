@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 23", "rows": [{"key": "mn23:0.1", "pali": "Majjhima Nikāya 23", "sujato-corrected": "Middle Discourses 23", "pts": ""}, {"key": "mn23:0.2", "pali": "Vammika·sutta", "sujato-corrected": "The Termite Mound", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn23:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:"}, {"key": "mn23:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthi in the Jeta Grove in Anāthapiṇḍika's monastery."}, {"key": "mn23:1.3", "pali": "Tena kho pana samayena āyasmā kumāra·kassapo andha·vane viharati.", "sujato-corrected": "Now at that time Venerable Kassapa the Prince was staying in the Dark Forest.", "pts": "Now at that time the vellerable Kassapa the Boy was staying in the Blind Men's Grove."}, {"key": "mn23:1.4", "pali": "Atha kho añña·tarā devatā abhi·k·kantāya rattiyā abhi·k·kanta·vaṇṇā\nkevala·kappaṁ andha·vanaṁ obhāsetvā yenāyasmā kumāra·kassapo tenupasaṅkami;\nupasaṅkamitvā ekam·antaṁ aṭṭhāsi.\nEkam·antaṁ ṭhitā kho sā devatā āyasmantaṁ kumāra·kassapaṁ etadavoca:", "sujato-corrected": "Then, late at night, a glorious deity, lighting up the entire Dark Forest,\nwent up to Kassapa the Prince, stood to one side, and said:", "pts": "Then, when the night was far spent a certain deva with a glorious skin,\nhaving illuminated the whole of the Blind Men's Grove, approached the venerable Kassapa the Boy;\nand having approached stood at one side.\nWhile standing at one side this deva spoke thus to the venerable Kassapa the Boy:"}]}, {"id": "2", "label": "“Bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā…", "rows": [{"key": "mn23:2.1", "pali": "“Bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā pajjalati.", "sujato-corrected": "“Monk, monk!\nThis termite mound fumes by night and flames by day.", "pts": "\"Monk, monk, this ant-hill smokes by night, blazes up by day."}, {"key": "mn23:2.2", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "A brahman speaks thus:"}, {"key": "mn23:2.3", "pali": "‘abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "‘Dig, clever one, having picked up the sword!’", "pts": "'Bringing a tool, clever one, dig it up.'"}, {"key": "mn23:2.4", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa laṅgiṁ", "sujato-corrected": "Picking up the sword and digging, the clever one saw a sticking point:", "pts": "The clever one, digging when he had brought a tool saw a bolt and said:"}, {"key": "mn23:2.5", "pali": "‘laṅgī, bhadante’ti.", "sujato-corrected": "‘A sticking point, sir!’", "pts": "'A bolt, revered one.'"}, {"key": "mn23:2.6", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.7", "pali": "‘ukkhipa laṅgiṁ;", "sujato-corrected": "‘Throw out the sticking point!", "pts": "'Take out the bolt, dig on, clever one, bringing a tool'"}, {"key": "mn23:2.8", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.9", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa uddhumāy·ikaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a bullfrog:", "pts": "The clever one, digging on when he had brought a tool, saw a frog, and said:"}, {"key": "mn23:2.10", "pali": "‘Uddhumāyikā, bhadante’ti.", "sujato-corrected": "‘A bullfrog, sir!’", "pts": "'A frog, revered one.'"}, {"key": "mn23:2.11", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.12", "pali": "‘ukkhipa uddhumāy·ikaṁ;", "sujato-corrected": "‘Throw out the bullfrog!", "pts": "'Take out the frog, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.13", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.14", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa dvidhā·pathaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a forked path:", "pts": "The clever one, digging on when he had brought a tool, saw a forked path, and said:"}, {"key": "mn23:2.15", "pali": "‘Dvidhā·patho, bhadante’ti.", "sujato-corrected": "‘A forked path, sir!’", "pts": "'A forked path, revered one.'"}, {"key": "mn23:2.16", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.17", "pali": "‘ukkhipa dvidhā·pathaṁ;", "sujato-corrected": "‘Throw out the forked path!", "pts": "'Take out the forked path, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.18", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.19", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa caṅga·vāraṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a filter of ash:", "pts": "The clever one, digging on when he had brought a tool, saw a strainer, and said:"}, {"key": "mn23:2.20", "pali": "‘Caṅga·vāro, bhadante’ti.", "sujato-corrected": "‘A filter of ash, sir!’", "pts": "'A strainer, revered one.'"}, {"key": "mn23:2.21", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.22", "pali": "‘ukkhipa caṅga·vāraṁ;", "sujato-corrected": "‘Throw out the filter of ash!", "pts": "'Take out the strainer, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.23", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.24", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa kummaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a tortoise:", "pts": "The clever one, digging on when he had brought a tool, saw a tortoise, and said:"}, {"key": "mn23:2.25", "pali": "‘Kummo, bhadante’ti.", "sujato-corrected": "‘A tortoise, sir!’", "pts": "'A tortoise, revered one.'"}, {"key": "mn23:2.26", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.27", "pali": "‘ukkhipa kummaṁ;", "sujato-corrected": "‘Throw out the tortoise!", "pts": "'Take out the tortoise, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.28", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having taken up the sword!’", "pts": ""}, {"key": "mn23:2.29", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa asisūnaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a butcher’s knife and chopping board:", "pts": "The clever one, digging on when he had brought a tool, saw a slaughter-house, and said:"}, {"key": "mn23:2.30", "pali": "‘Asisūnā, bhadante’ti.", "sujato-corrected": "‘A butcher’s knife and chopping board, sir!’", "pts": "'A slaughter-house, revered one.'"}, {"key": "mn23:2.31", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.32", "pali": "‘ukkhipa asisūnaṁ;", "sujato-corrected": "‘Throw out the butcher’s knife and chopping board!", "pts": "'Take out the slaughter-house, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.33", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.34", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa maṁsa·pesiṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a scrap of meat:", "pts": "The clever one, digging on when he had brought a tool, saw a piece of flesh, and said:"}, {"key": "mn23:2.35", "pali": "‘Maṁsa·pesi, bhadante’ti.", "sujato-corrected": "‘A scrap of meat, sir!’", "pts": "'A piece of flesh, revered one.'"}, {"key": "mn23:2.36", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.37", "pali": "‘ukkhipa maṁsa·pesiṁ;", "sujato-corrected": "‘Throw out the scrap of meat!", "pts": "'Take out the piece of flesh, dig on, clever one, bringing a tool.'"}, {"key": "mn23:2.38", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": ""}, {"key": "mn23:2.39", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa nāgaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a cobra:", "pts": "The clever one, digging on when he had brought a tool, saw a cobra, and said:"}, {"key": "mn23:2.40", "pali": "‘Nāgo, bhadante’ti.", "sujato-corrected": "‘A cobra, sir!’", "pts": "'A cobra, revered one.'"}, {"key": "mn23:2.41", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:"}, {"key": "mn23:2.42", "pali": "‘tiṭṭhatu nāgo, mā nāgaṁ ghaṭṭesi;\nnamo karohi nāgassā’ti.", "sujato-corrected": "‘Leave the cobra!\nDo not disturb the cobra!\nWorship the cobra!’", "pts": "'Let the cobra be, do not touch the cobra, do reverence to the cobra.'"}, {"key": "mn23:2.43", "pali": "Ime kho tvaṁ, bhikkhu, pañhe bhagavantaṁ upasaṅkamitvā puccheyyāsi,\nyathā ca te bhagavā by·ākaroti tathā naṁ dhāreyyāsi.", "sujato-corrected": "Mendicant, go to the Buddha and ask him about this riddle.\nYou should remember it in line with his answer.", "pts": "If you, monk, having approached the Lord, were to ask him about these questions,\nthen you could remember as the Lord explains to you."}, {"key": "mn23:2.44", "pali": "Nāhaṁ taṁ, bhikkhu, passāmi\nsadevake loke samārake sabrahmake sa·s·samaṇa·brāhmaṇiyā pajāya\nsa·deva·manu·s·sāya,\nyo imesaṁ pañhānaṁ veyy·ākara·ṇena cittaṁ ārādheyya\naññatra tathā·gatena vā,\ntathā·gata·sāvakena vā, ito vā pana sutvā”ti—", "sujato-corrected": "I don’t see anyone in this world—with its gods, Māras, and Divinities, this population with its ascetics and brahmins,\nits gods and humans—who could provide a satisfying answer to this riddle except\nfor the Realized One or his disciple or someone who has heard it from them.”", "pts": "I, monk, do not see anyone in the world with its devas, with its Māras,\nwith its Brahmās, in creation, with its recluses and brahmans, its devas and men,\nwho could turn his mind to expounding these questions except a Tathāgata\nor a Tathāgata's disciple or one who has heard (the teaching) from them.\""}, {"key": "mn23:2.45", "pali": "Idam·avoca sā devatā.", "sujato-corrected": "That is what that deity said", "pts": "Thus spoke that deva;"}, {"key": "mn23:2.46", "pali": "Idaṁ vatvā tattheva·ntaradhāyi.", "sujato-corrected": "before vanishing right there.", "pts": "and vanished then and there, having said this."}]}, {"id": "3", "label": "Atha kho āyasmā kumāra·kassapo tassā rattiyā acc·a·yena…", "rows": [{"key": "mn23:3.1", "pali": "Atha kho āyasmā kumāra·kassapo tassā rattiyā acc·a·yena yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā kumāra·kassapo bhagavantaṁ etadavoca:", "sujato-corrected": "Then, when the night had passed, Kassapa the Prince went to the Buddha,\nbowed, sat down to one side, and told him what had happened.\nThen he asked:", "pts": "Then the venerable Kassapa the Boy approached the Lord towards the end of that night;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Kassapa the Boy spoke thus to the Lord:"}, {"key": "mn23:3.2", "pali": "“imaṁ, bhante, rattiṁ añña·tarā devatā abhi·k·kantāya rattiyā\nabhi·k·kanta·vaṇṇā kevala·kappaṁ andha·vanaṁ obhāsetvā yenāhaṁ tenupasaṅkami;\nupasaṅkamitvā ekam·antaṁ aṭṭhāsi.\nEkam·antaṁ ṭhitā kho, bhante,\nsā devatā maṁ etadavoca:", "sujato-corrected": "", "pts": "\"During this night, Lord, when the night was far spent, a certain deva with a glorious skin,\nhaving illumined the whole of the Blind Men's Grove, approached me;\nand having approached, stood at one side.\nWhile standing to one side, Lord, that deva spoke thus to me:"}, {"key": "mn23:3.3", "pali": "‘bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā pajjalati.", "sujato-corrected": "", "pts": "'Monk, monk, this ant-hill smokes by night, blazes up by day."}, {"key": "mn23:3.4", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "", "pts": "A brahman speaks thus:"}, {"key": "mn23:3.5", "pali": "“abhi·k·khaṇa, sumedha, satthaṁ ādāyā”ti.", "sujato-corrected": "", "pts": "\"Bringing a tool, clever one, dig it up.\"\nThe clever one, digging when he had brought a tool saw a bolt and said:\n\"A bolt, revered one.\"\nThe brahman spoke thus:\n\"Take out the bolt, dig on, clever one, bringing a tool\" The clever one,\ndigging on when he had brought a tool, saw a frog, and said:\n\"A frog, revered one.\"\nThe brahman spoke thus:\n\"Take out the frog, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a forked path, and said:\n\"A forked path, revered one.\"\nThe brahman spoke thus:\n\"Take out the forked path, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a strainer, and said:\n\"A strainer, revered one.\"\nThe brahman spoke thus:\n\"Take out the strainer, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a tortoise, and said:\n\"A tortoise, revered one.\"\nThe brahman spoke thus:\n\"Take out the tortoise, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a slaughter-house, and said:\n\"A slaughter-house, revered one.\"\nThe brahman spoke thus:\n\"Take out the slaughter-house, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a piece of flesh, and said:\n\"A piece of flesh, revered one.\"\nThe brahman spoke thus:\n\"Take out the piece of flesh, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a cobra, and said:\n\"A cobra, revered one.\"\nThe brahman spoke thus:\n\"Let the cobra be, do not touch the cobra, do reverence to the cobra.\"\nIf you, monk, having approached the Lord, were to ask him about these questions,\nthen you could remember as the Lord explains to you.\nI, monk, do not see anyone in the world with its devas, with its Māras,\nwith its Brahmās, in creation, with its recluses and brahmans, its devas and men,"}, {"key": "mn23:3.6", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya …pe…", "sujato-corrected": "", "pts": ""}, {"key": "mn23:3.7", "pali": "ito vā pana sutvā’ti.", "sujato-corrected": "", "pts": "who could turn his mind to expounding these questions except a Tathāgata\nor a Tathāgata's disciple or one who has heard (the teaching) from them.'"}, {"key": "mn23:3.8", "pali": "Idam·avoca, bhante, sā devatā.", "sujato-corrected": "", "pts": "This is what the deva said, Lord, and vanished then and there, having said this."}, {"key": "mn23:3.9", "pali": "Idaṁ vatvā tattheva·ntaradhāyi.", "sujato-corrected": "", "pts": ""}, {"key": "mn23:3.10", "pali": "Ko nu kho, bhante, vammiko, kā rattiṁ dhūmāyanā, kā divā pajjalanā,\nko brāhmaṇo, ko sumedho, kiṁ satthaṁ, kiṁ abhi·k·khaṇaṁ,\nkā laṅgī, kā uddhumāyikā, ko dvidhā·patho, kiṁ caṅga·vāraṁ, ko kummo, kā asisūnā, kā maṁsa·pesi, ko nāgo”ti?", "sujato-corrected": "“Sir, what is the termite mound?\nWhat is the fuming by night and flaming by day?\nWho is the brahmin, and who the clever one?\nWhat are the sword, the digging, the sticking point, the bullfrog, the forked path,\nthe filter of ash, the tortoise, the butcher’s knife and chopping board, and the scrap of meat?\nAnd what is the cobra?”", "pts": "Now what, Lord is the anthill, what is smoking by night, what is blazing up by day,\nwho is the brahman, who the clever one, what is the tool, what the digging up,\nwhat the bolt, what the frog, what the forked path, what the strainer,\nwhat the tortoise, what the slaughterhouse, what the piece of flesh, what the cobra?\""}]}, {"id": "4", "label": "“‘Vammiko’ti kho, bhikkhu, imass·etaṁ cātumahābhūtikassa kāyassa adhi·vacanaṁ,…", "rows": [{"key": "mn23:4.1", "pali": "“‘Vammiko’ti kho, bhikkhu, imass·etaṁ cātumahābhūtikassa kāyassa adhi·vacanaṁ,\nmātā·pettika·sambhavassa odana·kummāsū·paca·yassa anicc·ucchādana·pari·maddana·bhedana·viddhaṁsana·dhammassa.", "sujato-corrected": "“Mendicant,\n‘termite mound’ is a term for this body made up of the four principal states, produced by mother and father,\nbuilt up from rice and porridge, liable to impermanence, to wearing away and erosion, to breaking up and destruction.", "pts": "\"The anthill, monk, this is a synonym for the body made of the four great elements, originated from mother and father,\nnourished on gruel and sour milk, of a nature to be constantly rubbed away, pounded away, broken up and scattered."}, {"key": "mn23:4.2", "pali": "Yaṁ kho, bhikkhu, divā kammante ārabbha\nrattiṁ anuvitakketi anuvicāreti—", "sujato-corrected": "Directing verbal thoughts all night, pondering them about what you did during the day—", "pts": "Whatever, monk, one thinks upon and ponders upon during the night concerning the day's affairs,"}, {"key": "mn23:4.3", "pali": "ayaṁ rattiṁ dhūmāyanā.", "sujato-corrected": "this is the fuming at night.", "pts": "this is smoking by night."}, {"key": "mn23:4.4", "pali": "Yaṁ kho, bhikkhu, rattiṁ anu·vi·takketvā anu·vi·cāretvā divā kammante payojeti\nkāyena vācāya manasā—", "sujato-corrected": "The work you apply yourself to during the day by body, speech,\nand mind after directing verbal thoughts about it all night, pondering them—", "pts": "Whatever affairs, monk, one sets going by day, whether by body, speech or thought,"}, {"key": "mn23:4.5", "pali": "ayaṁ divā pajjalanā.", "sujato-corrected": "this is the flaming by day.", "pts": "having pondered and reflected upon them during the night, this is blazing up by day."}, {"key": "mn23:4.6", "pali": "‘Brāhmaṇo’ti kho, bhikkhu, tathā·gatass·etaṁ adhi·vacanaṁ a·rahato sammā·sambuddhassa.", "sujato-corrected": "‘Brahmin’ is a term for the Realized One, the perfected one, the fully awakened Buddha.", "pts": "'Brahman', monk, this is a synonym for the Tathāgata, perfected one, fully self-awakened one."}, {"key": "mn23:4.7", "pali": "‘Sumedho’ti kho, bhikkhu, sekkhass·etaṁ bhikkhuno adhi·vacanaṁ.", "sujato-corrected": "‘Clever one’ is a term for the trainee mendicant.", "pts": "'Clever one', monk, this is a synonym for a monk who is a learner."}, {"key": "mn23:4.8", "pali": "‘Satthan’ti kho, bhikkhu, ariyāy·etaṁ paññāya adhi·vacanaṁ.", "sujato-corrected": "‘Sword’ is a term for noble wisdom.", "pts": "'The tool', monk, this is a synonym for the Ariyan intuitive wisdom."}, {"key": "mn23:4.9", "pali": "‘Abhi·k·khaṇan’ti kho, bhikkhu, vīriy·ārambhass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Digging’ is a term for rousing energy.", "pts": "'Digging', monk, this is a synonym for the output of energy."}, {"key": "mn23:4.10", "pali": "‘Laṅgī’ti kho, bhikkhu, a·vijjāy·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Sticking point’ is a term for ignorance.", "pts": "'The bolt', monk, this is a synonym for ignorance."}, {"key": "mn23:4.11", "pali": "Ukkhipa laṅgiṁ, pajaha a·vijjaṁ;", "sujato-corrected": "‘Throw out the sticking point’ means ‘give up ignorance,", "pts": "Take out the bolt, get rid of ignorance, dig, clever one, bringing a tool."}, {"key": "mn23:4.12", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "dig, clever one, having picked up the sword.’", "pts": "This is the meaning of that."}, {"key": "mn23:4.13", "pali": "‘Uddhumāyikā’ti kho, bhikkhu, kodhū·pāyāsass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Bullfrog’ is a term for anger and distress.", "pts": "'The frog', monk, this is a synonym for the turbulence of wrath."}, {"key": "mn23:4.14", "pali": "Ukkhipa uddhumāy·ikaṁ, pajaha kodhū·pāyāsaṁ;", "sujato-corrected": "‘Throw out the bullfrog’ means ‘give up anger and distress’ …", "pts": "Take out the frog, get rid of the turbulence of wrath, dig, clever one, bringing a tool."}, {"key": "mn23:4.15", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.16", "pali": "‘Dvidhā·patho’ti kho, bhikkhu, vi·cikicchāy·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘A forked path’ is a term for doubt.", "pts": "'The forked path', monk, this is a synonym for perplexity."}, {"key": "mn23:4.17", "pali": "Ukkhipa dvidhā·pathaṁ, pajaha vi·cikicchaṁ;", "sujato-corrected": "‘Throw out the forked path’ means ‘give up doubt’ …", "pts": "Take out the forked path, get rid of perplexity, dig, clever one, bringing a tool."}, {"key": "mn23:4.18", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.19", "pali": "‘Caṅga·vāran’ti kho, bhikkhu, pañcannetaṁ nī·varaṇānaṁ adhi·vacanaṁ, seyyathidaṁ—", "sujato-corrected": "‘A filter of ash’ is a term for the five hindrances, that is:", "pts": "'The strainer', monk, this is a synonym for the five hindrances:"}, {"key": "mn23:4.20", "pali": "kāma·c·chandanī·varaṇassa, byāpādanī·varaṇassa, thina·middhanī·varaṇassa,\nuddhacca·kukkuccanī·varaṇassa, vi·cikicchānī·varaṇassa.", "sujato-corrected": "the hindrances of sensual desire, ill will, dullness and drowsiness, restlessness and remorse, and doubt.", "pts": "for the hindrance of desire for sense-pleasures, for the hindrance of malevolence,\nfor the hindrance of sloth and torpor, for the hindrance of restlessness and worry, for the hindrance of perplexity."}, {"key": "mn23:4.21", "pali": "Ukkhipa caṅga·vāraṁ, pajaha pañca nī·varaṇe;", "sujato-corrected": "‘Throw out the filter of ash’ means ‘give up the five hindrances’ …", "pts": "Take out the strainer, get rid of the five hindrances, dig, clever one, bringing a tool."}, {"key": "mn23:4.22", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.23", "pali": "‘Kummo’ti kho, bhikkhu, pañcannetaṁ upādāna·k·khandhānaṁ adhi·vacanaṁ, seyyathidaṁ—", "sujato-corrected": "‘Tortoise’ is a term for the five grasping aggregates, that is:", "pts": "'The tortoise', monk, this is a synonym for the five grasping groups, that is to say:"}, {"key": "mn23:4.24", "pali": "rūpupādāna·k·khandhassa, vedan·upādāna·k·khandhassa, saññ·upādāna·k·khandhassa,\nsaṅkhār·upādāna·k·khandhassa, viññāṇ·upādāna·k·khandhassa.", "sujato-corrected": "form, feeling, perception, choices, and consciousness.", "pts": "for the group of grasping after material shape,\nfor the group of grasping after feeling, for the group of grasping after perception,\nfor the group of grasping after the habitual tendencies, for the group of grasping after consciousness."}, {"key": "mn23:4.25", "pali": "Ukkhipa kummaṁ, pajaha\npañc·upādāna·k·khandhe;", "sujato-corrected": "‘Throw out the tortoise’ means ‘give up the five grasping aggregates’ …", "pts": "Take out the tortoise, get rid of the five grasping groups, dig, clever one, bringing a tool."}, {"key": "mn23:4.26", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.27", "pali": "‘Asisūnā’ti kho, bhikkhu, pañcannetaṁ kāma·guṇānaṁ adhi·vacanaṁ—", "sujato-corrected": "‘Butcher’s knife and chopping board’ is a term for the five kinds of sensual stimulation.", "pts": "'The slaughter-house', monk, this is a synonym for the five strands of sense-pleasures:"}, {"key": "mn23:4.28", "pali": "cakkhu·viññeyyānaṁ rūpānaṁ iṭṭhānaṁ kantānaṁ manāpānaṁ piya·rūpānaṁ kāmū·pasaṁhitānaṁ rajanīyānaṁ,", "sujato-corrected": "Sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "for material shapes cognisable by the eye, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring;"}, {"key": "mn23:4.29", "pali": "sota·viññeyyānaṁ saddānaṁ …pe…", "sujato-corrected": "Sounds known by the ear …", "pts": "for sounds cognisable by the ear agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;"}, {"key": "mn23:4.30", "pali": "ghāna·viññeyyānaṁ gandhānaṁ …pe…", "sujato-corrected": "Smells known by the nose …", "pts": "for smells cognisable by the nose agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;"}, {"key": "mn23:4.31", "pali": "jivhā·viññeyyānaṁ rasānaṁ …pe…", "sujato-corrected": "Tastes known by the tongue …", "pts": "for savours cognisable by the tongue agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;"}, {"key": "mn23:4.32", "pali": "kāya·viññeyyānaṁ phoṭṭhabbānaṁ iṭṭhānaṁ kantānaṁ manāpānaṁ piya·rūpānaṁ kāmū·pasaṁhitānaṁ rajanīyānaṁ.", "sujato-corrected": "Touches known by the body, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "for touches cognisable by the body, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn23:4.33", "pali": "Ukkhipa asisūnaṁ, pajaha pañca kāma·guṇe;", "sujato-corrected": "‘Throw out the butcher’s knife and chopping board’ means ‘give up the five kinds of sensual stimulation’ …", "pts": "Take out the slaughter-house, get rid of the five strands of sense-pleasures, dig, clever one, bringing a tool."}, {"key": "mn23:4.34", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.35", "pali": "‘Maṁsa·pesī’ti kho, bhikkhu, nandī·rāgass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Scrap of meat’ is a term for greed and relishing.", "pts": "'The piece of flesh', monk, this is a synonym for the passion of delight."}, {"key": "mn23:4.36", "pali": "Ukkhipa maṁsa·pesiṁ, pajaha nandī·rāgaṁ;", "sujato-corrected": "‘Throw out the scrap of meat’ means ‘give up greed and relishing’ …", "pts": "Take out the piece of flesh, get rid of the passion of delight, dig, clever one, bringing a tool."}, {"key": "mn23:4.37", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that."}, {"key": "mn23:4.38", "pali": "‘Nāgo’ti kho, bhikkhu, khīṇās·avassetaṁ bhikkhuno adhi·vacanaṁ.", "sujato-corrected": "‘Cobra’ is a term for a mendicant who has ended the defilements.", "pts": "'The cobra', monk, this is a synonym for a monk whose cankers are destroyed."}, {"key": "mn23:4.39", "pali": "Tiṭṭhatu nāgo, mā nāgaṁ ghaṭṭesi;\nnamo karohi nāgassāti\nayam·etassa attho”ti.", "sujato-corrected": "This is the meaning of:\n‘Leave the cobra!\nDo not disturb the cobra!\nWorship the cobra!’”", "pts": "Let the cobra be, do not touch the cobra, do reverence to the cobra.\nThis is the meaning of that.\""}, {"key": "mn23:4.40", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn23:4.41", "pali": "Atta·mano āyasmā kumāra·kassapo bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Kassapa the Prince approved what the Buddha said.", "pts": "Delighted the venerable Kassapa the Boy rejoiced in what the Lord had said."}, {"key": "mn23:4.42", "pali": "Vammika·suttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato-corrected": "", "pts": "The Discourse on the Ant-hill"}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 23", "rows": [{"key": "mn23:0.1", "pali": "Majjhima Nikāya 23", "sujato-corrected": "Middle Discourses 23", "pts": "", "bodhi-esque": "Majjhima Nikāya 23"}, {"key": "mn23:0.2", "pali": "Vammika·sutta", "sujato-corrected": "The Termite Mound", "pts": "", "bodhi-esque": "Ant-hill Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn23:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:", "bodhi-esque": "Thus have I heard —"}, {"key": "mn23:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthi in the Jeta Grove in Anāthapiṇḍika's monastery.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta's Grove, Anāthapiṇḍika's Park."}, {"key": "mn23:1.3", "pali": "Tena kho pana samayena āyasmā kumāra·kassapo andha·vane viharati.", "sujato-corrected": "Now at that time Venerable Kassapa the Prince was staying in the Dark Forest.", "pts": "Now at that time the vellerable Kassapa the Boy was staying in the Blind Men's Grove.", "bodhi-esque": "Now at that time the Venerable Kumāra Kassapa was dwelling in the Blind Men's Grove."}, {"key": "mn23:1.4", "pali": "Atha kho añña·tarā devatā abhi·k·kantāya rattiyā abhi·k·kanta·vaṇṇā\nkevala·kappaṁ andha·vanaṁ obhāsetvā yenāyasmā kumāra·kassapo tenupasaṅkami;\nupasaṅkamitvā ekam·antaṁ aṭṭhāsi.\nEkam·antaṁ ṭhitā kho sā devatā āyasmantaṁ kumāra·kassapaṁ etadavoca:", "sujato-corrected": "Then, late at night, a glorious deity, lighting up the entire Dark Forest,\nwent up to Kassapa the Prince, stood to one side, and said:", "pts": "Then, when the night was far spent a certain deva with a glorious skin,\nhaving illuminated the whole of the Blind Men's Grove, approached the venerable Kassapa the Boy;\nand having approached stood at one side.\nWhile standing at one side this deva spoke thus to the venerable Kassapa the Boy:", "bodhi-esque": "Then, when the night had advanced, a certain deva of stunning beauty,\nilluminating the entire Blind Men's Grove, approached the Venerable Kumāra Kassapa;\nhaving approached, she stood at one side.\nStanding at one side, that deva said this to the Venerable Kumāra Kassapa:"}]}, {"id": "2", "label": "“Bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā…", "rows": [{"key": "mn23:2.1", "pali": "“Bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā pajjalati.", "sujato-corrected": "“Monk, monk!\nThis termite mound fumes by night and flames by day.", "pts": "\"Monk, monk, this ant-hill smokes by night, blazes up by day.", "bodhi-esque": "“Bhikkhu, bhikkhu, this ant-hill smokes by night and blazes by day."}, {"key": "mn23:2.2", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "A brahman speaks thus:", "bodhi-esque": "The brahmin said:"}, {"key": "mn23:2.3", "pali": "‘abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "‘Dig, clever one, having picked up the sword!’", "pts": "'Bringing a tool, clever one, dig it up.'", "bodhi-esque": "‘Dig, O wise one, taking a knife.’"}, {"key": "mn23:2.4", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa laṅgiṁ", "sujato-corrected": "Picking up the sword and digging, the clever one saw a sticking point:", "pts": "The clever one, digging when he had brought a tool saw a bolt and said:", "bodhi-esque": "While digging, the wise one, taking a knife, saw a bar."}, {"key": "mn23:2.5", "pali": "‘laṅgī, bhadante’ti.", "sujato-corrected": "‘A sticking point, sir!’", "pts": "'A bolt, revered one.'", "bodhi-esque": "‘A bar, venerable sir.’"}, {"key": "mn23:2.6", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said:"}, {"key": "mn23:2.7", "pali": "‘ukkhipa laṅgiṁ;", "sujato-corrected": "‘Throw out the sticking point!", "pts": "'Take out the bolt, dig on, clever one, bringing a tool'", "bodhi-esque": "‘Lift the bar;"}, {"key": "mn23:2.8", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig, O wise one, taking a knife.’"}, {"key": "mn23:2.9", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa uddhumāy·ikaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a bullfrog:", "pts": "The clever one, digging on when he had brought a tool, saw a frog, and said:", "bodhi-esque": "While digging, the wise one, taking a knife, saw a frog."}, {"key": "mn23:2.10", "pali": "‘Uddhumāyikā, bhadante’ti.", "sujato-corrected": "‘A bullfrog, sir!’", "pts": "'A frog, revered one.'", "bodhi-esque": "“A bloated [corpse], bhante.”"}, {"key": "mn23:2.11", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said:"}, {"key": "mn23:2.12", "pali": "‘ukkhipa uddhumāy·ikaṁ;", "sujato-corrected": "‘Throw out the bullfrog!", "pts": "'Take out the frog, dig on, clever one, bringing a tool.'", "bodhi-esque": "“Lift up the bloated [corpse];"}, {"key": "mn23:2.13", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig further, O wise one, taking a weapon.”"}, {"key": "mn23:2.14", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa dvidhā·pathaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a forked path:", "pts": "The clever one, digging on when he had brought a tool, saw a forked path, and said:", "bodhi-esque": "While digging further, the wise one, taking a weapon, saw a crossroad."}, {"key": "mn23:2.15", "pali": "‘Dvidhā·patho, bhadante’ti.", "sujato-corrected": "‘A forked path, sir!’", "pts": "'A forked path, revered one.'", "bodhi-esque": "“A crossroad, bhante.”"}, {"key": "mn23:2.16", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said:"}, {"key": "mn23:2.17", "pali": "‘ukkhipa dvidhā·pathaṁ;", "sujato-corrected": "‘Throw out the forked path!", "pts": "'Take out the forked path, dig on, clever one, bringing a tool.'", "bodhi-esque": "“Lift up the crossroad;"}, {"key": "mn23:2.18", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig further, O wise one, taking a weapon.”"}, {"key": "mn23:2.19", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa caṅga·vāraṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a filter of ash:", "pts": "The clever one, digging on when he had brought a tool, saw a strainer, and said:", "bodhi-esque": "While digging further, the wise one, taking a weapon, saw a lump of froth."}, {"key": "mn23:2.20", "pali": "‘Caṅga·vāro, bhadante’ti.", "sujato-corrected": "‘A filter of ash, sir!’", "pts": "'A strainer, revered one.'", "bodhi-esque": "“A lump of froth, bhante.”"}, {"key": "mn23:2.21", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said:"}, {"key": "mn23:2.22", "pali": "‘ukkhipa caṅga·vāraṁ;", "sujato-corrected": "‘Throw out the filter of ash!", "pts": "'Take out the strainer, dig on, clever one, bringing a tool.'", "bodhi-esque": "“Lift up the lump of froth;"}, {"key": "mn23:2.23", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig further, O wise one, taking a weapon.”"}, {"key": "mn23:2.24", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa kummaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a tortoise:", "pts": "The clever one, digging on when he had brought a tool, saw a tortoise, and said:", "bodhi-esque": "While digging further, the wise one, taking a weapon, saw a turtle."}, {"key": "mn23:2.25", "pali": "‘Kummo, bhadante’ti.", "sujato-corrected": "‘A tortoise, sir!’", "pts": "'A tortoise, revered one.'", "bodhi-esque": "'It is a turtle, bhante.'"}, {"key": "mn23:2.26", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said thus:"}, {"key": "mn23:2.27", "pali": "‘ukkhipa kummaṁ;", "sujato-corrected": "‘Throw out the tortoise!", "pts": "'Take out the tortoise, dig on, clever one, bringing a tool.'", "bodhi-esque": "'Lift the turtle;"}, {"key": "mn23:2.28", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having taken up the sword!’", "pts": "", "bodhi-esque": "dig out, Sumedha, taking the knife.'"}, {"key": "mn23:2.29", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa asisūnaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a butcher’s knife and chopping board:", "pts": "The clever one, digging on when he had brought a tool, saw a slaughter-house, and said:", "bodhi-esque": "Digging out, Sumedha, taking the knife, saw a sword."}, {"key": "mn23:2.30", "pali": "‘Asisūnā, bhadante’ti.", "sujato-corrected": "‘A butcher’s knife and chopping board, sir!’", "pts": "'A slaughter-house, revered one.'", "bodhi-esque": "'A sword, bhante.'"}, {"key": "mn23:2.31", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said thus:"}, {"key": "mn23:2.32", "pali": "‘ukkhipa asisūnaṁ;", "sujato-corrected": "‘Throw out the butcher’s knife and chopping board!", "pts": "'Take out the slaughter-house, dig on, clever one, bringing a tool.'", "bodhi-esque": "'Lift the sword;"}, {"key": "mn23:2.33", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig out, Sumedha, taking the knife.'"}, {"key": "mn23:2.34", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa maṁsa·pesiṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a scrap of meat:", "pts": "The clever one, digging on when he had brought a tool, saw a piece of flesh, and said:", "bodhi-esque": "Digging out, Sumedha, taking the knife, saw a piece of flesh."}, {"key": "mn23:2.35", "pali": "‘Maṁsa·pesi, bhadante’ti.", "sujato-corrected": "‘A scrap of meat, sir!’", "pts": "'A piece of flesh, revered one.'", "bodhi-esque": "'A piece of flesh, bhante.'"}, {"key": "mn23:2.36", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said thus:"}, {"key": "mn23:2.37", "pali": "‘ukkhipa maṁsa·pesiṁ;", "sujato-corrected": "‘Throw out the scrap of meat!", "pts": "'Take out the piece of flesh, dig on, clever one, bringing a tool.'", "bodhi-esque": "'Lift the piece of flesh;"}, {"key": "mn23:2.38", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyā’ti.", "sujato-corrected": "Dig, clever one, having picked up the sword!’", "pts": "", "bodhi-esque": "dig out, Sumedha, taking the knife.'"}, {"key": "mn23:2.39", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya addasa nāgaṁ.", "sujato-corrected": "Picking up the sword and digging, the clever one saw a cobra:", "pts": "The clever one, digging on when he had brought a tool, saw a cobra, and said:", "bodhi-esque": "Digging out, Sumedha, taking the knife, saw a serpent."}, {"key": "mn23:2.40", "pali": "‘Nāgo, bhadante’ti.", "sujato-corrected": "‘A cobra, sir!’", "pts": "'A cobra, revered one.'", "bodhi-esque": "'Nāgo, bhante,' he said."}, {"key": "mn23:2.41", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "The brahmin said,", "pts": "The brahman spoke thus:", "bodhi-esque": "The brahmin said thus:"}, {"key": "mn23:2.42", "pali": "‘tiṭṭhatu nāgo, mā nāgaṁ ghaṭṭesi;\nnamo karohi nāgassā’ti.", "sujato-corrected": "‘Leave the cobra!\nDo not disturb the cobra!\nWorship the cobra!’", "pts": "'Let the cobra be, do not touch the cobra, do reverence to the cobra.'", "bodhi-esque": "'Let the elephant stand, do not strike the elephant;\npay homage to the elephant,' he said."}, {"key": "mn23:2.43", "pali": "Ime kho tvaṁ, bhikkhu, pañhe bhagavantaṁ upasaṅkamitvā puccheyyāsi,\nyathā ca te bhagavā by·ākaroti tathā naṁ dhāreyyāsi.", "sujato-corrected": "Mendicant, go to the Buddha and ask him about this riddle.\nYou should remember it in line with his answer.", "pts": "If you, monk, having approached the Lord, were to ask him about these questions,\nthen you could remember as the Lord explains to you.", "bodhi-esque": "These very questions, bhikkhu, having approached the Blessed One, you should ask;\nand as the Blessed One explains them to you, so should you remember them."}, {"key": "mn23:2.44", "pali": "Nāhaṁ taṁ, bhikkhu, passāmi\nsadevake loke samārake sabrahmake sa·s·samaṇa·brāhmaṇiyā pajāya\nsa·deva·manu·s·sāya,\nyo imesaṁ pañhānaṁ veyy·ākara·ṇena cittaṁ ārādheyya\naññatra tathā·gatena vā,\ntathā·gata·sāvakena vā, ito vā pana sutvā”ti—", "sujato-corrected": "I don’t see anyone in this world—with its gods, Māras, and Divinities, this population with its ascetics and brahmins,\nits gods and humans—who could provide a satisfying answer to this riddle except\nfor the Realized One or his disciple or someone who has heard it from them.”", "pts": "I, monk, do not see anyone in the world with its devas, with its Māras,\nwith its Brahmās, in creation, with its recluses and brahmans, its devas and men,\nwho could turn his mind to expounding these questions except a Tathāgata\nor a Tathāgata's disciple or one who has heard (the teaching) from them.\"", "bodhi-esque": "I do not see, bhikkhu, in this world with its devas, Māra, and Brahmā,\nwith its generation of ascetics and brahmins, devas and humans,\nanyone who by answering these questions could satisfy the mind except for the Tathāgata or a disciple of the Tathāgata,\nor one who has heard it from that source."}, {"key": "mn23:2.45", "pali": "Idam·avoca sā devatā.", "sujato-corrected": "That is what that deity said", "pts": "Thus spoke that deva;", "bodhi-esque": "That deva said this."}, {"key": "mn23:2.46", "pali": "Idaṁ vatvā tattheva·ntaradhāyi.", "sujato-corrected": "before vanishing right there.", "pts": "and vanished then and there, having said this.", "bodhi-esque": "Having said this, she disappeared right there."}]}, {"id": "3", "label": "Atha kho āyasmā kumāra·kassapo tassā rattiyā acc·a·yena…", "rows": [{"key": "mn23:3.1", "pali": "Atha kho āyasmā kumāra·kassapo tassā rattiyā acc·a·yena yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho āyasmā kumāra·kassapo bhagavantaṁ etadavoca:", "sujato-corrected": "Then, when the night had passed, Kassapa the Prince went to the Buddha,\nbowed, sat down to one side, and told him what had happened.\nThen he asked:", "pts": "Then the venerable Kassapa the Boy approached the Lord towards the end of that night;\nhaving approached, having greeted the Lord, he sat down at a respectful distance.\nAs he was sitting down at a respectful distance, the venerable Kassapa the Boy spoke thus to the Lord:", "bodhi-esque": "Then, after the passing of that night, the Venerable Kumārakassapa approached the Blessed One;\nhaving approached and paid homage to the Blessed One, he sat down to one side.\nSitting to one side, the Venerable Kumārakassapa said this to the Blessed One:"}, {"key": "mn23:3.2", "pali": "“imaṁ, bhante, rattiṁ añña·tarā devatā abhi·k·kantāya rattiyā\nabhi·k·kanta·vaṇṇā kevala·kappaṁ andha·vanaṁ obhāsetvā yenāhaṁ tenupasaṅkami;\nupasaṅkamitvā ekam·antaṁ aṭṭhāsi.\nEkam·antaṁ ṭhitā kho, bhante,\nsā devatā maṁ etadavoca:", "sujato-corrected": "", "pts": "\"During this night, Lord, when the night was far spent, a certain deva with a glorious skin,\nhaving illumined the whole of the Blind Men's Grove, approached me;\nand having approached, stood at one side.\nWhile standing to one side, Lord, that deva spoke thus to me:", "bodhi-esque": "'Bhante, last night, when the night had advanced, a certain deva of surpassing beauty,\nilluminating the entire Andhavana, approached me;\nhaving approached, she stood to one side.\nStanding to one side, bhante, that deva said this to me:"}, {"key": "mn23:3.3", "pali": "‘bhikkhu bhikkhu, ayaṁ vammiko rattiṁ dhūmāyati, divā pajjalati.", "sujato-corrected": "", "pts": "'Monk, monk, this ant-hill smokes by night, blazes up by day.", "bodhi-esque": "'Bhikkhu, bhikkhu, this ant hill smokes at night and blazes by day.'"}, {"key": "mn23:3.4", "pali": "Brāhmaṇo evamāha:", "sujato-corrected": "", "pts": "A brahman speaks thus:", "bodhi-esque": "The brahmin said thus:"}, {"key": "mn23:3.5", "pali": "“abhi·k·khaṇa, sumedha, satthaṁ ādāyā”ti.", "sujato-corrected": "", "pts": "\"Bringing a tool, clever one, dig it up.\"\nThe clever one, digging when he had brought a tool saw a bolt and said:\n\"A bolt, revered one.\"\nThe brahman spoke thus:\n\"Take out the bolt, dig on, clever one, bringing a tool\" The clever one,\ndigging on when he had brought a tool, saw a frog, and said:\n\"A frog, revered one.\"\nThe brahman spoke thus:\n\"Take out the frog, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a forked path, and said:\n\"A forked path, revered one.\"\nThe brahman spoke thus:\n\"Take out the forked path, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a strainer, and said:\n\"A strainer, revered one.\"\nThe brahman spoke thus:\n\"Take out the strainer, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a tortoise, and said:\n\"A tortoise, revered one.\"\nThe brahman spoke thus:\n\"Take out the tortoise, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a slaughter-house, and said:\n\"A slaughter-house, revered one.\"\nThe brahman spoke thus:\n\"Take out the slaughter-house, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a piece of flesh, and said:\n\"A piece of flesh, revered one.\"\nThe brahman spoke thus:\n\"Take out the piece of flesh, dig on, clever one, bringing a tool.\"\nThe clever one, digging on when he had brought a tool, saw a cobra, and said:\n\"A cobra, revered one.\"\nThe brahman spoke thus:\n\"Let the cobra be, do not touch the cobra, do reverence to the cobra.\"\nIf you, monk, having approached the Lord, were to ask him about these questions,\nthen you could remember as the Lord explains to you.\nI, monk, do not see anyone in the world with its devas, with its Māras,\nwith its Brahmās, in creation, with its recluses and brahmans, its devas and men,", "bodhi-esque": "'Dig it up, wise one, taking a knife,' he said."}, {"key": "mn23:3.6", "pali": "Abhi·k·khaṇanto sumedho satthaṁ ādāya …pe…", "sujato-corrected": "", "pts": "", "bodhi-esque": "While digging, the wise one, taking a knife …"}, {"key": "mn23:3.7", "pali": "ito vā pana sutvā’ti.", "sujato-corrected": "", "pts": "who could turn his mind to expounding these questions except a Tathāgata\nor a Tathāgata's disciple or one who has heard (the teaching) from them.'", "bodhi-esque": "'… or one who has heard it from that source.'"}, {"key": "mn23:3.8", "pali": "Idam·avoca, bhante, sā devatā.", "sujato-corrected": "", "pts": "This is what the deva said, Lord, and vanished then and there, having said this.", "bodhi-esque": "Bhante, that deva said this."}, {"key": "mn23:3.9", "pali": "Idaṁ vatvā tattheva·ntaradhāyi.", "sujato-corrected": "", "pts": "", "bodhi-esque": "Having said this, he disappeared right there."}, {"key": "mn23:3.10", "pali": "Ko nu kho, bhante, vammiko, kā rattiṁ dhūmāyanā, kā divā pajjalanā,\nko brāhmaṇo, ko sumedho, kiṁ satthaṁ, kiṁ abhi·k·khaṇaṁ,\nkā laṅgī, kā uddhumāyikā, ko dvidhā·patho, kiṁ caṅga·vāraṁ, ko kummo, kā asisūnā, kā maṁsa·pesi, ko nāgo”ti?", "sujato-corrected": "“Sir, what is the termite mound?\nWhat is the fuming by night and flaming by day?\nWho is the brahmin, and who the clever one?\nWhat are the sword, the digging, the sticking point, the bullfrog, the forked path,\nthe filter of ash, the tortoise, the butcher’s knife and chopping board, and the scrap of meat?\nAnd what is the cobra?”", "pts": "Now what, Lord is the anthill, what is smoking by night, what is blazing up by day,\nwho is the brahman, who the clever one, what is the tool, what the digging up,\nwhat the bolt, what the frog, what the forked path, what the strainer,\nwhat the tortoise, what the slaughterhouse, what the piece of flesh, what the cobra?\"", "bodhi-esque": "What, bhante, is the anthill?\nWhat is the smoke by night?\nWhat is the blaze by day?\nWho is the brahmin?\nWho is the wise one?\nWhat is the knife?\nWhat is the digging?\nWhat is the she-goat?\nWhat is the bag?\nWhat is the forked path?\nWhat is the water pot?\nWhat is the tortoise?\nWhat is the butcher's knife and block?\nWhat is the piece of flesh?\nWho is the serpent?"}]}, {"id": "4", "label": "“‘Vammiko’ti kho, bhikkhu, imass·etaṁ cātumahābhūtikassa kāyassa adhi·vacanaṁ,…", "rows": [{"key": "mn23:4.1", "pali": "“‘Vammiko’ti kho, bhikkhu, imass·etaṁ cātumahābhūtikassa kāyassa adhi·vacanaṁ,\nmātā·pettika·sambhavassa odana·kummāsū·paca·yassa anicc·ucchādana·pari·maddana·bhedana·viddhaṁsana·dhammassa.", "sujato-corrected": "“Mendicant,\n‘termite mound’ is a term for this body made up of the four principal states, produced by mother and father,\nbuilt up from rice and porridge, liable to impermanence, to wearing away and erosion, to breaking up and destruction.", "pts": "\"The anthill, monk, this is a synonym for the body made of the four great elements, originated from mother and father,\nnourished on gruel and sour milk, of a nature to be constantly rubbed away, pounded away, broken up and scattered.", "bodhi-esque": "‘Anthill,’ bhikkhu, is a designation for this body composed of the four great elements,\noriginating from mother and father,\nbuilt up from boiled rice and porridge, subject to impermanence, rubbing, massage, breaking up, and dissolution."}, {"key": "mn23:4.2", "pali": "Yaṁ kho, bhikkhu, divā kammante ārabbha\nrattiṁ anuvitakketi anuvicāreti—", "sujato-corrected": "Directing verbal thoughts all night, pondering them about what you did during the day—", "pts": "Whatever, monk, one thinks upon and ponders upon during the night concerning the day's affairs,", "bodhi-esque": "Whatever, bhikkhu, during the day one undertakes in work, and then at night one thinks about and reflects upon it—"}, {"key": "mn23:4.3", "pali": "ayaṁ rattiṁ dhūmāyanā.", "sujato-corrected": "this is the fuming at night.", "pts": "this is smoking by night.", "bodhi-esque": "this is the smoke by night."}, {"key": "mn23:4.4", "pali": "Yaṁ kho, bhikkhu, rattiṁ anu·vi·takketvā anu·vi·cāretvā divā kammante payojeti\nkāyena vācāya manasā—", "sujato-corrected": "The work you apply yourself to during the day by body, speech,\nand mind after directing verbal thoughts about it all night, pondering them—", "pts": "Whatever affairs, monk, one sets going by day, whether by body, speech or thought,", "bodhi-esque": "Whatever, bhikkhu, after thinking about and reflecting upon it at night,\none undertakes the work during the day by body, speech, or mind—"}, {"key": "mn23:4.5", "pali": "ayaṁ divā pajjalanā.", "sujato-corrected": "this is the flaming by day.", "pts": "having pondered and reflected upon them during the night, this is blazing up by day.", "bodhi-esque": "this is the blaze by day."}, {"key": "mn23:4.6", "pali": "‘Brāhmaṇo’ti kho, bhikkhu, tathā·gatass·etaṁ adhi·vacanaṁ a·rahato sammā·sambuddhassa.", "sujato-corrected": "‘Brahmin’ is a term for the Realized One, the perfected one, the fully awakened Buddha.", "pts": "'Brahman', monk, this is a synonym for the Tathāgata, perfected one, fully self-awakened one.", "bodhi-esque": "‘Brahmin,’ bhikkhu, is a designation for the Tathāgata, the Arahant, the Perfectly Enlightened One."}, {"key": "mn23:4.7", "pali": "‘Sumedho’ti kho, bhikkhu, sekkhass·etaṁ bhikkhuno adhi·vacanaṁ.", "sujato-corrected": "‘Clever one’ is a term for the trainee mendicant.", "pts": "'Clever one', monk, this is a synonym for a monk who is a learner.", "bodhi-esque": "‘Wise one,’ bhikkhu, is a designation for a bhikkhu who is a trainee."}, {"key": "mn23:4.8", "pali": "‘Satthan’ti kho, bhikkhu, ariyāy·etaṁ paññāya adhi·vacanaṁ.", "sujato-corrected": "‘Sword’ is a term for noble wisdom.", "pts": "'The tool', monk, this is a synonym for the Ariyan intuitive wisdom.", "bodhi-esque": "‘Knife,’ bhikkhu, is a designation for noble wisdom."}, {"key": "mn23:4.9", "pali": "‘Abhi·k·khaṇan’ti kho, bhikkhu, vīriy·ārambhass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Digging’ is a term for rousing energy.", "pts": "'Digging', monk, this is a synonym for the output of energy.", "bodhi-esque": "‘Digging,’ bhikkhu, is a designation for the instigation of energy."}, {"key": "mn23:4.10", "pali": "‘Laṅgī’ti kho, bhikkhu, a·vijjāy·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Sticking point’ is a term for ignorance.", "pts": "'The bolt', monk, this is a synonym for ignorance.", "bodhi-esque": "‘She-goat,’ bhikkhu, is a designation for ignorance."}, {"key": "mn23:4.11", "pali": "Ukkhipa laṅgiṁ, pajaha a·vijjaṁ;", "sujato-corrected": "‘Throw out the sticking point’ means ‘give up ignorance,", "pts": "Take out the bolt, get rid of ignorance, dig, clever one, bringing a tool.", "bodhi-esque": "Lift up the she-goat, abandon ignorance;"}, {"key": "mn23:4.12", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "dig, clever one, having picked up the sword.’", "pts": "This is the meaning of that.", "bodhi-esque": "Dig, wise one, taking the knife—this is the meaning of this."}, {"key": "mn23:4.13", "pali": "‘Uddhumāyikā’ti kho, bhikkhu, kodhū·pāyāsass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Bullfrog’ is a term for anger and distress.", "pts": "'The frog', monk, this is a synonym for the turbulence of wrath.", "bodhi-esque": "‘Bag,’ bhikkhu, is a designation for anger and despair."}, {"key": "mn23:4.14", "pali": "Ukkhipa uddhumāy·ikaṁ, pajaha kodhū·pāyāsaṁ;", "sujato-corrected": "‘Throw out the bullfrog’ means ‘give up anger and distress’ …", "pts": "Take out the frog, get rid of the turbulence of wrath, dig, clever one, bringing a tool.", "bodhi-esque": "Lift up the mushroom, abandon anger and despair;"}, {"key": "mn23:4.15", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "‘cut it off, wise one, taking a knife’—this is the meaning of that."}, {"key": "mn23:4.16", "pali": "‘Dvidhā·patho’ti kho, bhikkhu, vi·cikicchāy·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘A forked path’ is a term for doubt.", "pts": "'The forked path', monk, this is a synonym for perplexity.", "bodhi-esque": "‘The forked path,’ bhikkhu, is a designation for doubt."}, {"key": "mn23:4.17", "pali": "Ukkhipa dvidhā·pathaṁ, pajaha vi·cikicchaṁ;", "sujato-corrected": "‘Throw out the forked path’ means ‘give up doubt’ …", "pts": "Take out the forked path, get rid of perplexity, dig, clever one, bringing a tool.", "bodhi-esque": "Lift up the forked path, abandon doubt;"}, {"key": "mn23:4.18", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "‘cut it off, wise one, taking a knife’—this is the meaning of that."}, {"key": "mn23:4.19", "pali": "‘Caṅga·vāran’ti kho, bhikkhu, pañcannetaṁ nī·varaṇānaṁ adhi·vacanaṁ, seyyathidaṁ—", "sujato-corrected": "‘A filter of ash’ is a term for the five hindrances, that is:", "pts": "'The strainer', monk, this is a synonym for the five hindrances:", "bodhi-esque": "‘The rut,’ bhikkhu, is a designation for the five hindrances, namely:"}, {"key": "mn23:4.20", "pali": "kāma·c·chandanī·varaṇassa, byāpādanī·varaṇassa, thina·middhanī·varaṇassa,\nuddhacca·kukkuccanī·varaṇassa, vi·cikicchānī·varaṇassa.", "sujato-corrected": "the hindrances of sensual desire, ill will, dullness and drowsiness, restlessness and remorse, and doubt.", "pts": "for the hindrance of desire for sense-pleasures, for the hindrance of malevolence,\nfor the hindrance of sloth and torpor, for the hindrance of restlessness and worry, for the hindrance of perplexity.", "bodhi-esque": "the hindrance of sensual desire, the hindrance of ill will,\nthe hindrance of sloth-and-torpor,\nthe hindrance of restlessness-and-remorse, the hindrance of doubt."}, {"key": "mn23:4.21", "pali": "Ukkhipa caṅga·vāraṁ, pajaha pañca nī·varaṇe;", "sujato-corrected": "‘Throw out the filter of ash’ means ‘give up the five hindrances’ …", "pts": "Take out the strainer, get rid of the five hindrances, dig, clever one, bringing a tool.", "bodhi-esque": "Lift up the rut, abandon the five hindrances;"}, {"key": "mn23:4.22", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "‘cut it off, wise one, taking a knife’—this is the meaning of that."}, {"key": "mn23:4.23", "pali": "‘Kummo’ti kho, bhikkhu, pañcannetaṁ upādāna·k·khandhānaṁ adhi·vacanaṁ, seyyathidaṁ—", "sujato-corrected": "‘Tortoise’ is a term for the five grasping aggregates, that is:", "pts": "'The tortoise', monk, this is a synonym for the five grasping groups, that is to say:", "bodhi-esque": "‘The turtle,’ bhikkhu, is a designation for the five aggregates of clinging, namely:"}, {"key": "mn23:4.24", "pali": "rūpupādāna·k·khandhassa, vedan·upādāna·k·khandhassa, saññ·upādāna·k·khandhassa,\nsaṅkhār·upādāna·k·khandhassa, viññāṇ·upādāna·k·khandhassa.", "sujato-corrected": "form, feeling, perception, choices, and consciousness.", "pts": "for the group of grasping after material shape,\nfor the group of grasping after feeling, for the group of grasping after perception,\nfor the group of grasping after the habitual tendencies, for the group of grasping after consciousness.", "bodhi-esque": "the form aggregate of clinging, the feeling aggregate of clinging,\nthe perception aggregate of clinging,\nthe volitional activity aggregate of clinging,\nthe consciousness aggregate of clinging."}, {"key": "mn23:4.25", "pali": "Ukkhipa kummaṁ, pajaha\npañc·upādāna·k·khandhe;", "sujato-corrected": "‘Throw out the tortoise’ means ‘give up the five grasping aggregates’ …", "pts": "Take out the tortoise, get rid of the five grasping groups, dig, clever one, bringing a tool.", "bodhi-esque": "Lift up the turtle, abandon\nthe five aggregates of clinging;"}, {"key": "mn23:4.26", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "‘cut it off, wise one, taking a knife’—this is the meaning of that."}, {"key": "mn23:4.27", "pali": "‘Asisūnā’ti kho, bhikkhu, pañcannetaṁ kāma·guṇānaṁ adhi·vacanaṁ—", "sujato-corrected": "‘Butcher’s knife and chopping board’ is a term for the five kinds of sensual stimulation.", "pts": "'The slaughter-house', monk, this is a synonym for the five strands of sense-pleasures:", "bodhi-esque": "‘The butcher’s block,’ bhikkhu, is a designation for the five cords of sensual pleasure, namely:"}, {"key": "mn23:4.28", "pali": "cakkhu·viññeyyānaṁ rūpānaṁ iṭṭhānaṁ kantānaṁ manāpānaṁ piya·rūpānaṁ kāmū·pasaṁhitānaṁ rajanīyānaṁ,", "sujato-corrected": "Sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "for material shapes cognisable by the eye, agreeable, pleasant,\nliked, enticing, connected with sensual pleasures, alluring;", "bodhi-esque": "forms cognizable by the eye that are desirable, agreeable,\npleasant, endearing, connected with sensual desire, and enticing,"}, {"key": "mn23:4.29", "pali": "sota·viññeyyānaṁ saddānaṁ …pe…", "sujato-corrected": "Sounds known by the ear …", "pts": "for sounds cognisable by the ear agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;", "bodhi-esque": "Of sounds cognizable by the ear …"}, {"key": "mn23:4.30", "pali": "ghāna·viññeyyānaṁ gandhānaṁ …pe…", "sujato-corrected": "Smells known by the nose …", "pts": "for smells cognisable by the nose agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;", "bodhi-esque": "Of odors cognizable by the nose …"}, {"key": "mn23:4.31", "pali": "jivhā·viññeyyānaṁ rasānaṁ …pe…", "sujato-corrected": "Tastes known by the tongue …", "pts": "for savours cognisable by the tongue agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring;", "bodhi-esque": "Of tastes cognizable by the tongue …"}, {"key": "mn23:4.32", "pali": "kāya·viññeyyānaṁ phoṭṭhabbānaṁ iṭṭhānaṁ kantānaṁ manāpānaṁ piya·rūpānaṁ kāmū·pasaṁhitānaṁ rajanīyānaṁ.", "sujato-corrected": "Touches known by the body, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "for touches cognisable by the body, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Of tactile objects cognizable by the body that are desirable, agreeable,\npleasant, endearing, associated with sensuality, and exciting lust."}, {"key": "mn23:4.33", "pali": "Ukkhipa asisūnaṁ, pajaha pañca kāma·guṇe;", "sujato-corrected": "‘Throw out the butcher’s knife and chopping board’ means ‘give up the five kinds of sensual stimulation’ …", "pts": "Take out the slaughter-house, get rid of the five strands of sense-pleasures, dig, clever one, bringing a tool.", "bodhi-esque": "Take up the sword and the block, abandon the five cords of sensual pleasure;"}, {"key": "mn23:4.34", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "Dig, wise one, taking the knife.\nThis is the meaning of that."}, {"key": "mn23:4.35", "pali": "‘Maṁsa·pesī’ti kho, bhikkhu, nandī·rāgass·etaṁ adhi·vacanaṁ.", "sujato-corrected": "‘Scrap of meat’ is a term for greed and relishing.", "pts": "'The piece of flesh', monk, this is a synonym for the passion of delight.", "bodhi-esque": "‘A piece of flesh,’ bhikkhu, is a designation for delight and lust."}, {"key": "mn23:4.36", "pali": "Ukkhipa maṁsa·pesiṁ, pajaha nandī·rāgaṁ;", "sujato-corrected": "‘Throw out the scrap of meat’ means ‘give up greed and relishing’ …", "pts": "Take out the piece of flesh, get rid of the passion of delight, dig, clever one, bringing a tool.", "bodhi-esque": "Take up the piece of flesh, abandon delight and lust;"}, {"key": "mn23:4.37", "pali": "abhi·k·khaṇa, sumedha, satthaṁ ādāyāti\nayam·etassa attho.", "sujato-corrected": "", "pts": "This is the meaning of that.", "bodhi-esque": "Dig, wise one, taking the knife.\nThis is the meaning of that."}, {"key": "mn23:4.38", "pali": "‘Nāgo’ti kho, bhikkhu, khīṇās·avassetaṁ bhikkhuno adhi·vacanaṁ.", "sujato-corrected": "‘Cobra’ is a term for a mendicant who has ended the defilements.", "pts": "'The cobra', monk, this is a synonym for a monk whose cankers are destroyed.", "bodhi-esque": "‘A nāga,’ bhikkhu, is a designation for a bhikkhu whose taints are destroyed."}, {"key": "mn23:4.39", "pali": "Tiṭṭhatu nāgo, mā nāgaṁ ghaṭṭesi;\nnamo karohi nāgassāti\nayam·etassa attho”ti.", "sujato-corrected": "This is the meaning of:\n‘Leave the cobra!\nDo not disturb the cobra!\nWorship the cobra!’”", "pts": "Let the cobra be, do not touch the cobra, do reverence to the cobra.\nThis is the meaning of that.\"", "bodhi-esque": "Let the nāga stand, do not strike the nāga;\npay homage to the nāga.\nThis is the meaning of that.’"}, {"key": "mn23:4.40", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord.", "bodhi-esque": "The Blessed One said this."}, {"key": "mn23:4.41", "pali": "Atta·mano āyasmā kumāra·kassapo bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Kassapa the Prince approved what the Buddha said.", "pts": "Delighted the venerable Kassapa the Boy rejoiced in what the Lord had said.", "bodhi-esque": "Satisfied, the venerable Kumāra Kassapa rejoiced in the Blessed One's speech."}, {"key": "mn23:4.42", "pali": "Vammika·suttaṁ niṭṭhitaṁ tatiyaṁ.", "sujato-corrected": "", "pts": "The Discourse on the Ant-hill", "bodhi-esque": "The third discourse on the Simile of the Ant-hill is finished."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "sn39-samandakavagga", "label": "Sāmaṇḍakavagga — The Chapter with Sāmaṇḍaka", "children": [{"id": "sn39.1-15", "label": "SN 39.1–15", "children": [{"id": "sn39.1-15/0", "label": "Saṁyutta Nikāya 39.1", "rows": [{"key": "sn39.1-15:0.1", "pali": "Saṁyutta Nikāya 39.1", "sujato-corrected": "Linked Discourses 39.1–15"}, {"key": "sn39.1-15:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.1-15:0.3", "pali": "Sāmaṇḍaka·sutta", "sujato-corrected": "With Sāmaṇḍaka on Nibbāna"}]}, {"id": "sn39.1-15/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati ukka·celāyaṁ…", "rows": [{"key": "sn39.1-15:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato-corrected": "At one time Venerable Sāriputta was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river."}, {"key": "sn39.1-15:1.2", "pali": "Atha kho sāmaṇḍako pari·b·bājako yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmatā sāri·puttena saddhiṁ sammodi.", "sujato-corrected": "Then the wanderer Sāmaṇḍaka went up to Venerable Sāriputta and exchanged greetings with him."}, {"key": "sn39.1-15:1.3", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho sāmaṇḍako pari·b·bājako āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, he sat down to one side and said to Sāriputta:"}]}, {"id": "sn39.1-15/2", "label": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "rows": [{"key": "sn39.1-15:2.1", "pali": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "sujato-corrected": "\"Reverend Sāriputta, they speak of this thing called 'Nibbāna'."}, {"key": "sn39.1-15:2.2", "pali": "Katamaṁ nu kho, āvuso, nibbānan”ti?", "sujato-corrected": "What is Nibbāna?\""}, {"key": "sn39.1-15:2.3", "pali": "“Yo kho, āvuso, rāga·k·khayo dosa·k·khayo moha·k·khayo—", "sujato-corrected": "“Reverend, the ending of greed, hate, and delusion"}, {"key": "sn39.1-15:2.4", "pali": "idaṁ vuccati nibbānan”ti.", "sujato-corrected": "is called Nibbāna.\""}, {"key": "sn39.1-15:2.5", "pali": "“Atthi panāvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "\"But, reverend, is there a path and a practice for realizing this Nibbāna?\""}, {"key": "sn39.1-15:2.6", "pali": "“Atthi kho, āvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "“There is, reverend.”"}]}, {"id": "sn39.1-15/3", "label": "“Katamo panāvuso, maggo katamā paṭi·padā etassa nibbānassa…", "rows": [{"key": "sn39.1-15:3.1", "pali": "“Katamo panāvuso, maggo\nkatamā paṭi·padā etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "“Well, what is it?”"}, {"key": "sn39.1-15:3.2", "pali": "“Ayameva kho, āvuso, ariyo a·ṭ·ṭha·ṅgiko maggo,\netassa nibbānassa sacchi·kiriyāya, seyyathidaṁ—", "sujato-corrected": "“It is simply this noble eightfold path, that is:"}, {"key": "sn39.1-15:3.3", "pali": "sammā·diṭṭhi …pe… sammā·samādhi.", "sujato-corrected": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right samādhi."}, {"key": "sn39.1-15:3.4", "pali": "Ayaṁ kho, āvuso, maggo\nayaṁ paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "This is the path, the practice, for realizing this Nibbāna.\""}, {"key": "sn39.1-15:3.5", "pali": "“Bhaddako, āvuso, maggo\nbhaddikā paṭi·padā, etassa nibbānassa sacchi·kiriyāya.", "sujato-corrected": "\"Reverend, this is a fine path, a fine practice, for realizing this Nibbāna."}, {"key": "sn39.1-15:3.6", "pali": "Alañca panāvuso sāri·putta, a·p·pamādāyā”ti.", "sujato-corrected": "Just this much is enough for diligence.”"}, {"key": "sn39.1-15:3.7", "pali": "Paṭhamaṁ.", "sujato-corrected": ""}]}, {"id": "sn39.1-15/4", "label": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "rows": [{"key": "sn39.1-15:4.1", "pali": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "sujato-corrected": "(Tell in full  as the Linked Discourses with Jambukhādaka.)"}]}]}, {"id": "sn39.16", "label": "SN 39.16 · Hard to Do", "children": [{"id": "sn39.16/0", "label": "Saṁyutta Nikāya 39.16", "rows": [{"key": "sn39.16:0.1", "pali": "Saṁyutta Nikāya 39.16", "sujato-corrected": "Linked Discourses 39.16"}, {"key": "sn39.16:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka"}, {"key": "sn39.16:0.3", "pali": "Dukkara·sutta", "sujato-corrected": "Hard to Do"}]}, {"id": "sn39.16/1", "label": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye…", "rows": [{"key": "sn39.16:1.1", "pali": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye dukkaran”ti?", "sujato-corrected": "“Reverend Sāriputta, in this teaching and training, what is hard to do?”"}, {"key": "sn39.16:1.2", "pali": "“Pabbajjā kho, āvuso, imasmiṁ dhamma·vinaye dukkarā”ti.", "sujato-corrected": "“Going forth, reverend, is hard to do in this teaching and training.”"}, {"key": "sn39.16:1.3", "pali": "“Pabbajitena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who has gone forth?”"}, {"key": "sn39.16:1.4", "pali": "“Pabbajitena kho, āvuso, abhi·rati dukkarā”ti.", "sujato-corrected": "“When you’ve gone forth it’s hard to be satisfied.”"}, {"key": "sn39.16:1.5", "pali": "“Abhi·ratena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who is satisfied?”"}, {"key": "sn39.16:1.6", "pali": "“Abhi·ratena kho, āvuso, dhammā·nudhamma·p·paṭi·patti dukkarā”ti.", "sujato-corrected": "“When you’re satisfied, it’s hard to practice in line with the teaching.”"}, {"key": "sn39.16:1.7", "pali": "“Kīva·ciraṁ panāvuso, dhammā·nudhamma·p·paṭi·panno bhikkhu a·rahaṁ assā”ti?", "sujato-corrected": "“But if a mendicant practices  in line with the teaching, will it take them long to become a perfected one?”"}, {"key": "sn39.16:1.8", "pali": "“Naciraṁ, āvuso”ti.", "sujato-corrected": "“Not long, reverend.”"}, {"key": "sn39.16:1.9", "pali": "Soḷasamaṁ.", "sujato-corrected": ""}, {"key": "sn39.16:1.10", "pali": "(Purimaka·sadisaṁ uddānaṁ.)", "sujato-corrected": ""}, {"key": "sn39.16:1.11", "pali": "Sāmaṇḍaka·saṁyuttaṁ sama·t·taṁ.", "sujato-corrected": "The Linked Discourses with Sāmaṇḍaka are complete."}]}]}]}];
+const TREE=[{"id": "sn39-samandakavagga", "label": "Sāmaṇḍakavagga — The Chapter with Sāmaṇḍaka", "children": [{"id": "sn39.1-15", "label": "SN 39.1–15", "children": [{"id": "sn39.1-15/0", "label": "Saṁyutta Nikāya 39.1", "rows": [{"key": "sn39.1-15:0.1", "pali": "Saṁyutta Nikāya 39.1", "sujato-corrected": "Linked Discourses 39.1–15", "bodhi-esque": "Connected Discourses 39.1"}, {"key": "sn39.1-15:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka", "bodhi-esque": "1.\nThe Chapter with Sāmaṇḍaka"}, {"key": "sn39.1-15:0.3", "pali": "Sāmaṇḍaka·sutta", "sujato-corrected": "With Sāmaṇḍaka on Nibbāna", "bodhi-esque": "Sāmaṇḍaka Sutta"}]}, {"id": "sn39.1-15/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati ukka·celāyaṁ…", "rows": [{"key": "sn39.1-15:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato-corrected": "At one time Venerable Sāriputta was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river.", "bodhi-esque": "On one occasion the Venerable Sāriputta was dwelling among the Vajjians at Ukkacelā on the bank of the river Ganges."}, {"key": "sn39.1-15:1.2", "pali": "Atha kho sāmaṇḍako pari·b·bājako yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmatā sāri·puttena saddhiṁ sammodi.", "sujato-corrected": "Then the wanderer Sāmaṇḍaka went up to Venerable Sāriputta and exchanged greetings with him.", "bodhi-esque": "Then the wanderer Sāmaṇḍaka approached the Venerable Sāriputta;\nhaving approached, he exchanged greetings with the Venerable Sāriputta."}, {"key": "sn39.1-15:1.3", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdi.\nEkam·antaṁ nisinno kho sāmaṇḍako pari·b·bājako āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "When the greetings and polite conversation were over, he sat down to one side and said to Sāriputta:", "bodhi-esque": "After they had concluded their cordial and memorable talk, he sat down to one side.\nThen, while sitting to one side, the wanderer Sāmaṇḍaka said to the Venerable Sāriputta:"}]}, {"id": "sn39.1-15/2", "label": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "rows": [{"key": "sn39.1-15:2.1", "pali": "“‘Nibbānaṁ, nibbānan’ti, āvuso sāri·putta, vuccati.", "sujato-corrected": "\"Reverend Sāriputta, they speak of this thing called 'Nibbāna'.", "bodhi-esque": "‘Nibbāna, Nibbāna,’ it is said, friend Sāriputta."}, {"key": "sn39.1-15:2.2", "pali": "Katamaṁ nu kho, āvuso, nibbānan”ti?", "sujato-corrected": "What is Nibbāna?\"", "bodhi-esque": "What now, friend, is Nibbāna?”"}, {"key": "sn39.1-15:2.3", "pali": "“Yo kho, āvuso, rāga·k·khayo dosa·k·khayo moha·k·khayo—", "sujato-corrected": "“Reverend, the ending of greed, hate, and delusion", "bodhi-esque": "“The destruction of lust, the destruction of hatred, the destruction of delusion—"}, {"key": "sn39.1-15:2.4", "pali": "idaṁ vuccati nibbānan”ti.", "sujato-corrected": "is called Nibbāna.\"", "bodhi-esque": "this, friend, is called Nibbāna.”"}, {"key": "sn39.1-15:2.5", "pali": "“Atthi panāvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "\"But, reverend, is there a path and a practice for realizing this Nibbāna?\"", "bodhi-esque": "“But, friend, is there a path, is there a way, for the realization of this Nibbāna?”"}, {"key": "sn39.1-15:2.6", "pali": "“Atthi kho, āvuso, maggo\natthi paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "“There is, reverend.”", "bodhi-esque": "“There is, friend, a path, there is a way, for the realization of this Nibbāna.”"}]}, {"id": "sn39.1-15/3", "label": "“Katamo panāvuso, maggo katamā paṭi·padā etassa nibbānassa…", "rows": [{"key": "sn39.1-15:3.1", "pali": "“Katamo panāvuso, maggo\nkatamā paṭi·padā etassa nibbānassa sacchi·kiri·yāyā”ti?", "sujato-corrected": "“Well, what is it?”", "bodhi-esque": "“What then, friend, is the path, what is the way, for the realization of this Nibbāna?”"}, {"key": "sn39.1-15:3.2", "pali": "“Ayameva kho, āvuso, ariyo a·ṭ·ṭha·ṅgiko maggo,\netassa nibbānassa sacchi·kiriyāya, seyyathidaṁ—", "sujato-corrected": "“It is simply this noble eightfold path, that is:", "bodhi-esque": "“It is, friend, precisely this Noble Eightfold Path for the realization of this Nibbāna;\nthat is,"}, {"key": "sn39.1-15:3.3", "pali": "sammā·diṭṭhi …pe… sammā·samādhi.", "sujato-corrected": "right view, right purpose, right speech, right action,\nright livelihood, right effort, right mindfulness, and right samādhi.", "bodhi-esque": "right view … right concentration."}, {"key": "sn39.1-15:3.4", "pali": "Ayaṁ kho, āvuso, maggo\nayaṁ paṭi·padā, etassa nibbānassa sacchi·kiri·yāyā”ti.", "sujato-corrected": "This is the path, the practice, for realizing this Nibbāna.\"", "bodhi-esque": "This, friend, is the path,\nthis is the practice, for the realization of Nibbāna.\""}, {"key": "sn39.1-15:3.5", "pali": "“Bhaddako, āvuso, maggo\nbhaddikā paṭi·padā, etassa nibbānassa sacchi·kiriyāya.", "sujato-corrected": "\"Reverend, this is a fine path, a fine practice, for realizing this Nibbāna.", "bodhi-esque": "\"Good, friend, is the path,\ngood is the practice, for the realization of Nibbāna."}, {"key": "sn39.1-15:3.6", "pali": "Alañca panāvuso sāri·putta, a·p·pamādāyā”ti.", "sujato-corrected": "Just this much is enough for diligence.”", "bodhi-esque": "\"But it is enough, friend Sāriputta, for heedfulness.\""}, {"key": "sn39.1-15:3.7", "pali": "Paṭhamaṁ.", "sujato-corrected": "", "bodhi-esque": "First."}]}, {"id": "sn39.1-15/4", "label": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "rows": [{"key": "sn39.1-15:4.1", "pali": "(Yathā jambu·khādaka·saṁyuttaṁ, tathā vi·t·thāre·tabbaṁ.)", "sujato-corrected": "(Tell in full  as the Linked Discourses with Jambukhādaka.)", "bodhi-esque": "(As in the Jambukhādaka Saṃyutta, so should it be elaborated.)"}]}]}, {"id": "sn39.16", "label": "SN 39.16 · Hard to Do", "children": [{"id": "sn39.16/0", "label": "Saṁyutta Nikāya 39.16", "rows": [{"key": "sn39.16:0.1", "pali": "Saṁyutta Nikāya 39.16", "sujato-corrected": "Linked Discourses 39.16", "bodhi-esque": "Saṁyutta Nikāya 39.16"}, {"key": "sn39.16:0.2", "pali": "1.\nSāmaṇḍaka·vagga", "sujato-corrected": "1.\nWith Sāmaṇḍaka", "bodhi-esque": "1.\nSāmaṇḍaka Vagga"}, {"key": "sn39.16:0.3", "pali": "Dukkara·sutta", "sujato-corrected": "Hard to Do", "bodhi-esque": "The Sutta on What Is Difficult"}]}, {"id": "sn39.16/1", "label": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye…", "rows": [{"key": "sn39.16:1.1", "pali": "“Kiṁ nu kho, āvuso sāri·putta, imasmiṁ dhamma·vinaye dukkaran”ti?", "sujato-corrected": "“Reverend Sāriputta, in this teaching and training, what is hard to do?”", "bodhi-esque": "\"What, friend Sāriputta, is difficult to do in this Dhamma and discipline?\""}, {"key": "sn39.16:1.2", "pali": "“Pabbajjā kho, āvuso, imasmiṁ dhamma·vinaye dukkarā”ti.", "sujato-corrected": "“Going forth, reverend, is hard to do in this teaching and training.”", "bodhi-esque": "\"Going forth, friend, is difficult to do in this Dhamma and discipline.\""}, {"key": "sn39.16:1.3", "pali": "“Pabbajitena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who has gone forth?”", "bodhi-esque": "\"And for one who has gone forth, friend, what is difficult?\""}, {"key": "sn39.16:1.4", "pali": "“Pabbajitena kho, āvuso, abhi·rati dukkarā”ti.", "sujato-corrected": "“When you’ve gone forth it’s hard to be satisfied.”", "bodhi-esque": "\"For one who has gone forth, friend, to take delight is difficult.\""}, {"key": "sn39.16:1.5", "pali": "“Abhi·ratena panāvuso, kiṁ dukkaran”ti?", "sujato-corrected": "“But what’s hard to do for someone who is satisfied?”", "bodhi-esque": "\"And for one who has taken delight, friend, what is difficult?\""}, {"key": "sn39.16:1.6", "pali": "“Abhi·ratena kho, āvuso, dhammā·nudhamma·p·paṭi·patti dukkarā”ti.", "sujato-corrected": "“When you’re satisfied, it’s hard to practice in line with the teaching.”", "bodhi-esque": "\"For one who has taken delight, friend, the practice of the Dhamma in accordance with the Dhamma is difficult.\""}, {"key": "sn39.16:1.7", "pali": "“Kīva·ciraṁ panāvuso, dhammā·nudhamma·p·paṭi·panno bhikkhu a·rahaṁ assā”ti?", "sujato-corrected": "“But if a mendicant practices  in line with the teaching, will it take them long to become a perfected one?”", "bodhi-esque": "\"How long, friend, would a bhikkhu practicing the Dhamma in accordance with the Dhamma become an arahant?\""}, {"key": "sn39.16:1.8", "pali": "“Naciraṁ, āvuso”ti.", "sujato-corrected": "“Not long, reverend.”", "bodhi-esque": "\"Not long, friend.\""}, {"key": "sn39.16:1.9", "pali": "Soḷasamaṁ.", "sujato-corrected": "", "bodhi-esque": "The sixteenth."}, {"key": "sn39.16:1.10", "pali": "(Purimaka·sadisaṁ uddānaṁ.)", "sujato-corrected": "", "bodhi-esque": "(The udāna is similar to the preceding one.)"}, {"key": "sn39.16:1.11", "pali": "Sāmaṇḍaka·saṁyuttaṁ sama·t·taṁ.", "sujato-corrected": "The Linked Discourses with Sāmaṇḍaka are complete.", "bodhi-esque": "The Sāmaṇḍaka Saṃyutta is completed."}]}]}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": null}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "sn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "SN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "sn50-gangapeyyalavagga", "label": "Gaṅgāpeyyālavagga — The Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.1-12", "label": "SN 50.1–12", "children": [{"id": "sn50.1-12/0", "label": "Saṁyutta Nikāya 50.1–12", "rows": [{"key": "sn50.1-12:0.1", "pali": "Saṁyutta Nikāya 50.1–12", "sujato-corrected": "Linked Discourses 50.1–12"}, {"key": "sn50.1-12:0.2", "pali": "1.\nGaṅgā·peyyāla·vagga", "sujato-corrected": "1.\nAbbreviated Texts on the Ganges"}, {"key": "sn50.1-12:0.3", "pali": "Balādi·sutta", "sujato-corrected": "Sloping East, Etc."}]}, {"id": "sn50.1-12/1", "label": "“Pañc·imāni, bhikkhave, balāni.", "rows": [{"key": "sn50.1-12:1.1", "pali": "“Pañc·imāni, bhikkhave, balāni.", "sujato-corrected": "“Mendicants, there are these five powers."}, {"key": "sn50.1-12:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?"}, {"key": "sn50.1-12:1.3", "pali": "Saddhā·balaṁ, vīriya·balaṁ, sati·balaṁ, samādhi·balaṁ, paññā·balaṁ—", "sujato-corrected": "The powers of faith, energy, mindfulness, samādhi, and wisdom."}, {"key": "sn50.1-12:1.4", "pali": "imāni kho, bhikkhave, pañca balānīti.", "sujato-corrected": "These are the five powers."}, {"key": "sn50.1-12:1.5", "pali": "Seyyathāpi, bhikkhave, gaṅgā nadī\npācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "sujato-corrected": "The Ganges river slants, slopes, and inclines to the east."}, {"key": "sn50.1-12:1.6", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro.", "sujato-corrected": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna."}, {"key": "sn50.1-12:1.7", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro?", "sujato-corrected": "And how does a mendicant who develops the five powers slant, slope, and incline to Nibbāna?"}, {"key": "sn50.1-12:1.8", "pali": "Idha, bhikkhave, bhikkhu saddhā·balaṁ bhāveti\nviveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ,", "sujato-corrected": "It’s when a mendicant develops the powers of faith,"}, {"key": "sn50.1-12:1.9", "pali": "vīriya·balaṁ …pe…", "sujato-corrected": "energy,"}, {"key": "sn50.1-12:1.10", "pali": "sati·balaṁ …", "sujato-corrected": "mindfulness,"}, {"key": "sn50.1-12:1.11", "pali": "samādhi·balaṁ …", "sujato-corrected": "samādhi,"}, {"key": "sn50.1-12:1.12", "pali": "paññā·balaṁ bhāveti viveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ.", "sujato-corrected": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go."}, {"key": "sn50.1-12:1.13", "pali": "Evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro”ti.", "sujato-corrected": "That's how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.\""}, {"key": "sn50.1-12:1.14", "pali": "Dvādasamaṁ.", "sujato-corrected": ""}, {"key": "sn50.1-12:1.15", "pali": "Gaṅgā·peyyāla·vaggo paṭhamo.", "sujato-corrected": ""}]}, {"id": "sn50.1-12/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.1-12:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.1-12:2.1", "pali": "Cha pācīnato ninnā,", "sujato-corrected": "Six on slanting to the east,"}, {"key": "sn50.1-12:2.2", "pali": "cha ninnā ca samuddato;", "sujato-corrected": "and six on slanting to the ocean;"}, {"key": "sn50.1-12:2.3", "pali": "Dvete cha dvādasa honti,", "sujato-corrected": "these two sixes make twelve,"}, {"key": "sn50.1-12:2.4", "pali": "vaggo tena pavucca·tīti.", "sujato-corrected": "and that’s how this chapter is recited."}]}]}]}, {"id": "sn50-appamadavagga", "label": "Appamādavagga — The Chapter on Diligence", "children": [{"id": "sn50.13-22", "label": "SN 50.13–22", "children": [{"id": "sn50.13-22/0", "label": "Saṁyutta Nikāya 50.13", "rows": [{"key": "sn50.13-22:0.1", "pali": "Saṁyutta Nikāya 50.13", "sujato-corrected": "Linked Discourses 50.13–22"}, {"key": "sn50.13-22:0.2", "pali": "2.\nA·p·pamāda·vagga", "sujato-corrected": "2.\nDiligence"}, {"key": "sn50.13-22:0.3", "pali": "A·p·pamāda·vagga", "sujato-corrected": "Diligence"}]}, {"id": "sn50.13-22/1", "label": "(A·p·pamāda·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.13-22:1.1", "pali": "(A·p·pamāda·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on diligence at SN 45.139–148.)"}]}, {"id": "sn50.13-22/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.13-22:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.13-22:2.1", "pali": "Tathā·gataṁ padaṁ kūṭaṁ,", "sujato-corrected": "The Realized One, footprint, roof peak,"}, {"key": "sn50.13-22:2.2", "pali": "mūlaṁ sārena vassikaṁ;", "sujato-corrected": "roots, heartwood, jasmine,"}, {"key": "sn50.13-22:2.3", "pali": "Rājā candima·sūriyā,", "sujato-corrected": "monarch, sun and moon,"}, {"key": "sn50.13-22:2.4", "pali": "vatthena dasamaṁ padanti.", "sujato-corrected": "and cloth is the tenth."}]}]}]}, {"id": "sn50-balakaraniyavagga", "label": "Balakaraṇīyavagga — The Chapter on Hard Work", "children": [{"id": "sn50.23-34", "label": "SN 50.23–34", "children": [{"id": "sn50.23-34/0", "label": "Saṁyutta Nikāya 50.23", "rows": [{"key": "sn50.23-34:0.1", "pali": "Saṁyutta Nikāya 50.23", "sujato-corrected": "Linked Discourses 50.23–34"}, {"key": "sn50.23-34:0.2", "pali": "3.\nBala·karaṇīya·vagga", "sujato-corrected": "3.\nHard Work"}, {"key": "sn50.23-34:0.3", "pali": "Bala·karaṇīya·vagga", "sujato-corrected": "Hard Work"}]}, {"id": "sn50.23-34/1", "label": "(Bala·karaṇīya·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.23-34:1.1", "pali": "(Bala·karaṇīya·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on hard work at SN 45.149–160.)"}]}, {"id": "sn50.23-34/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.23-34:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.23-34:2.1", "pali": "Balaṁ bījañca nāgo ca,", "sujato-corrected": "Hard work, seeds, and dragons,"}, {"key": "sn50.23-34:2.2", "pali": "rukkho kumbhena sūkiyā;", "sujato-corrected": "a tree, a pot, and a spike,"}, {"key": "sn50.23-34:2.3", "pali": "Ākāsena ca dve meghā,", "sujato-corrected": "the atmosphere, and two on clouds,"}, {"key": "sn50.23-34:2.4", "pali": "nāvā āgantukā nadīti.", "sujato-corrected": "a ship, a guest house, and a river."}]}]}]}, {"id": "sn50-esanavagga", "label": "Esanāvagga — The Chapter on Searches", "children": [{"id": "sn50.35-44", "label": "SN 50.35–44", "children": [{"id": "sn50.35-44/0", "label": "Saṁyutta Nikāya 50.35", "rows": [{"key": "sn50.35-44:0.1", "pali": "Saṁyutta Nikāya 50.35", "sujato-corrected": "Linked Discourses 50.35–44"}, {"key": "sn50.35-44:0.2", "pali": "4.\nEsanā·vagga", "sujato-corrected": "4.\nSearches"}, {"key": "sn50.35-44:0.3", "pali": "Esanā·vagga", "sujato-corrected": "Searches"}]}, {"id": "sn50.35-44/1", "label": "(Esanā·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.35-44:1.1", "pali": "(Esanā·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on searches at SN 45.161–170.)"}]}, {"id": "sn50.35-44/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.35-44:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.35-44:2.1", "pali": "Esanā vidhā āsavo,", "sujato-corrected": "Searches, discriminations, defilements,"}, {"key": "sn50.35-44:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato-corrected": "states of existence, three kinds of suffering,"}, {"key": "sn50.35-44:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato-corrected": "barrenness, stains, and troubles,"}, {"key": "sn50.35-44:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato-corrected": "feelings, craving, and thirst."}]}]}]}, {"id": "sn50-oghavagga", "label": "Oghavagga — The Chapter on Floods", "children": [{"id": "sn50.45-54", "label": "SN 50.45–54", "children": [{"id": "sn50.45-54/0", "label": "Saṁyutta Nikāya 50.45–54", "rows": [{"key": "sn50.45-54:0.1", "pali": "Saṁyutta Nikāya 50.45–54", "sujato-corrected": "Linked Discourses 50.45–54"}, {"key": "sn50.45-54:0.2", "pali": "5.\nOgha·vagga", "sujato-corrected": "5.\nFloods"}, {"key": "sn50.45-54:0.3", "pali": "Oghādi·sutta", "sujato-corrected": "Floods, Etc."}]}, {"id": "sn50.45-54/1", "label": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "rows": [{"key": "sn50.45-54:1.1", "pali": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "“Mendicants, there are five higher fetters."}, {"key": "sn50.45-54:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?"}, {"key": "sn50.45-54:1.3", "pali": "Rūpa·rāgo, a·rūpa·rāgo, māno, uddhaccaṁ, a·vijjā—", "sujato-corrected": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance."}, {"key": "sn50.45-54:1.4", "pali": "imāni kho, bhikkhave, pañc·uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "These are the five higher fetters."}, {"key": "sn50.45-54:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya pari·k·khayāya pahānāya pañca balāni bhāve·tabbāni.", "sujato-corrected": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters."}, {"key": "sn50.45-54:1.6", "pali": "Katamāni pañca?", "sujato-corrected": "What five?"}, {"key": "sn50.45-54:1.7", "pali": "Idha, bhikkhave, bhikkhu, saddhā·balaṁ bhāveti\nviveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ,", "sujato-corrected": "It’s when a mendicant develops the powers of faith,"}, {"key": "sn50.45-54:1.8", "pali": "vīriya·balaṁ …pe…", "sujato-corrected": "energy,"}, {"key": "sn50.45-54:1.9", "pali": "sati·balaṁ …", "sujato-corrected": "mindfulness,"}, {"key": "sn50.45-54:1.10", "pali": "samādhi·balaṁ …", "sujato-corrected": "samādhi,"}, {"key": "sn50.45-54:1.11", "pali": "paññā·balaṁ bhāveti viveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ.", "sujato-corrected": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go."}, {"key": "sn50.45-54:1.12", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya\npari·k·khayāya pahānāya imāni pañca balāni bhāve·tabbānī”ti.", "sujato-corrected": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”"}, {"key": "sn50.45-54:1.13", "pali": "(Evaṁ vi·t·thāre·tabbā.)", "sujato-corrected": "(Tell in full as in SN 45.171–179, with the above as the final discourse.)"}]}]}]}, {"id": "sn50-punagangapeyyalavagga", "label": "Punagaṅgāpeyyālavagga — Another Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.55-66", "label": "SN 50.55–66", "children": [{"id": "sn50.55-66/0", "label": "Saṁyutta Nikāya 50.55–66", "rows": [{"key": "sn50.55-66:0.1", "pali": "Saṁyutta Nikāya 50.55–66", "sujato-corrected": "Linked Discourses 50.55–66"}, {"key": "sn50.55-66:0.2", "pali": "6.\nPuna·gaṅgā·peyyāla·vagga", "sujato-corrected": "6.\nAnother Chapter of Abbreviated Texts on the Ganges"}, {"key": "sn50.55-66:0.3", "pali": "Pācīnādi·sutta", "sujato-corrected": "Sloping East, Etc."}]}, {"id": "sn50.55-66/1", "label": "“Seyyathāpi, bhikkhave, gaṅgā nadī pācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "rows": [{"key": "sn50.55-66:1.1", "pali": "“Seyyathāpi, bhikkhave, gaṅgā nadī\npācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "sujato-corrected": "“Mendicants, the Ganges river slants, slopes, and inclines to the east."}, {"key": "sn50.55-66:1.2", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro.", "sujato-corrected": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna."}, {"key": "sn50.55-66:1.3", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro?", "sujato-corrected": "And how does a mendicant who develops the five powers slant, slope, and incline to Nibbāna?"}, {"key": "sn50.55-66:1.4", "pali": "Idha, bhikkhave, bhikkhu,\nsaddhā·balaṁ bhāveti\nrāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ …", "sujato-corrected": "It's when a mendicant develops the powers of faith, energy, mindfulness, samādhi,\nand wisdom, which culminate in the removal of greed, hate, and delusion."}, {"key": "sn50.55-66:1.5", "pali": "evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro”ti.", "sujato-corrected": "That's how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.\""}, {"key": "sn50.55-66:1.6", "pali": "Vi·t·thāre·tabbā.", "sujato-corrected": "(Tell in full for each of the different rivers as in SN 45.91–102, removal of greed version.)"}, {"key": "sn50.55-66:1.7", "pali": "Dvādasamaṁ.", "sujato-corrected": ""}, {"key": "sn50.55-66:1.8", "pali": "Gaṅgā·peyyāla·vaggo cha·ṭ·ṭho.", "sujato-corrected": ""}]}, {"id": "sn50.55-66/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.55-66:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.55-66:2.1", "pali": "Cha pācīnato ninnā,", "sujato-corrected": "Six on slanting to the east,"}, {"key": "sn50.55-66:2.2", "pali": "cha ninnā ca samuddato;", "sujato-corrected": "and six on slanting to the ocean;"}, {"key": "sn50.55-66:2.3", "pali": "Dvete cha dvādasa honti,", "sujato-corrected": "these two sixes make twelve,"}, {"key": "sn50.55-66:2.4", "pali": "vaggo tena pavucca·tīti.", "sujato-corrected": "and that’s how this chapter is recited."}]}]}]}, {"id": "sn50-punaappamadavagga", "label": "Punaappamādavagga — Another Chapter on Diligence", "children": [{"id": "sn50.67-76", "label": "SN 50.67–76", "children": [{"id": "sn50.67-76/0", "label": "Saṁyutta Nikāya 50.67", "rows": [{"key": "sn50.67-76:0.1", "pali": "Saṁyutta Nikāya 50.67", "sujato-corrected": "Linked Discourses 50.67–76"}, {"key": "sn50.67-76:0.2", "pali": "6.\nPuna·gaṅgā·peyyāla·vagga", "sujato-corrected": "6.\nAnother Chapter of Abbreviated Texts on the Ganges"}, {"key": "sn50.67-76:0.3", "pali": "Puna·a·p·pamāda·vagga", "sujato-corrected": "Another Chapter on Diligence"}]}, {"id": "sn50.67-76/1", "label": "On Display: Title of Section Only", "rows": [{"key": "sn50.67-76:1.1", "pali": "On Display:\nTitle of Section Only", "sujato-corrected": "(This text consists of the title only.\nTell in full as in SN 45.139–148, removal of greed version.)"}]}]}]}, {"id": "sn50-punabalakaraniyavagga", "label": "Punabalakaraṇīyavagga — Another Chapter on Hard Work", "children": [{"id": "sn50.77-88", "label": "SN 50.77–88", "children": [{"id": "sn50.77-88/0", "label": "Saṁyutta Nikāya 50.77", "rows": [{"key": "sn50.77-88:0.1", "pali": "Saṁyutta Nikāya 50.77", "sujato-corrected": "Linked Discourses 50.77–88"}, {"key": "sn50.77-88:0.2", "pali": "7.\nPuna·bala·karaṇīya·vagga", "sujato-corrected": "7.\nAnother Chapter on Hard Work"}, {"key": "sn50.77-88:0.3", "pali": "Puna·bala·karaṇīya·vagga", "sujato-corrected": "Another Chapter on Hard Work"}]}, {"id": "sn50.77-88/1", "label": "(A·p·pamāda·vagga-bala·karaṇīya·vaggā vi·t·thāre·tabbā.)", "rows": [{"key": "sn50.77-88:1.1", "pali": "(A·p·pamāda·vagga-bala·karaṇīya·vaggā vi·t·thāre·tabbā.)", "sujato-corrected": "(Tell in full as in SN 45.149–160, removal of greed version.)"}]}]}]}, {"id": "sn50-punaesanavagga", "label": "Punaesanāvagga — Another Chapter on Searches", "children": [{"id": "sn50.89-98", "label": "SN 50.89–98", "children": [{"id": "sn50.89-98/0", "label": "Saṁyutta Nikāya 50.89–98", "rows": [{"key": "sn50.89-98:0.1", "pali": "Saṁyutta Nikāya 50.89–98", "sujato-corrected": "Linked Discourses 50.89–98"}, {"key": "sn50.89-98:0.2", "pali": "8.\nPuna·esanā·vagga", "sujato-corrected": "8.\nAnother Chapter on Searches"}, {"key": "sn50.89-98:0.3", "pali": "Puna·esan·ādi·sutta", "sujato-corrected": "Another Series on Searches, Etc."}]}, {"id": "sn50.89-98/1", "label": "(Evaṁ esanā·pāḷi vi·t·thāre·tabbā—rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.)", "rows": [{"key": "sn50.89-98:1.1", "pali": "(Evaṁ esanā·pāḷi vi·t·thāre·tabbā—rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.)", "sujato-corrected": "(Tell in full as in SN 45.161–170, removal of greed version.)"}, {"key": "sn50.89-98:1.2", "pali": "Esanā·vaggo navamo.", "sujato-corrected": ""}]}, {"id": "sn50.89-98/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.89-98:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.89-98:2.1", "pali": "Esanā vidhā āsavo,", "sujato-corrected": "Searches, discriminations, defilements,"}, {"key": "sn50.89-98:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato-corrected": "states of existence, three kinds of suffering,"}, {"key": "sn50.89-98:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato-corrected": "barrenness, stains, and troubles,"}, {"key": "sn50.89-98:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato-corrected": "feelings, craving, and thirst."}]}]}]}, {"id": "sn50-punaoghavagga", "label": "Punaoghavagga — Another Chapter on Floods", "children": [{"id": "sn50.99-108", "label": "SN 50.99–108", "children": [{"id": "sn50.99-108/0", "label": "Saṁyutta Nikāya 50.99–108", "rows": [{"key": "sn50.99-108:0.1", "pali": "Saṁyutta Nikāya 50.99–108", "sujato-corrected": "Linked Discourses 50.99–108"}, {"key": "sn50.99-108:0.2", "pali": "9.\nPuna·ogha·vagga", "sujato-corrected": "9.\nAnother Chapter on Floods"}, {"key": "sn50.99-108:0.3", "pali": "Punaogh·ādi·sutta", "sujato-corrected": "Another Series on Floods, Etc."}]}, {"id": "sn50.99-108/1", "label": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "rows": [{"key": "sn50.99-108:1.1", "pali": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "“Mendicants, there are five higher fetters."}, {"key": "sn50.99-108:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?"}, {"key": "sn50.99-108:1.3", "pali": "Rūpa·rāgo, a·rūpa·rāgo, māno, uddhaccaṁ a·vijjā—", "sujato-corrected": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance."}, {"key": "sn50.99-108:1.4", "pali": "imāni kho, bhikkhave, pañc·uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "These are the five higher fetters."}, {"key": "sn50.99-108:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya pari·k·khayāya pahānāya pañca balāni bhāve·tabbāni.", "sujato-corrected": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters."}, {"key": "sn50.99-108:1.6", "pali": "Katamāni pañca?", "sujato-corrected": "What five?"}, {"key": "sn50.99-108:1.7", "pali": "Idha, bhikkhave, bhikkhu saddhā·balaṁ bhāveti …pe…\npaññā·balaṁ bhāveti rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.", "sujato-corrected": "A mendicant develops the powers of faith, energy, mindfulness, samādhi,\nand wisdom, which culminate in the removal of greed, hate, and delusion."}, {"key": "sn50.99-108:1.8", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya\npari·k·khayāya pahānāya imāni pañca balāni bhāve·tabbānī”ti.", "sujato-corrected": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”"}, {"key": "sn50.99-108:1.9", "pali": "Dasamaṁ.", "sujato-corrected": ""}, {"key": "sn50.99-108:1.10", "pali": "Ogha·vaggo dasamo.", "sujato-corrected": ""}]}, {"id": "sn50.99-108/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.99-108:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn50.99-108:2.1", "pali": "Ogho yogo upādānaṁ,", "sujato-corrected": "Floods, yokes, grasping,"}, {"key": "sn50.99-108:2.2", "pali": "ganthā anusayena ca;", "sujato-corrected": "ties, and underlying tendencies,"}, {"key": "sn50.99-108:2.3", "pali": "Kāma·guṇā nī·varaṇā,", "sujato-corrected": "kinds of sensual stimulation, hindrances,"}, {"key": "sn50.99-108:2.4", "pali": "khandhā oruddhambhāgiyāti.", "sujato-corrected": "aggregates, and fetters high and low."}, {"key": "sn50.99-108:2.5", "pali": "Bala·saṁyuttaṁ cha·ṭ·ṭhaṁ.", "sujato-corrected": "The Linked Discourses on the Powers is the sixth section."}]}]}]}];
+const TREE=[{"id": "sn50-gangapeyyalavagga", "label": "Gaṅgāpeyyālavagga — The Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.1-12", "label": "SN 50.1–12", "children": [{"id": "sn50.1-12/0", "label": "Saṁyutta Nikāya 50.1–12", "rows": [{"key": "sn50.1-12:0.1", "pali": "Saṁyutta Nikāya 50.1–12", "sujato-corrected": "Linked Discourses 50.1–12", "bodhi-esque": "Connected Discourses 50.1–12"}, {"key": "sn50.1-12:0.2", "pali": "1.\nGaṅgā·peyyāla·vagga", "sujato-corrected": "1.\nAbbreviated Texts on the Ganges", "bodhi-esque": "1.\nThe Ganges Repetition Series"}, {"key": "sn50.1-12:0.3", "pali": "Balādi·sutta", "sujato-corrected": "Sloping East, Etc.", "bodhi-esque": "The Sutta on the Powers, Etc."}]}, {"id": "sn50.1-12/1", "label": "“Pañc·imāni, bhikkhave, balāni.", "rows": [{"key": "sn50.1-12:1.1", "pali": "“Pañc·imāni, bhikkhave, balāni.", "sujato-corrected": "“Mendicants, there are these five powers.", "bodhi-esque": "“Bhikkhus, there are these five powers."}, {"key": "sn50.1-12:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?", "bodhi-esque": "What five?"}, {"key": "sn50.1-12:1.3", "pali": "Saddhā·balaṁ, vīriya·balaṁ, sati·balaṁ, samādhi·balaṁ, paññā·balaṁ—", "sujato-corrected": "The powers of faith, energy, mindfulness, samādhi, and wisdom.", "bodhi-esque": "The power of faith, the power of energy, the power of mindfulness, the power of concentration, the power of wisdom—"}, {"key": "sn50.1-12:1.4", "pali": "imāni kho, bhikkhave, pañca balānīti.", "sujato-corrected": "These are the five powers.", "bodhi-esque": "These, bhikkhus, are the five powers."}, {"key": "sn50.1-12:1.5", "pali": "Seyyathāpi, bhikkhave, gaṅgā nadī\npācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "sujato-corrected": "The Ganges river slants, slopes, and inclines to the east.", "bodhi-esque": "Just as, bhikkhus, the river Ganges inclines towards the east, slopes towards the east, tends towards the east;"}, {"key": "sn50.1-12:1.6", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro.", "sujato-corrected": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.", "bodhi-esque": "So too, bhikkhus, a bhikkhu who develops and cultivates the five powers inclines towards Nibbāna,\nslopes towards Nibbāna, tends towards Nibbāna."}, {"key": "sn50.1-12:1.7", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro?", "sujato-corrected": "And how does a mendicant who develops the five powers slant, slope, and incline to Nibbāna?", "bodhi-esque": "And how, bhikkhus, does a bhikkhu who develops and cultivates the five powers incline towards Nibbāna,\nslope towards Nibbāna, tend towards Nibbāna?"}, {"key": "sn50.1-12:1.8", "pali": "Idha, bhikkhave, bhikkhu saddhā·balaṁ bhāveti\nviveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ,", "sujato-corrected": "It’s when a mendicant develops the powers of faith,", "bodhi-esque": "Here, bhikkhus, a bhikkhu develops the power of faith based upon seclusion, dispassion, cessation, maturing in release."}, {"key": "sn50.1-12:1.9", "pali": "vīriya·balaṁ …pe…", "sujato-corrected": "energy,", "bodhi-esque": "the power of energy …"}, {"key": "sn50.1-12:1.10", "pali": "sati·balaṁ …", "sujato-corrected": "mindfulness,", "bodhi-esque": "the power of mindfulness …"}, {"key": "sn50.1-12:1.11", "pali": "samādhi·balaṁ …", "sujato-corrected": "samādhi,", "bodhi-esque": "the power of concentration …"}, {"key": "sn50.1-12:1.12", "pali": "paññā·balaṁ bhāveti viveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ.", "sujato-corrected": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go.", "bodhi-esque": "develops the power of wisdom based upon seclusion, dispassion, cessation, maturing in release."}, {"key": "sn50.1-12:1.13", "pali": "Evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro”ti.", "sujato-corrected": "That's how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.\"", "bodhi-esque": "Thus, bhikkhus, a bhikkhu, developing the five powers, cultivating the five powers,\nis inclined to Nibbāna, sloping toward Nibbāna, tending toward Nibbāna."}, {"key": "sn50.1-12:1.14", "pali": "Dvādasamaṁ.", "sujato-corrected": "", "bodhi-esque": "The twelfth."}, {"key": "sn50.1-12:1.15", "pali": "Gaṅgā·peyyāla·vaggo paṭhamo.", "sujato-corrected": "", "bodhi-esque": "The Gaṅgā Repetition Series, the first."}]}, {"id": "sn50.1-12/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.1-12:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary:"}, {"key": "sn50.1-12:2.1", "pali": "Cha pācīnato ninnā,", "sujato-corrected": "Six on slanting to the east,", "bodhi-esque": "Six inclined to the east,"}, {"key": "sn50.1-12:2.2", "pali": "cha ninnā ca samuddato;", "sujato-corrected": "and six on slanting to the ocean;", "bodhi-esque": "six inclined to the ocean;"}, {"key": "sn50.1-12:2.3", "pali": "Dvete cha dvādasa honti,", "sujato-corrected": "these two sixes make twelve,", "bodhi-esque": "these two sixes become twelve,"}, {"key": "sn50.1-12:2.4", "pali": "vaggo tena pavucca·tīti.", "sujato-corrected": "and that’s how this chapter is recited.", "bodhi-esque": "thus the chapter is declared."}]}]}]}, {"id": "sn50-appamadavagga", "label": "Appamādavagga — The Chapter on Diligence", "children": [{"id": "sn50.13-22", "label": "SN 50.13–22", "children": [{"id": "sn50.13-22/0", "label": "Saṁyutta Nikāya 50.13", "rows": [{"key": "sn50.13-22:0.1", "pali": "Saṁyutta Nikāya 50.13", "sujato-corrected": "Linked Discourses 50.13–22", "bodhi-esque": "Connected Discourses 50.13"}, {"key": "sn50.13-22:0.2", "pali": "2.\nA·p·pamāda·vagga", "sujato-corrected": "2.\nDiligence", "bodhi-esque": "2.\nThe Chapter on Heedfulness"}, {"key": "sn50.13-22:0.3", "pali": "A·p·pamāda·vagga", "sujato-corrected": "Diligence", "bodhi-esque": "The Chapter on Heedfulness"}]}, {"id": "sn50.13-22/1", "label": "(A·p·pamāda·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.13-22:1.1", "pali": "(A·p·pamāda·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on diligence at SN 45.139–148.)", "bodhi-esque": "(The chapter on heedfulness is to be elaborated.)"}]}, {"id": "sn50.13-22/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.13-22:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary verse:"}, {"key": "sn50.13-22:2.1", "pali": "Tathā·gataṁ padaṁ kūṭaṁ,", "sujato-corrected": "The Realized One, footprint, roof peak,", "bodhi-esque": "Tathāgata, footprint, peak,"}, {"key": "sn50.13-22:2.2", "pali": "mūlaṁ sārena vassikaṁ;", "sujato-corrected": "roots, heartwood, jasmine,", "bodhi-esque": "root, heartwood, rain;"}, {"key": "sn50.13-22:2.3", "pali": "Rājā candima·sūriyā,", "sujato-corrected": "monarch, sun and moon,", "bodhi-esque": "king, moon and sun,"}, {"key": "sn50.13-22:2.4", "pali": "vatthena dasamaṁ padanti.", "sujato-corrected": "and cloth is the tenth.", "bodhi-esque": "with cloth the tenth step."}]}]}]}, {"id": "sn50-balakaraniyavagga", "label": "Balakaraṇīyavagga — The Chapter on Hard Work", "children": [{"id": "sn50.23-34", "label": "SN 50.23–34", "children": [{"id": "sn50.23-34/0", "label": "Saṁyutta Nikāya 50.23", "rows": [{"key": "sn50.23-34:0.1", "pali": "Saṁyutta Nikāya 50.23", "sujato-corrected": "Linked Discourses 50.23–34", "bodhi-esque": "Connected Discourses 50.23"}, {"key": "sn50.23-34:0.2", "pali": "3.\nBala·karaṇīya·vagga", "sujato-corrected": "3.\nHard Work", "bodhi-esque": "3.\nThe Chapter on the Powers to Be Undertaken"}, {"key": "sn50.23-34:0.3", "pali": "Bala·karaṇīya·vagga", "sujato-corrected": "Hard Work", "bodhi-esque": "The Chapter on the Powers to Be Undertaken"}]}, {"id": "sn50.23-34/1", "label": "(Bala·karaṇīya·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.23-34:1.1", "pali": "(Bala·karaṇīya·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on hard work at SN 45.149–160.)", "bodhi-esque": "The chapter on the powers to be undertaken is to be elaborated."}]}, {"id": "sn50.23-34/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.23-34:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary"}, {"key": "sn50.23-34:2.1", "pali": "Balaṁ bījañca nāgo ca,", "sujato-corrected": "Hard work, seeds, and dragons,", "bodhi-esque": "Strength, the seed, and the elephant,"}, {"key": "sn50.23-34:2.2", "pali": "rukkho kumbhena sūkiyā;", "sujato-corrected": "a tree, a pot, and a spike,", "bodhi-esque": "the tree, the pot, the needle;"}, {"key": "sn50.23-34:2.3", "pali": "Ākāsena ca dve meghā,", "sujato-corrected": "the atmosphere, and two on clouds,", "bodhi-esque": "with space and two clouds,"}, {"key": "sn50.23-34:2.4", "pali": "nāvā āgantukā nadīti.", "sujato-corrected": "a ship, a guest house, and a river.", "bodhi-esque": "the boat, the guest, the river."}]}]}]}, {"id": "sn50-esanavagga", "label": "Esanāvagga — The Chapter on Searches", "children": [{"id": "sn50.35-44", "label": "SN 50.35–44", "children": [{"id": "sn50.35-44/0", "label": "Saṁyutta Nikāya 50.35", "rows": [{"key": "sn50.35-44:0.1", "pali": "Saṁyutta Nikāya 50.35", "sujato-corrected": "Linked Discourses 50.35–44", "bodhi-esque": "Connected Discourses 50.35"}, {"key": "sn50.35-44:0.2", "pali": "4.\nEsanā·vagga", "sujato-corrected": "4.\nSearches", "bodhi-esque": "4.\nThe Chapter on Searches"}, {"key": "sn50.35-44:0.3", "pali": "Esanā·vagga", "sujato-corrected": "Searches", "bodhi-esque": "The Chapter on Searches"}]}, {"id": "sn50.35-44/1", "label": "(Esanā·vaggo vi·t·thāre·tabbo.)", "rows": [{"key": "sn50.35-44:1.1", "pali": "(Esanā·vaggo vi·t·thāre·tabbo.)", "sujato-corrected": "(Tell in full as in the chapter on searches at SN 45.161–170.)", "bodhi-esque": "(The Chapter on Searches is to be expanded.)"}]}, {"id": "sn50.35-44/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.35-44:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "The summary"}, {"key": "sn50.35-44:2.1", "pali": "Esanā vidhā āsavo,", "sujato-corrected": "Searches, discriminations, defilements,", "bodhi-esque": "Searches, discrimination, taint,"}, {"key": "sn50.35-44:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato-corrected": "states of existence, three kinds of suffering,", "bodhi-esque": "And existence, three sufferings;"}, {"key": "sn50.35-44:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato-corrected": "barrenness, stains, and troubles,", "bodhi-esque": "Barrenness, and stain, and distress,"}, {"key": "sn50.35-44:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato-corrected": "feelings, craving, and thirst.", "bodhi-esque": "Feeling, craving, and thirst."}]}]}]}, {"id": "sn50-oghavagga", "label": "Oghavagga — The Chapter on Floods", "children": [{"id": "sn50.45-54", "label": "SN 50.45–54", "children": [{"id": "sn50.45-54/0", "label": "Saṁyutta Nikāya 50.45–54", "rows": [{"key": "sn50.45-54:0.1", "pali": "Saṁyutta Nikāya 50.45–54", "sujato-corrected": "Linked Discourses 50.45–54", "bodhi-esque": "Connected Discourses 50.45–54"}, {"key": "sn50.45-54:0.2", "pali": "5.\nOgha·vagga", "sujato-corrected": "5.\nFloods", "bodhi-esque": "5.\nThe Floods"}, {"key": "sn50.45-54:0.3", "pali": "Oghādi·sutta", "sujato-corrected": "Floods, Etc.", "bodhi-esque": "Floods, Etc."}]}, {"id": "sn50.45-54/1", "label": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "rows": [{"key": "sn50.45-54:1.1", "pali": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "“Mendicants, there are five higher fetters.", "bodhi-esque": "“Bhikkhus, there are these five higher fetters."}, {"key": "sn50.45-54:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?", "bodhi-esque": "What five?"}, {"key": "sn50.45-54:1.3", "pali": "Rūpa·rāgo, a·rūpa·rāgo, māno, uddhaccaṁ, a·vijjā—", "sujato-corrected": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance.", "bodhi-esque": "Lust for form, lust for the formless, conceit, restlessness, ignorance—"}, {"key": "sn50.45-54:1.4", "pali": "imāni kho, bhikkhave, pañc·uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "These are the five higher fetters.", "bodhi-esque": "these, bhikkhus, are the five higher fetters."}, {"key": "sn50.45-54:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya pari·k·khayāya pahānāya pañca balāni bhāve·tabbāni.", "sujato-corrected": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.", "bodhi-esque": "Bhikkhus, for direct knowledge, for full understanding, for the utter destruction,\nfor the abandoning of these five higher fetters, the five powers should be developed."}, {"key": "sn50.45-54:1.6", "pali": "Katamāni pañca?", "sujato-corrected": "What five?", "bodhi-esque": "What five?"}, {"key": "sn50.45-54:1.7", "pali": "Idha, bhikkhave, bhikkhu, saddhā·balaṁ bhāveti\nviveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ,", "sujato-corrected": "It’s when a mendicant develops the powers of faith,", "bodhi-esque": "Here, bhikkhus, a bhikkhu develops the power of faith,\nwhich is based upon seclusion, dispassion, cessation, and matures in relinquishment."}, {"key": "sn50.45-54:1.8", "pali": "vīriya·balaṁ …pe…", "sujato-corrected": "energy,", "bodhi-esque": "He develops the power of energy …"}, {"key": "sn50.45-54:1.9", "pali": "sati·balaṁ …", "sujato-corrected": "mindfulness,", "bodhi-esque": "the power of mindfulness …"}, {"key": "sn50.45-54:1.10", "pali": "samādhi·balaṁ …", "sujato-corrected": "samādhi,", "bodhi-esque": "the power of concentration …"}, {"key": "sn50.45-54:1.11", "pali": "paññā·balaṁ bhāveti viveka·nissitaṁ virāga·nissitaṁ nirodha·nissitaṁ vossagga·pari·ṇāmiṁ.", "sujato-corrected": "and wisdom, which rely on seclusion, fading away, and cessation, and ripen as letting go.", "bodhi-esque": "he develops the power of wisdom, which is based upon seclusion, dispassion, cessation, and matures in relinquishment."}, {"key": "sn50.45-54:1.12", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya\npari·k·khayāya pahānāya imāni pañca balāni bhāve·tabbānī”ti.", "sujato-corrected": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”", "bodhi-esque": "Thus, bhikkhus, for direct knowledge, for full understanding, for the utter destruction,\nfor the abandoning of these five higher fetters, these five powers should be developed.”"}, {"key": "sn50.45-54:1.13", "pali": "(Evaṁ vi·t·thāre·tabbā.)", "sujato-corrected": "(Tell in full as in SN 45.171–179, with the above as the final discourse.)", "bodhi-esque": "Thus should be expanded."}]}]}]}, {"id": "sn50-punagangapeyyalavagga", "label": "Punagaṅgāpeyyālavagga — Another Chapter of Abbreviated Texts on the Ganges", "children": [{"id": "sn50.55-66", "label": "SN 50.55–66", "children": [{"id": "sn50.55-66/0", "label": "Saṁyutta Nikāya 50.55–66", "rows": [{"key": "sn50.55-66:0.1", "pali": "Saṁyutta Nikāya 50.55–66", "sujato-corrected": "Linked Discourses 50.55–66", "bodhi-esque": "Connected Discourses 50.55–66"}, {"key": "sn50.55-66:0.2", "pali": "6.\nPuna·gaṅgā·peyyāla·vagga", "sujato-corrected": "6.\nAnother Chapter of Abbreviated Texts on the Ganges", "bodhi-esque": "6.\nThe Gangā Repetition Subchapter Again"}, {"key": "sn50.55-66:0.3", "pali": "Pācīnādi·sutta", "sujato-corrected": "Sloping East, Etc.", "bodhi-esque": "The Pācīnādi Sutta"}]}, {"id": "sn50.55-66/1", "label": "“Seyyathāpi, bhikkhave, gaṅgā nadī pācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "rows": [{"key": "sn50.55-66:1.1", "pali": "“Seyyathāpi, bhikkhave, gaṅgā nadī\npācīna·ninnā pācīna·poṇā pācīna·pabbhārā;", "sujato-corrected": "“Mendicants, the Ganges river slants, slopes, and inclines to the east.", "bodhi-esque": "“Bhikkhus, just as the river Gangā\nslants, slopes, and inclines towards the east;"}, {"key": "sn50.55-66:1.2", "pali": "evameva kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro.", "sujato-corrected": "In the same way, a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.", "bodhi-esque": "so too, bhikkhus,\na bhikkhu who develops and cultivates the five powers slants, slopes, and inclines towards Nibbāna."}, {"key": "sn50.55-66:1.3", "pali": "Kathañca, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro?", "sujato-corrected": "And how does a mendicant who develops the five powers slant, slope, and incline to Nibbāna?", "bodhi-esque": "And how, bhikkhus,\ndoes a bhikkhu who develops and cultivates the five powers slant, slope, and incline towards Nibbāna?"}, {"key": "sn50.55-66:1.4", "pali": "Idha, bhikkhave, bhikkhu,\nsaddhā·balaṁ bhāveti\nrāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ …", "sujato-corrected": "It's when a mendicant develops the powers of faith, energy, mindfulness, samādhi,\nand wisdom, which culminate in the removal of greed, hate, and delusion.", "bodhi-esque": "Here, bhikkhus, a bhikkhu\ndevelops the power of faith,\nculminating in the removal of lust,\nculminating in the removal of hatred, culminating in the removal of delusion …"}, {"key": "sn50.55-66:1.5", "pali": "evaṁ kho, bhikkhave,\nbhikkhu pañca balāni bhāvento pañca balāni bahulīkaronto nibbāna·ninno hoti\nnibbāna·poṇo nibbāna·pabbhāro”ti.", "sujato-corrected": "That's how a mendicant who develops and cultivates the five powers slants, slopes, and inclines to Nibbāna.\"", "bodhi-esque": "Thus, bhikkhus,\na bhikkhu who develops and cultivates the five powers slants, slopes, and inclines towards Nibbāna.”"}, {"key": "sn50.55-66:1.6", "pali": "Vi·t·thāre·tabbā.", "sujato-corrected": "(Tell in full for each of the different rivers as in SN 45.91–102, removal of greed version.)", "bodhi-esque": "Should be elaborated."}, {"key": "sn50.55-66:1.7", "pali": "Dvādasamaṁ.", "sujato-corrected": "", "bodhi-esque": "The twelfth."}, {"key": "sn50.55-66:1.8", "pali": "Gaṅgā·peyyāla·vaggo cha·ṭ·ṭho.", "sujato-corrected": "", "bodhi-esque": "The sixth Gangā Repetition Subchapter."}]}, {"id": "sn50.55-66/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.55-66:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary verse."}, {"key": "sn50.55-66:2.1", "pali": "Cha pācīnato ninnā,", "sujato-corrected": "Six on slanting to the east,", "bodhi-esque": "Six on inclining from the east,"}, {"key": "sn50.55-66:2.2", "pali": "cha ninnā ca samuddato;", "sujato-corrected": "and six on slanting to the ocean;", "bodhi-esque": "six on inclining from the ocean;"}, {"key": "sn50.55-66:2.3", "pali": "Dvete cha dvādasa honti,", "sujato-corrected": "these two sixes make twelve,", "bodhi-esque": "These two sixes make twelve,"}, {"key": "sn50.55-66:2.4", "pali": "vaggo tena pavucca·tīti.", "sujato-corrected": "and that’s how this chapter is recited.", "bodhi-esque": "The chapter is thus named."}]}]}]}, {"id": "sn50-punaappamadavagga", "label": "Punaappamādavagga — Another Chapter on Diligence", "children": [{"id": "sn50.67-76", "label": "SN 50.67–76", "children": [{"id": "sn50.67-76/0", "label": "Saṁyutta Nikāya 50.67", "rows": [{"key": "sn50.67-76:0.1", "pali": "Saṁyutta Nikāya 50.67", "sujato-corrected": "Linked Discourses 50.67–76", "bodhi-esque": "Saṃyutta Nikāya 50.67"}, {"key": "sn50.67-76:0.2", "pali": "6.\nPuna·gaṅgā·peyyāla·vagga", "sujato-corrected": "6.\nAnother Chapter of Abbreviated Texts on the Ganges", "bodhi-esque": "6.\nThe Ganges Repetition Chapter"}, {"key": "sn50.67-76:0.3", "pali": "Puna·a·p·pamāda·vagga", "sujato-corrected": "Another Chapter on Diligence", "bodhi-esque": "The Heedfulness Repetition Chapter"}]}, {"id": "sn50.67-76/1", "label": "On Display: Title of Section Only", "rows": [{"key": "sn50.67-76:1.1", "pali": "On Display:\nTitle of Section Only", "sujato-corrected": "(This text consists of the title only.\nTell in full as in SN 45.139–148, removal of greed version.)", "bodhi-esque": "On Display:\nTitle of Section Only"}]}]}]}, {"id": "sn50-punabalakaraniyavagga", "label": "Punabalakaraṇīyavagga — Another Chapter on Hard Work", "children": [{"id": "sn50.77-88", "label": "SN 50.77–88", "children": [{"id": "sn50.77-88/0", "label": "Saṁyutta Nikāya 50.77", "rows": [{"key": "sn50.77-88:0.1", "pali": "Saṁyutta Nikāya 50.77", "sujato-corrected": "Linked Discourses 50.77–88", "bodhi-esque": "Connected Discourses 50.77"}, {"key": "sn50.77-88:0.2", "pali": "7.\nPuna·bala·karaṇīya·vagga", "sujato-corrected": "7.\nAnother Chapter on Hard Work", "bodhi-esque": "7.\nAgain, the chapter on what is to be done with powers"}, {"key": "sn50.77-88:0.3", "pali": "Puna·bala·karaṇīya·vagga", "sujato-corrected": "Another Chapter on Hard Work", "bodhi-esque": "7.\nAgain, the chapter on what is to be done with powers"}]}, {"id": "sn50.77-88/1", "label": "(A·p·pamāda·vagga-bala·karaṇīya·vaggā vi·t·thāre·tabbā.)", "rows": [{"key": "sn50.77-88:1.1", "pali": "(A·p·pamāda·vagga-bala·karaṇīya·vaggā vi·t·thāre·tabbā.)", "sujato-corrected": "(Tell in full as in SN 45.149–160, removal of greed version.)", "bodhi-esque": "(The chapter on heedfulness and the chapter on what is to be done with powers should be expanded.)"}]}]}]}, {"id": "sn50-punaesanavagga", "label": "Punaesanāvagga — Another Chapter on Searches", "children": [{"id": "sn50.89-98", "label": "SN 50.89–98", "children": [{"id": "sn50.89-98/0", "label": "Saṁyutta Nikāya 50.89–98", "rows": [{"key": "sn50.89-98:0.1", "pali": "Saṁyutta Nikāya 50.89–98", "sujato-corrected": "Linked Discourses 50.89–98", "bodhi-esque": "Connected Discourses 50.89–98"}, {"key": "sn50.89-98:0.2", "pali": "8.\nPuna·esanā·vagga", "sujato-corrected": "8.\nAnother Chapter on Searches", "bodhi-esque": "8.\nAgain, the Searches Chapter"}, {"key": "sn50.89-98:0.3", "pali": "Puna·esan·ādi·sutta", "sujato-corrected": "Another Series on Searches, Etc.", "bodhi-esque": "Again, the Sutta on Searches, Etc."}]}, {"id": "sn50.89-98/1", "label": "(Evaṁ esanā·pāḷi vi·t·thāre·tabbā—rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.)", "rows": [{"key": "sn50.89-98:1.1", "pali": "(Evaṁ esanā·pāḷi vi·t·thāre·tabbā—rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.)", "sujato-corrected": "(Tell in full as in SN 45.161–170, removal of greed version.)", "bodhi-esque": "Thus the search text is to be expanded—ending with the removal of lust,\nending with the removal of hatred, ending with the removal of delusion."}, {"key": "sn50.89-98:1.2", "pali": "Esanā·vaggo navamo.", "sujato-corrected": "", "bodhi-esque": "The Ninth Chapter on Searches."}]}, {"id": "sn50.89-98/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.89-98:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "The summary verse:"}, {"key": "sn50.89-98:2.1", "pali": "Esanā vidhā āsavo,", "sujato-corrected": "Searches, discriminations, defilements,", "bodhi-esque": "Searches, discrimination, taint,"}, {"key": "sn50.89-98:2.2", "pali": "Bhavo ca dukkhatā tisso;", "sujato-corrected": "states of existence, three kinds of suffering,", "bodhi-esque": "Existence and the three sufferings;"}, {"key": "sn50.89-98:2.3", "pali": "Khilaṁ malañca nīgho ca,", "sujato-corrected": "barrenness, stains, and troubles,", "bodhi-esque": "Barrenness, stain, and distress,"}, {"key": "sn50.89-98:2.4", "pali": "Vedanā taṇhā tasinā cāti.", "sujato-corrected": "feelings, craving, and thirst.", "bodhi-esque": "Feeling, craving, and thirst."}]}]}]}, {"id": "sn50-punaoghavagga", "label": "Punaoghavagga — Another Chapter on Floods", "children": [{"id": "sn50.99-108", "label": "SN 50.99–108", "children": [{"id": "sn50.99-108/0", "label": "Saṁyutta Nikāya 50.99–108", "rows": [{"key": "sn50.99-108:0.1", "pali": "Saṁyutta Nikāya 50.99–108", "sujato-corrected": "Linked Discourses 50.99–108", "bodhi-esque": "Connected Discourses 50.99–108"}, {"key": "sn50.99-108:0.2", "pali": "9.\nPuna·ogha·vagga", "sujato-corrected": "9.\nAnother Chapter on Floods", "bodhi-esque": "9.\nThe Second Flood Chapter"}, {"key": "sn50.99-108:0.3", "pali": "Punaogh·ādi·sutta", "sujato-corrected": "Another Series on Floods, Etc.", "bodhi-esque": "The Second Flood, Etc. Discourse"}]}, {"id": "sn50.99-108/1", "label": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "rows": [{"key": "sn50.99-108:1.1", "pali": "“Pañc·imāni, bhikkhave, uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "“Mendicants, there are five higher fetters.", "bodhi-esque": "“Bhikkhus, there are these five higher fetters."}, {"key": "sn50.99-108:1.2", "pali": "Katamāni pañca?", "sujato-corrected": "What five?", "bodhi-esque": "What five?"}, {"key": "sn50.99-108:1.3", "pali": "Rūpa·rāgo, a·rūpa·rāgo, māno, uddhaccaṁ a·vijjā—", "sujato-corrected": "Desire for rebirth in the realm of luminous form,\ndesire for rebirth in the formless realm, conceit, restlessness, and ignorance.", "bodhi-esque": "Lust for form, lust for the formless, conceit, restlessness, ignorance—"}, {"key": "sn50.99-108:1.4", "pali": "imāni kho, bhikkhave, pañc·uddham·bhāgiyāni saṁyoj·a·nāni.", "sujato-corrected": "These are the five higher fetters.", "bodhi-esque": "these, bhikkhus, are the five higher fetters."}, {"key": "sn50.99-108:1.5", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya pari·k·khayāya pahānāya pañca balāni bhāve·tabbāni.", "sujato-corrected": "The five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.", "bodhi-esque": "For direct knowledge, full understanding, complete destruction,\nand abandonment of these five higher fetters, bhikkhus, the five powers should be developed."}, {"key": "sn50.99-108:1.6", "pali": "Katamāni pañca?", "sujato-corrected": "What five?", "bodhi-esque": "What five?"}, {"key": "sn50.99-108:1.7", "pali": "Idha, bhikkhave, bhikkhu saddhā·balaṁ bhāveti …pe…\npaññā·balaṁ bhāveti rāga·vi·naya·pari·yosānaṁ dosa·vi·naya·pari·yosānaṁ moha·vi·naya·pari·yosānaṁ.", "sujato-corrected": "A mendicant develops the powers of faith, energy, mindfulness, samādhi,\nand wisdom, which culminate in the removal of greed, hate, and delusion.", "bodhi-esque": "Here, bhikkhus, a bhikkhu develops the power of faith … he develops the power of wisdom,\nculminating in the removal of lust, culminating in the removal of hatred, culminating in the removal of delusion."}, {"key": "sn50.99-108:1.8", "pali": "Imesaṁ kho, bhikkhave,\npañca·n·naṁ uddham·bhāgiyānaṁ saṁyoj·an·ānaṁ abhi·ñ·ñāya pari·ñ·ñāya\npari·k·khayāya pahānāya imāni pañca balāni bhāve·tabbānī”ti.", "sujato-corrected": "These five powers should be developed for the direct knowledge,\ncomplete understanding, finishing, and giving up of these five higher fetters.”", "bodhi-esque": "For direct knowledge, full understanding, complete destruction,\nand abandonment of these five higher fetters, bhikkhus, these five powers should be developed.”"}, {"key": "sn50.99-108:1.9", "pali": "Dasamaṁ.", "sujato-corrected": "", "bodhi-esque": "The tenth."}, {"key": "sn50.99-108:1.10", "pali": "Ogha·vaggo dasamo.", "sujato-corrected": "", "bodhi-esque": "The Flood Chapter, the tenth."}]}, {"id": "sn50.99-108/2", "label": "Tass·uddānaṁ", "rows": [{"key": "sn50.99-108:2.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary:"}, {"key": "sn50.99-108:2.1", "pali": "Ogho yogo upādānaṁ,", "sujato-corrected": "Floods, yokes, grasping,", "bodhi-esque": "Flood, yoke, clinging,"}, {"key": "sn50.99-108:2.2", "pali": "ganthā anusayena ca;", "sujato-corrected": "ties, and underlying tendencies,", "bodhi-esque": "bonds and underlying tendencies;"}, {"key": "sn50.99-108:2.3", "pali": "Kāma·guṇā nī·varaṇā,", "sujato-corrected": "kinds of sensual stimulation, hindrances,", "bodhi-esque": "cords of sensual pleasure, hindrances,"}, {"key": "sn50.99-108:2.4", "pali": "khandhā oruddhambhāgiyāti.", "sujato-corrected": "aggregates, and fetters high and low.", "bodhi-esque": "aggregates, lower and higher fetters."}, {"key": "sn50.99-108:2.5", "pali": "Bala·saṁyuttaṁ cha·ṭ·ṭhaṁ.", "sujato-corrected": "The Linked Discourses on the Powers is the sixth section.", "bodhi-esque": "The Connected Discourses on the Powers, the sixth."}]}]}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": null}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "sn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "SN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

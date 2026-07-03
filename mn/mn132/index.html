@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 132", "rows": [{"key": "mn132:0.1", "pali": "Majjhima Nikāya 132", "sujato-corrected": "Middle Discourses 132", "pts": ""}, {"key": "mn132:0.2", "pali": "Ānanda·bhadd·eka·ratta·sutta", "sujato-corrected": "Ānanda and One Fine Night", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn132:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn132:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery."}]}, {"id": "2", "label": "Tena kho pana samayena āyasmā ānando upaṭṭhāna·sālāyaṁ…", "rows": [{"key": "mn132:2.1", "pali": "Tena kho pana samayena āyasmā ānando upaṭṭhāna·sālāyaṁ bhikkhūnaṁ\ndhammiyā kathāya sandasseti\nsamādapeti samuttejeti sampahaṁseti,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca bhāsati.", "sujato-corrected": "Now at that time Venerable Ānanda was educating, encouraging, firing up,\nand inspiring the mendicants in the assembly hall with a Dhamma talk on the\ntopic of the summary recital and the analysis of the one who has one fine night.", "pts": "Now at that time the venerable Ānanda gladdened, roused,\nincited and delighted the monks with talk on Dhamma in an assembly hall;\nand he spoke the exposition and the analysis of the Auspicious."}, {"key": "mn132:2.2", "pali": "Atha kho bhagavā sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yenupaṭṭhānasālā tenupasaṅkami;\nupasaṅkamitvā paññatte āsane nisīdi.", "sujato-corrected": "Then in the late afternoon, the Buddha came out of retreat,\nwent to the assembly hall, where he sat on the seat spread out,", "pts": "Then the Lord, emerging from solitary meditation towards evening, approached that assembly hall;\nhaving approached, he sat down on the seat made ready."}, {"key": "mn132:2.3", "pali": "Nisajja kho bhagavā bhikkhū āmantesi:", "sujato-corrected": "and addressed the mendicants,", "pts": "As he was sitting down, the Lord addressed the monks, saying:"}, {"key": "mn132:2.4", "pali": "“ko nu kho, bhikkhave, upaṭṭhāna·sālāyaṁ bhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti?", "sujato-corrected": "“Who was inspiring the mendicants with a talk on the summary\nrecital and the analysis of the one who has one fine night?”", "pts": "\"Now, who, monks, gladdened, roused, incited, and delighted the monks with talk on Dhamma in the assembly hall?\nAnd did he speak the exposition and the analysis of the Auspicious?\""}, {"key": "mn132:2.5", "pali": "“Āyasmā, bhante, ānando upaṭṭhāna·sālāyaṁ bhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti.", "sujato-corrected": "“It was Venerable Ānanda, sir.”", "pts": "\"The venerable Ānanda, revered sir, gladdened, roused, incited,\nand delighted the monks with talk on Dhamma in the assembly hall;\nand he spoke the exposition and the analysis of the Auspicious.\""}, {"key": "mn132:2.6", "pali": "Atha kho bhagavā āyasmantaṁ ānandaṁ āmantesi:", "sujato-corrected": "Then the Buddha said to Venerable Ānanda,", "pts": "Then the Lord addressed the venerable Ānanda, saying:"}, {"key": "mn132:2.7", "pali": "“yathā kathaṁ pana tvaṁ, ānanda,\nbhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti?", "sujato-corrected": "“But in what way were you inspiring the mendicants with a talk on the\nsummary recital and the analysis of the one who has one fine night?”", "pts": "\"But how is it that you, Ānanda, gladdened, roused, incited, and delighted the monks with talk on Dhamma?\nDid you speak the exposition and the analysis of the Auspicious?\""}]}, {"id": "3", "label": "“Evaṁ kho ahaṁ, bhante, bhikkhūnaṁ dhammiyā kathāya…", "rows": [{"key": "mn132:3.1", "pali": "“Evaṁ kho ahaṁ, bhante,\nbhikkhūnaṁ dhammiyā kathāya sandassesiṁ\nsamādapesiṁ samuttejesiṁ sampahaṁsesiṁ,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsiṁ—", "sujato-corrected": "“I was doing so in this way, sir,” replied Ānanda.", "pts": "\"I, revered sir, gladdened, roused, incited, and delighted the monks with talk on Dhamma thus.\nI spoke the exposition and the analysis of the Auspicious:"}, {"key": "mn132:3.2", "pali": "Atītaṁ nānvāgameyya,", "sujato-corrected": "“Don’t run back to the past,", "pts": "\"The past should not be followed after, the future not desired."}, {"key": "mn132:3.3", "pali": "nappaṭikaṅkhe an·āgataṁ;", "sujato-corrected": "don’t anticipate the future.", "pts": ""}, {"key": "mn132:3.4", "pali": "Yadatītaṁ pahīnaṁ taṁ,", "sujato-corrected": "What’s past is left behind,", "pts": "What is past is got rid of and the future has not come."}, {"key": "mn132:3.5", "pali": "appattañca an·āgataṁ.", "sujato-corrected": "the future has not arrived;", "pts": ""}, {"key": "mn132:3.6", "pali": "Pacc·uppannañca yo dhammaṁ,", "sujato-corrected": "and any present phenomenon", "pts": "But whoever has vision now here, now there, of a present thing,"}, {"key": "mn132:3.7", "pali": "tattha tattha vipassati;", "sujato-corrected": "you clearly discern in every case.", "pts": ""}, {"key": "mn132:3.8", "pali": "Asaṁhīraṁ asaṅkuppaṁ,", "sujato-corrected": "The unfaltering, the unshakable:", "pts": "Knowing that it is immovable, unshakable, let him cultivate it."}, {"key": "mn132:3.9", "pali": "taṁ vidvā manubrūhaye.", "sujato-corrected": "having known that, foster it.", "pts": ""}, {"key": "mn132:3.10", "pali": "Ajjeva kiccam·ātappaṁ,", "sujato-corrected": "Today’s the day to keenly work—", "pts": "Swelter at the task this very day."}, {"key": "mn132:3.11", "pali": "ko jaññā maraṇaṁ suve;", "sujato-corrected": "who knows, tomorrow may bring death!", "pts": "Who knows whether he will die tomorrow?"}, {"key": "mn132:3.12", "pali": "Na hi no saṅgaraṁ tena,", "sujato-corrected": "For there is no bargain to be struck", "pts": "There is no bargaining with the great hosts of Death."}, {"key": "mn132:3.13", "pali": "mahā·senena maccunā.", "sujato-corrected": "with Death and his mighty horde.", "pts": ""}, {"key": "mn132:3.14", "pali": "Evaṁ·vihāriṁ ātāpiṁ,", "sujato-corrected": "One who keenly meditates like this,", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\""}, {"key": "mn132:3.15", "pali": "aho·rattam·atanditaṁ;", "sujato-corrected": "tireless all night and day:", "pts": ""}, {"key": "mn132:3.16", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "that’s who has one fine night—", "pts": ""}, {"key": "mn132:3.17", "pali": "santo ācikkhate muni.", "sujato-corrected": "so declares the peaceful sage.", "pts": ""}]}, {"id": "4", "label": "‘Kathañca, āvuso, atītaṁ anv·āgameti?", "rows": [{"key": "mn132:4.1", "pali": "‘Kathañca, āvuso, atītaṁ anv·āgameti?", "sujato-corrected": "And how do you run back to the past? …", "pts": "And how, monks, does one follow after the past?"}, {"key": "mn132:4.2", "pali": "Evaṁ·rūpo ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·vedano ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·sañño ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·saṅkhāro ahosiṁ\natītamaddhānanti tattha nandiṁ samanvāneti,\nevaṁ·viññāṇo ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'Such was my material shape in the distant past' and finds delight therein.\nHe thinks:\n'Such was my feeling in the distant past' and finds delight therein.\nHe thinks:\n'Such was my my perception in the distant past' and finds delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' and finds delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' and finds delight therein."}, {"key": "mn132:4.3", "pali": "evaṁ kho, āvuso, atītaṁ anv·āgameti.", "sujato-corrected": "", "pts": "Even so, monks, does one follow after the past."}]}, {"id": "5", "label": "Kathañca, āvuso, atītaṁ nānvāgameti?", "rows": [{"key": "mn132:5.1", "pali": "Kathañca, āvuso, atītaṁ nānvāgameti?", "sujato-corrected": "And how do you not run back to the past? …", "pts": "And how, monks, does one not follow after the past?"}, {"key": "mn132:5.2", "pali": "Evaṁ·rūpo ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·vedano ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·sañño ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·saṅkhāro ahosiṁ\natītamaddhānanti tattha nandiṁ na samanvāneti,\nevaṁ·viññāṇo ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'Such was my material shape in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my feeling in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my perception in the distant past' but does not find delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' but does not find delight therein."}, {"key": "mn132:5.3", "pali": "evaṁ kho, āvuso, atītaṁ nānvāgameti.", "sujato-corrected": "", "pts": "Even so, monks, does one not follow after the past."}]}, {"id": "6", "label": "Kathañca, āvuso, an·āgataṁ paṭi·kaṅkhati?", "rows": [{"key": "mn132:6.1", "pali": "Kathañca, āvuso, an·āgataṁ paṭi·kaṅkhati?", "sujato-corrected": "And how do you anticipate the future? …", "pts": "And how, monks, does one desire the future?"}, {"key": "mn132:6.2", "pali": "Evaṁ·rūpo siyaṁ anāgatamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·vedano siyaṁ …pe…", "sujato-corrected": "", "pts": "He thinks:\n'May my material shape be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' and finds delight therein."}, {"key": "mn132:6.3", "pali": "evaṁ·sañño siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my perception be thus in the distant future' and finds delight therein."}, {"key": "mn132:6.4", "pali": "evaṁ·saṅkhāro siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my habitual tendencies be thus in the distant future' and finds delight therein."}, {"key": "mn132:6.5", "pali": "evaṁ·viññāṇo siyaṁ anāgatamaddhānanti\ntattha nandiṁ samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'May my consciousness be thus in the distant future' and finds delight therein."}, {"key": "mn132:6.6", "pali": "evaṁ kho, āvuso, an·āgataṁ paṭi·kaṅkhati.", "sujato-corrected": "", "pts": "Even so, monks, does one desire the future."}]}, {"id": "7", "label": "Kathañca, āvuso, an·āgataṁ nappaṭikaṅkhati?", "rows": [{"key": "mn132:7.1", "pali": "Kathañca, āvuso, an·āgataṁ nappaṭikaṅkhati?", "sujato-corrected": "And how do you not anticipate the future? …", "pts": "And how, monks, does one not desire the future?"}, {"key": "mn132:7.2", "pali": "Evaṁ·rūpo siyaṁ anāgatamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·vedano siyaṁ …pe…", "sujato-corrected": "", "pts": "He thinks:\n'May my material shape be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' but does not find delight therein."}, {"key": "mn132:7.3", "pali": "evaṁ·sañño siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my perception be thus in the distant future' but does not find delight therein."}, {"key": "mn132:7.4", "pali": "evaṁ·saṅkhāro siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my habitual tendencies be thus in the distant future' but does not find delight therein."}, {"key": "mn132:7.5", "pali": "evaṁ·viññāṇo siyaṁ anāgatamaddhānanti\ntattha nandiṁ na samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'May my consciousness be thus in the distant future' but does not find delight therein."}, {"key": "mn132:7.6", "pali": "evaṁ kho, āvuso, an·āgataṁ nappaṭikaṅkhati.", "sujato-corrected": "", "pts": "Even so, monks, does one not desire the future."}]}, {"id": "8", "label": "Kathañca, āvuso, pacc·uppannesu dhammesu saṁhīrati?", "rows": [{"key": "mn132:8.1", "pali": "Kathañca, āvuso, pacc·uppannesu dhammesu saṁhīrati?", "sujato-corrected": "And how do you falter amid presently arisen phenomena? …", "pts": "And how, monks, is one drawn away among present things?"}, {"key": "mn132:8.2", "pali": "Idha, āvuso, a·s·sutavā puthu·j·jano ariyānaṁ a·dassāvī ariya·dhammassa a·kovido ariya·dhamme\na·vinīto sappurisānaṁ a·dassāvī sappurisa·dhammassa a·kovido sappurisa·dhamme a·vinīto", "sujato-corrected": "", "pts": "As to this, monks, an uninstructed ordinary person,\ntaking no count of the pure ones, unskilled in the Dhamma of the pure ones,\nuntrained in the Dhamma of the pure ones, taking no count of the true men,\nunskilled in the Dhamma of the true men, untrained in the Dhamma of the true men,"}, {"key": "mn132:8.3", "pali": "rūpaṁ attato samanupassati,\nrūpavantaṁ vā attānaṁ, atta·ni vā rūpaṁ, rūpasmiṁ vā attānaṁ;", "sujato-corrected": "", "pts": "regards material shape as self or self as having material shape\nor material shape as in self or self as in material shape;"}, {"key": "mn132:8.4", "pali": "vedanaṁ …", "sujato-corrected": "", "pts": "or he regards feeling as self or self as having feeling or feeling as in self or self as in feeling;"}, {"key": "mn132:8.5", "pali": "saññaṁ …", "sujato-corrected": "", "pts": "or he regards perception as self or self as having perception or perception as in self or self as in perception;"}, {"key": "mn132:8.6", "pali": "saṅkhāre …", "sujato-corrected": "", "pts": "or he regards the habitual tendencies as self or self as having habitual\ntendencies or habitual tendencies as in self or self as in habitual tendencies;"}, {"key": "mn132:8.7", "pali": "viññāṇaṁ attato samanupassati,\nviññāṇavantaṁ vā attānaṁ, atta·ni vā viññāṇaṁ, viññāṇasmiṁ vā attānaṁ—", "sujato-corrected": "", "pts": "or he regards consciousness as self or self as having consciousness\nor consciousness as in self or self as in consciousness."}, {"key": "mn132:8.8", "pali": "evaṁ kho, āvuso, pacc·uppannesu dhammesu saṁhīrati.", "sujato-corrected": "", "pts": "Even so, monks, is one drawn away among present things."}]}, {"id": "9", "label": "Kathañca, āvuso, pacc·uppannesu dhammesu na saṁhīrati?", "rows": [{"key": "mn132:9.1", "pali": "Kathañca, āvuso, pacc·uppannesu dhammesu na saṁhīrati?", "sujato-corrected": "And how do you not falter amid presently arisen phenomena? …", "pts": "And how, monks, is one not drawn away among present things?"}, {"key": "mn132:9.2", "pali": "Idha, āvuso, sutavā ariya·sāvako ariyānaṁ dassāvī ariya·dhammassa kovido ariya·dhamme\nsuvinīto sappurisānaṁ dassāvī sappurisa·dhammassa kovido sappurisa·dhamme suvinīto", "sujato-corrected": "", "pts": "As to this, monks, an instructed disciple of the pure ones,\ntaking count of the pure ones, skilled in the dhamma of the pure ones,\ntrained in the dhamma of the pure ones, taking count of the true men,\nskilled in the dhamma of the true men, trained in the dhamma of the true men,"}, {"key": "mn132:9.3", "pali": "na rūpaṁ attato samanupassati,\nna rūpavantaṁ vā attānaṁ, na atta·ni vā rūpaṁ, na rūpasmiṁ vā attānaṁ;", "sujato-corrected": "", "pts": "does not regard material shape as self or self as having material\nshape or material shape as in self or self as in material shape;"}, {"key": "mn132:9.4", "pali": "na vedanaṁ …", "sujato-corrected": "", "pts": "and he does not regard feeling as self or self as having feeling or feeling as in self or self as in feeling;"}, {"key": "mn132:9.5", "pali": "na saññaṁ …", "sujato-corrected": "", "pts": "and he does not regard perception as self or self as having\nperception or perception as in self or self as in perception;"}, {"key": "mn132:9.6", "pali": "na saṅkhāre …", "sujato-corrected": "", "pts": "and he does not regard the habitual tendencies as self or self as having the habitual\ntendencies or the habitual tendencies as in self or self as in the habitual tendencies;"}, {"key": "mn132:9.7", "pali": "na viññāṇaṁ attato samanupassati,\nna viññāṇavantaṁ vā attānaṁ, na atta·ni vā viññāṇaṁ, na viññāṇasmiṁ vā attānaṁ—", "sujato-corrected": "", "pts": "and he does not regard consciousness as self or self as having\nconsciousness or consciousness as in self or self as in consciousness."}, {"key": "mn132:9.8", "pali": "evaṁ kho, āvuso, pacc·uppannesu dhammesu na saṁhīrati.", "sujato-corrected": "That’s how you don’t falter amid presently arisen phenomena.", "pts": "Even so, monks, is one not drawn away among present things."}]}, {"id": "10", "label": "Atītaṁ nānvāgameyya,", "rows": [{"key": "mn132:10.1", "pali": "Atītaṁ nānvāgameyya,", "sujato-corrected": "‘Don’t run back to the past,", "pts": "The past should not be followed after, the future not desired."}, {"key": "mn132:10.2", "pali": "nappaṭikaṅkhe an·āgataṁ;", "sujato-corrected": "don’t anticipate the future. …", "pts": ""}, {"key": "mn132:10.3", "pali": "Yadatītaṁ pahīnaṁ taṁ,", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come."}, {"key": "mn132:10.4", "pali": "appattañca an·āgataṁ.", "sujato-corrected": "", "pts": ""}, {"key": "mn132:10.5", "pali": "Pacc·uppannañca yo dhammaṁ,", "sujato-corrected": "", "pts": "But whoever has vision now here, now there, of a present thing,"}, {"key": "mn132:10.6", "pali": "tattha tattha vipassati;", "sujato-corrected": "", "pts": ""}, {"key": "mn132:10.7", "pali": "Asaṁhīraṁ asaṅkuppaṁ,", "sujato-corrected": "", "pts": "Knowing that it is immovable, unshakable, let him cultivate it."}, {"key": "mn132:10.8", "pali": "taṁ vidvā manubrūhaye.", "sujato-corrected": "", "pts": ""}, {"key": "mn132:10.9", "pali": "Ajjeva kiccam·ātappaṁ,", "sujato-corrected": "", "pts": "Swelter at the task this very day."}, {"key": "mn132:10.10", "pali": "ko jaññā maraṇaṁ suve;", "sujato-corrected": "", "pts": "Who knows whether he will die tomorrow?"}, {"key": "mn132:10.11", "pali": "Na hi no saṅgaraṁ tena,", "sujato-corrected": "", "pts": "There is no bargaining with the great hosts of Death."}, {"key": "mn132:10.12", "pali": "mahā·senena maccunā.", "sujato-corrected": "", "pts": ""}, {"key": "mn132:10.13", "pali": "Evaṁ·vihāriṁ ātāpiṁ,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\""}, {"key": "mn132:10.14", "pali": "aho·rattam·atanditaṁ;", "sujato-corrected": "", "pts": ""}, {"key": "mn132:10.15", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "that’s who has one fine night—", "pts": ""}, {"key": "mn132:10.16", "pali": "santo ācikkhate munī’ti.", "sujato-corrected": "so declares the peaceful sage.’", "pts": ""}]}, {"id": "11", "label": "Evaṁ kho ahaṁ, bhante, bhikkhūnaṁ dhammiyā kathāya…", "rows": [{"key": "mn132:11.1", "pali": "Evaṁ kho ahaṁ, bhante,\nbhikkhūnaṁ dhammiyā kathāya sandassesiṁ\nsamādapesiṁ samuttejesiṁ sampahaṁsesiṁ,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsin”ti.", "sujato-corrected": "That’s how I was inspiring the mendicants with a talk on the summary\nrecital and the analysis of the one who has one fine night.”", "pts": "It was thus, revered sir, that I gladdened, roused, incited,\ndelighted the monks with talk on Dhamma and spoke the exposition and analysis of the Auspicious.\""}, {"key": "mn132:11.2", "pali": "“Sādhu sādhu, ānanda.", "sujato-corrected": "“Good, good, Ānanda.", "pts": "\"It is good, Ānanda, it is good;"}, {"key": "mn132:11.3", "pali": "Sādhu kho tvaṁ, ānanda,\nbhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsi:", "sujato-corrected": "It’s good that you were inspiring the mendicants with a talk on the\nsummary recital and the analysis of the one who has one fine night.”", "pts": "it is good that you, Ānanda, gladdened, roused, incited,\ndelighted the monks with talk on Dhamma and spoke the exposition and analysis of the Auspicious:"}]}, {"id": "12", "label": "‘Atītaṁ nānvāgameyya,", "rows": [{"key": "mn132:12.1", "pali": "‘Atītaṁ nānvāgameyya,", "sujato-corrected": "", "pts": "\"The past should not be followed after, the future not desired."}, {"key": "mn132:12.2", "pali": "…pe…", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come.\nBut whoever has vision now here, now there, of a present thing,\nKnowing that it is immovable, unshakable, let him cultivate it.\nSwelter at the task this very day.\nWho knows whether he will die tomorrow?\nThere is no bargaining with the great hosts of Death."}, {"key": "mn132:12.3", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\""}, {"key": "mn132:12.4", "pali": "santo ācikkhate munī’ti.", "sujato-corrected": "", "pts": ""}]}, {"id": "13", "label": "Kathañca, ānanda, atītaṁ anv·āgameti …pe…", "rows": [{"key": "mn132:13-19.1", "pali": "Kathañca, ānanda, atītaṁ anv·āgameti …pe…", "sujato-corrected": "And the Buddha repeated the verses and analysis once more.", "pts": "And how, Ānanda, does one follow after the past?\nHe thinks:\n'Such was my material shape in the distant past' and finds delight therein.\nHe thinks:\n'Such was my feeling in the distant past' and finds delight therein.\nHe thinks:\n'Such was my my perception in the distant past' and finds delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' and finds delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' and finds delight therein."}, {"key": "mn132:13-19.2", "pali": "evaṁ kho, ānanda, atītaṁ anv·āgameti.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one follow after the past."}, {"key": "mn132:13-19.3", "pali": "Kathañca, ānanda, atītaṁ nānvāgameti …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one not follow after the past?\nHe thinks:\n'Such was my material shape in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my feeling in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my perception in the distant past' but does not find delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' but does not find delight therein."}, {"key": "mn132:13-19.4", "pali": "evaṁ kho, ānanda, atītaṁ nānvāgameti.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one not follow after the past."}, {"key": "mn132:13-19.5", "pali": "Kathañca, ānanda, an·āgataṁ paṭi·kaṅkhati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one desire the future?\nHe thinks:\n'May my material shape be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my perception be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my habitual tendencies be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my consciousness be thus in the distant future' and finds delight therein."}, {"key": "mn132:13-19.6", "pali": "evaṁ kho, ānanda, an·āgataṁ paṭi·kaṅkhati.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one desire the future."}, {"key": "mn132:13-19.7", "pali": "Kathañca, ānanda, an·āgataṁ nappaṭikaṅkhati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one not desire the future?\nHe thinks:\n'May my material shape be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my perception be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my habitual tendencies be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my consciousness be thus in the distant future' but does not find delight therein."}, {"key": "mn132:13-19.8", "pali": "evaṁ kho, ānanda, an·āgataṁ nappaṭikaṅkhati.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one not desire the future."}, {"key": "mn132:13-19.9", "pali": "Kathañca, ānanda, pacc·uppannesu dhammesu saṁhīrati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, is one drawn away among present things?\nAs to this, Ānanda, an uninstructed ordinary person, taking no count of the pure ones,\nunskilled in the Dhamma of the pure ones, untrained in the Dhamma of the pure ones, taking no count of the true men,\nunskilled in the Dhamma of the true men, untrained in the Dhamma of the true men,\nregards material shape as self or self as having material shape\nor material shape as in self or self as in material shape;\nor he regards feeling as self or self as having feeling or feeling as in self or self as in feeling;\nor he regards perception as self or self as having perception or perception as in self or self as in perception;\nor he regards the habitual tendencies as self or self as having habitual\ntendencies or habitual tendencies as in self or self as in habitual tendencies;\nor he regards consciousness as self or self as having consciousness\nor consciousness as in self or self as in consciousness."}, {"key": "mn132:13-19.10", "pali": "evaṁ kho, ānanda, pacc·uppannesu dhammesu saṁhīrati.", "sujato-corrected": "", "pts": "Even so, Ānanda, is one drawn away among present things."}, {"key": "mn132:13-19.11", "pali": "Kathañca, ānanda, pacc·uppannesu dhammesu na saṁhīrati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, is one not drawn away among present things?\nAs to this, Ānanda, an instructed disciple of the pure ones, taking count of the pure ones,\nskilled in the dhamma of the pure ones, trained in the dhamma of the pure ones, taking count of the true men,\nskilled in the dhamma of the true men, trained in the dhamma of the true men,\ndoes not regard material shape as self or self as having material\nshape or material shape as in self or self as in material shape;\nand he does not regard feeling as self or self as having feeling or feeling as in self or self as in feeling;\nand he does not regard perception as self or self as having\nperception or perception as in self or self as in perception;\nand he does not regard the habitual tendencies as self or self as having the habitual\ntendencies or the habitual tendencies as in self or self as in the habitual tendencies;\nand he does not regard consciousness as self or self as having\nconsciousness or consciousness as in self or self as in consciousness."}, {"key": "mn132:13-19.12", "pali": "evaṁ kho, ānanda, pacc·uppannesu dhammesu na saṁhīrati.", "sujato-corrected": "", "pts": "Even so, Ānanda, is one not drawn away among present things."}, {"key": "mn132:13-19.13", "pali": "‘Atītaṁ nānvāgameyya,", "sujato-corrected": "", "pts": "The past should not be followed after, the future not desired."}, {"key": "mn132:13-19.14", "pali": "…pe…", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come.\nBut whoever has vision now here, now there, of a present thing,\nKnowing that it is immovable, unshakable, let him cultivate it.\nSwelter at the task this very day.\nWho knows whether he will die tomorrow?\nThere is no bargaining with the great hosts of Death."}, {"key": "mn132:13-19.15", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\""}, {"key": "mn132:13-19.16", "pali": "santo ācikkhate munī’”ti.", "sujato-corrected": "", "pts": ""}, {"key": "mn132:13-19.17", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn132:13-19.18", "pali": "Atta·mano āyasmā ānando bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Ānanda approved what the Buddha said.", "pts": "Delighted, the venerable Ānanda rejoiced in what the Lord had said."}, {"key": "mn132:13-19.19", "pali": "Ānanda·bhadd·eka·ratta·suttaṁ niṭṭhitaṁ dutiyaṁ.", "sujato-corrected": "", "pts": "Ānanda's Discourse on the Auspicious:\nThe Second"}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 132", "rows": [{"key": "mn132:0.1", "pali": "Majjhima Nikāya 132", "sujato-corrected": "Middle Discourses 132", "pts": "", "bodhi-esque": "Majjhima Nikāya 132"}, {"key": "mn132:0.2", "pali": "Ānanda·bhadd·eka·ratta·sutta", "sujato-corrected": "Ānanda and One Fine Night", "pts": "", "bodhi-esque": "The Discourse on the One Good Night [Ānanda's Version]"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn132:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:", "bodhi-esque": "Thus have I heard:"}, {"key": "mn132:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s Park."}]}, {"id": "2", "label": "Tena kho pana samayena āyasmā ānando upaṭṭhāna·sālāyaṁ…", "rows": [{"key": "mn132:2.1", "pali": "Tena kho pana samayena āyasmā ānando upaṭṭhāna·sālāyaṁ bhikkhūnaṁ\ndhammiyā kathāya sandasseti\nsamādapeti samuttejeti sampahaṁseti,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca bhāsati.", "sujato-corrected": "Now at that time Venerable Ānanda was educating, encouraging, firing up,\nand inspiring the mendicants in the assembly hall with a Dhamma talk on the\ntopic of the summary recital and the analysis of the one who has one fine night.", "pts": "Now at that time the venerable Ānanda gladdened, roused,\nincited and delighted the monks with talk on Dhamma in an assembly hall;\nand he spoke the exposition and the analysis of the Auspicious.", "bodhi-esque": "Now on that occasion the Venerable Ānanda, in the assembly hall, was instructing, encouraging, inspiring,\nand gladdening the bhikkhus with a talk on the Dhamma,\nand he was speaking on the summary and analysis of the One Good Night."}, {"key": "mn132:2.2", "pali": "Atha kho bhagavā sāyanha·samayaṁ paṭi·sallānā vuṭṭhito yenupaṭṭhānasālā tenupasaṅkami;\nupasaṅkamitvā paññatte āsane nisīdi.", "sujato-corrected": "Then in the late afternoon, the Buddha came out of retreat,\nwent to the assembly hall, where he sat on the seat spread out,", "pts": "Then the Lord, emerging from solitary meditation towards evening, approached that assembly hall;\nhaving approached, he sat down on the seat made ready.", "bodhi-esque": "Then, in the evening, the Blessed One emerged from seclusion and went to the assembly hall;\nhaving gone there, he sat down on the appointed seat."}, {"key": "mn132:2.3", "pali": "Nisajja kho bhagavā bhikkhū āmantesi:", "sujato-corrected": "and addressed the mendicants,", "pts": "As he was sitting down, the Lord addressed the monks, saying:", "bodhi-esque": "Having sat down, the Blessed One addressed the bhikkhus:"}, {"key": "mn132:2.4", "pali": "“ko nu kho, bhikkhave, upaṭṭhāna·sālāyaṁ bhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti?", "sujato-corrected": "“Who was inspiring the mendicants with a talk on the summary\nrecital and the analysis of the one who has one fine night?”", "pts": "\"Now, who, monks, gladdened, roused, incited, and delighted the monks with talk on Dhamma in the assembly hall?\nAnd did he speak the exposition and the analysis of the Auspicious?\"", "bodhi-esque": "“Who now, bhikkhus, in the assembly hall, was instructing, encouraging, inspiring,\nand gladdening the bhikkhus with a talk on the Dhamma, and spoke on the summary and analysis of the One Good Night?”"}, {"key": "mn132:2.5", "pali": "“Āyasmā, bhante, ānando upaṭṭhāna·sālāyaṁ bhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti.", "sujato-corrected": "“It was Venerable Ānanda, sir.”", "pts": "\"The venerable Ānanda, revered sir, gladdened, roused, incited,\nand delighted the monks with talk on Dhamma in the assembly hall;\nand he spoke the exposition and the analysis of the Auspicious.\"", "bodhi-esque": "“Bhante, the Venerable Ānanda, in the assembly hall, was instructing, encouraging, inspiring,\nand gladdening the bhikkhus with a talk on the Dhamma, and spoke on the summary and analysis of the One Good Night.”"}, {"key": "mn132:2.6", "pali": "Atha kho bhagavā āyasmantaṁ ānandaṁ āmantesi:", "sujato-corrected": "Then the Buddha said to Venerable Ānanda,", "pts": "Then the Lord addressed the venerable Ānanda, saying:", "bodhi-esque": "Then the Blessed One addressed the Venerable Ānanda:"}, {"key": "mn132:2.7", "pali": "“yathā kathaṁ pana tvaṁ, ānanda,\nbhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsī”ti?", "sujato-corrected": "“But in what way were you inspiring the mendicants with a talk on the\nsummary recital and the analysis of the one who has one fine night?”", "pts": "\"But how is it that you, Ānanda, gladdened, roused, incited, and delighted the monks with talk on Dhamma?\nDid you speak the exposition and the analysis of the Auspicious?\"", "bodhi-esque": "“But in what way, Ānanda, were you instructing, encouraging, inspiring,\nand gladdening the bhikkhus with a talk on the Dhamma, and speaking on the summary and analysis of the One Good Night?”"}]}, {"id": "3", "label": "“Evaṁ kho ahaṁ, bhante, bhikkhūnaṁ dhammiyā kathāya…", "rows": [{"key": "mn132:3.1", "pali": "“Evaṁ kho ahaṁ, bhante,\nbhikkhūnaṁ dhammiyā kathāya sandassesiṁ\nsamādapesiṁ samuttejesiṁ sampahaṁsesiṁ,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsiṁ—", "sujato-corrected": "“I was doing so in this way, sir,” replied Ānanda.", "pts": "\"I, revered sir, gladdened, roused, incited, and delighted the monks with talk on Dhamma thus.\nI spoke the exposition and the analysis of the Auspicious:", "bodhi-esque": "“Thus, bhante, did I instruct, encourage, inspire, and gladden the bhikkhus with a talk on the Dhamma,\nand speak on the summary and analysis of the One Good Night:"}, {"key": "mn132:3.2", "pali": "Atītaṁ nānvāgameyya,", "sujato-corrected": "“Don’t run back to the past,", "pts": "\"The past should not be followed after, the future not desired.", "bodhi-esque": "Let not a person revive the past,"}, {"key": "mn132:3.3", "pali": "nappaṭikaṅkhe an·āgataṁ;", "sujato-corrected": "don’t anticipate the future.", "pts": "", "bodhi-esque": "Nor long for the future;"}, {"key": "mn132:3.4", "pali": "Yadatītaṁ pahīnaṁ taṁ,", "sujato-corrected": "What’s past is left behind,", "pts": "What is past is got rid of and the future has not come.", "bodhi-esque": "What is past is abandoned,"}, {"key": "mn132:3.5", "pali": "appattañca an·āgataṁ.", "sujato-corrected": "the future has not arrived;", "pts": "", "bodhi-esque": "and what is not yet attained, the future."}, {"key": "mn132:3.6", "pali": "Pacc·uppannañca yo dhammaṁ,", "sujato-corrected": "and any present phenomenon", "pts": "But whoever has vision now here, now there, of a present thing,", "bodhi-esque": "And the present phenomenon, whatever it is,"}, {"key": "mn132:3.7", "pali": "tattha tattha vipassati;", "sujato-corrected": "you clearly discern in every case.", "pts": "", "bodhi-esque": "he sees clearly in every respect."}, {"key": "mn132:3.8", "pali": "Asaṁhīraṁ asaṅkuppaṁ,", "sujato-corrected": "The unfaltering, the unshakable:", "pts": "Knowing that it is immovable, unshakable, let him cultivate it.", "bodhi-esque": "Unshaken, unwavering,"}, {"key": "mn132:3.9", "pali": "taṁ vidvā manubrūhaye.", "sujato-corrected": "having known that, foster it.", "pts": "", "bodhi-esque": "having understood that, one should develop it."}, {"key": "mn132:3.10", "pali": "Ajjeva kiccam·ātappaṁ,", "sujato-corrected": "Today’s the day to keenly work—", "pts": "Swelter at the task this very day.", "bodhi-esque": "Today itself ardour [for the task],"}, {"key": "mn132:3.11", "pali": "ko jaññā maraṇaṁ suve;", "sujato-corrected": "who knows, tomorrow may bring death!", "pts": "Who knows whether he will die tomorrow?", "bodhi-esque": "who knows if death will come tomorrow?"}, {"key": "mn132:3.12", "pali": "Na hi no saṅgaraṁ tena,", "sujato-corrected": "For there is no bargain to be struck", "pts": "There is no bargaining with the great hosts of Death.", "bodhi-esque": "For indeed there is no pact with that"}, {"key": "mn132:3.13", "pali": "mahā·senena maccunā.", "sujato-corrected": "with Death and his mighty horde.", "pts": "", "bodhi-esque": "great army of Death."}, {"key": "mn132:3.14", "pali": "Evaṁ·vihāriṁ ātāpiṁ,", "sujato-corrected": "One who keenly meditates like this,", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\"", "bodhi-esque": "Thus dwelling, ardent,"}, {"key": "mn132:3.15", "pali": "aho·rattam·atanditaṁ;", "sujato-corrected": "tireless all night and day:", "pts": "", "bodhi-esque": "day and night, untiring,"}, {"key": "mn132:3.16", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "that’s who has one fine night—", "pts": "", "bodhi-esque": "that indeed is called 'one who has a fortunate night',"}, {"key": "mn132:3.17", "pali": "santo ācikkhate muni.", "sujato-corrected": "so declares the peaceful sage.", "pts": "", "bodhi-esque": "the peaceful sage declares."}]}, {"id": "4", "label": "‘Kathañca, āvuso, atītaṁ anv·āgameti?", "rows": [{"key": "mn132:4.1", "pali": "‘Kathañca, āvuso, atītaṁ anv·āgameti?", "sujato-corrected": "And how do you run back to the past? …", "pts": "And how, monks, does one follow after the past?", "bodhi-esque": "'And how, friends, does one pursue the past?'"}, {"key": "mn132:4.2", "pali": "Evaṁ·rūpo ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·vedano ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·sañño ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·saṅkhāro ahosiṁ\natītamaddhānanti tattha nandiṁ samanvāneti,\nevaṁ·viññāṇo ahosiṁ atītamaddhānanti\ntattha nandiṁ samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'Such was my material shape in the distant past' and finds delight therein.\nHe thinks:\n'Such was my feeling in the distant past' and finds delight therein.\nHe thinks:\n'Such was my my perception in the distant past' and finds delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' and finds delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' and finds delight therein.", "bodhi-esque": "One thinks:\n'I was of such form in the past' and seeks delight there;\n'I was of such feeling in the past' and seeks delight there;\n'I was of such perception in the past' and seeks delight there;\n'I was of such volitional activity in the past' and seeks delight there;\n'I was of such consciousness in the past' and seeks delight there—"}, {"key": "mn132:4.3", "pali": "evaṁ kho, āvuso, atītaṁ anv·āgameti.", "sujato-corrected": "", "pts": "Even so, monks, does one follow after the past.", "bodhi-esque": "Thus, friends, one pursues the past."}]}, {"id": "5", "label": "Kathañca, āvuso, atītaṁ nānvāgameti?", "rows": [{"key": "mn132:5.1", "pali": "Kathañca, āvuso, atītaṁ nānvāgameti?", "sujato-corrected": "And how do you not run back to the past? …", "pts": "And how, monks, does one not follow after the past?", "bodhi-esque": "And how, friends, does one not pursue the past?"}, {"key": "mn132:5.2", "pali": "Evaṁ·rūpo ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·vedano ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·sañño ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·saṅkhāro ahosiṁ\natītamaddhānanti tattha nandiṁ na samanvāneti,\nevaṁ·viññāṇo ahosiṁ atītamaddhānanti\ntattha nandiṁ na samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'Such was my material shape in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my feeling in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my perception in the distant past' but does not find delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' but does not find delight therein.", "bodhi-esque": "'I was of such form in the past,' he does not delight in that;\n'I was of such feeling in the past,' he does not delight in that;\n'I was of such perception in the past,' he does not delight in that;\n'I was of such volitional activity in the past,' he does not delight in that;\n'I was of such consciousness in the past,' he does not delight in that—"}, {"key": "mn132:5.3", "pali": "evaṁ kho, āvuso, atītaṁ nānvāgameti.", "sujato-corrected": "", "pts": "Even so, monks, does one not follow after the past.", "bodhi-esque": "Thus, friends, one does not pursue the past."}]}, {"id": "6", "label": "Kathañca, āvuso, an·āgataṁ paṭi·kaṅkhati?", "rows": [{"key": "mn132:6.1", "pali": "Kathañca, āvuso, an·āgataṁ paṭi·kaṅkhati?", "sujato-corrected": "And how do you anticipate the future? …", "pts": "And how, monks, does one desire the future?", "bodhi-esque": "And how, friends, does one expect the future?"}, {"key": "mn132:6.2", "pali": "Evaṁ·rūpo siyaṁ anāgatamaddhānanti\ntattha nandiṁ samanvāneti,\nevaṁ·vedano siyaṁ …pe…", "sujato-corrected": "", "pts": "He thinks:\n'May my material shape be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' and finds delight therein.", "bodhi-esque": "'I may be of such form in the future,' he delights in that;\n'I may be of such feeling …'"}, {"key": "mn132:6.3", "pali": "evaṁ·sañño siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my perception be thus in the distant future' and finds delight therein.", "bodhi-esque": "'I may be of such perception …'"}, {"key": "mn132:6.4", "pali": "evaṁ·saṅkhāro siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my habitual tendencies be thus in the distant future' and finds delight therein.", "bodhi-esque": "'I may be of such volitional activity …'"}, {"key": "mn132:6.5", "pali": "evaṁ·viññāṇo siyaṁ anāgatamaddhānanti\ntattha nandiṁ samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'May my consciousness be thus in the distant future' and finds delight therein.", "bodhi-esque": "'I may be of such consciousness in the future,' he delights in that—"}, {"key": "mn132:6.6", "pali": "evaṁ kho, āvuso, an·āgataṁ paṭi·kaṅkhati.", "sujato-corrected": "", "pts": "Even so, monks, does one desire the future.", "bodhi-esque": "Thus, friends, one expects the future."}]}, {"id": "7", "label": "Kathañca, āvuso, an·āgataṁ nappaṭikaṅkhati?", "rows": [{"key": "mn132:7.1", "pali": "Kathañca, āvuso, an·āgataṁ nappaṭikaṅkhati?", "sujato-corrected": "And how do you not anticipate the future? …", "pts": "And how, monks, does one not desire the future?", "bodhi-esque": "And how, friends, does one not expect the future?"}, {"key": "mn132:7.2", "pali": "Evaṁ·rūpo siyaṁ anāgatamaddhānanti\ntattha nandiṁ na samanvāneti,\nevaṁ·vedano siyaṁ …pe…", "sujato-corrected": "", "pts": "He thinks:\n'May my material shape be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' but does not find delight therein.", "bodhi-esque": "'I may be of such form in the future,' he does not delight in that;\n'I may be of such feeling …'"}, {"key": "mn132:7.3", "pali": "evaṁ·sañño siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my perception be thus in the distant future' but does not find delight therein.", "bodhi-esque": "'I may be of such perception …'"}, {"key": "mn132:7.4", "pali": "evaṁ·saṅkhāro siyaṁ …", "sujato-corrected": "", "pts": "He thinks:\n'May my habitual tendencies be thus in the distant future' but does not find delight therein.", "bodhi-esque": "'I may be of such volitional activity …'"}, {"key": "mn132:7.5", "pali": "evaṁ·viññāṇo siyaṁ anāgatamaddhānanti\ntattha nandiṁ na samanvāneti—", "sujato-corrected": "", "pts": "He thinks:\n'May my consciousness be thus in the distant future' but does not find delight therein.", "bodhi-esque": "'I may be of such consciousness in the future,' he does not delight in that—"}, {"key": "mn132:7.6", "pali": "evaṁ kho, āvuso, an·āgataṁ nappaṭikaṅkhati.", "sujato-corrected": "", "pts": "Even so, monks, does one not desire the future.", "bodhi-esque": "Thus, friends, one does not hanker after the future."}]}, {"id": "8", "label": "Kathañca, āvuso, pacc·uppannesu dhammesu saṁhīrati?", "rows": [{"key": "mn132:8.1", "pali": "Kathañca, āvuso, pacc·uppannesu dhammesu saṁhīrati?", "sujato-corrected": "And how do you falter amid presently arisen phenomena? …", "pts": "And how, monks, is one drawn away among present things?", "bodhi-esque": "And how, friends, is one stuck in presently arisen phenomena?"}, {"key": "mn132:8.2", "pali": "Idha, āvuso, a·s·sutavā puthu·j·jano ariyānaṁ a·dassāvī ariya·dhammassa a·kovido ariya·dhamme\na·vinīto sappurisānaṁ a·dassāvī sappurisa·dhammassa a·kovido sappurisa·dhamme a·vinīto", "sujato-corrected": "", "pts": "As to this, monks, an uninstructed ordinary person,\ntaking no count of the pure ones, unskilled in the Dhamma of the pure ones,\nuntrained in the Dhamma of the pure ones, taking no count of the true men,\nunskilled in the Dhamma of the true men, untrained in the Dhamma of the true men,", "bodhi-esque": "Here, friends, an unlearned worldling, who does not see the noble ones,\nwho is unskilled in the noble Dhamma, who is undisciplined in the noble Dhamma,\nwho does not see the superior persons, who is unskilled in the Dhamma of superior persons,\nwho is undisciplined in the Dhamma of superior persons,"}, {"key": "mn132:8.3", "pali": "rūpaṁ attato samanupassati,\nrūpavantaṁ vā attānaṁ, atta·ni vā rūpaṁ, rūpasmiṁ vā attānaṁ;", "sujato-corrected": "", "pts": "regards material shape as self or self as having material shape\nor material shape as in self or self as in material shape;", "bodhi-esque": "regards form as self, or self as possessing form, or form as in self, or self as in form;"}, {"key": "mn132:8.4", "pali": "vedanaṁ …", "sujato-corrected": "", "pts": "or he regards feeling as self or self as having feeling or feeling as in self or self as in feeling;", "bodhi-esque": "feeling …"}, {"key": "mn132:8.5", "pali": "saññaṁ …", "sujato-corrected": "", "pts": "or he regards perception as self or self as having perception or perception as in self or self as in perception;", "bodhi-esque": "perception …"}, {"key": "mn132:8.6", "pali": "saṅkhāre …", "sujato-corrected": "", "pts": "or he regards the habitual tendencies as self or self as having habitual\ntendencies or habitual tendencies as in self or self as in habitual tendencies;", "bodhi-esque": "volitional activities …"}, {"key": "mn132:8.7", "pali": "viññāṇaṁ attato samanupassati,\nviññāṇavantaṁ vā attānaṁ, atta·ni vā viññāṇaṁ, viññāṇasmiṁ vā attānaṁ—", "sujato-corrected": "", "pts": "or he regards consciousness as self or self as having consciousness\nor consciousness as in self or self as in consciousness.", "bodhi-esque": "regards consciousness as self, or self as possessing consciousness,\nor consciousness as in self, or self as in consciousness—"}, {"key": "mn132:8.8", "pali": "evaṁ kho, āvuso, pacc·uppannesu dhammesu saṁhīrati.", "sujato-corrected": "", "pts": "Even so, monks, is one drawn away among present things.", "bodhi-esque": "Thus, friends, is one stuck in presently arisen phenomena."}]}, {"id": "9", "label": "Kathañca, āvuso, pacc·uppannesu dhammesu na saṁhīrati?", "rows": [{"key": "mn132:9.1", "pali": "Kathañca, āvuso, pacc·uppannesu dhammesu na saṁhīrati?", "sujato-corrected": "And how do you not falter amid presently arisen phenomena? …", "pts": "And how, monks, is one not drawn away among present things?", "bodhi-esque": "And how, friends, is one not stuck in presently arisen phenomena?"}, {"key": "mn132:9.2", "pali": "Idha, āvuso, sutavā ariya·sāvako ariyānaṁ dassāvī ariya·dhammassa kovido ariya·dhamme\nsuvinīto sappurisānaṁ dassāvī sappurisa·dhammassa kovido sappurisa·dhamme suvinīto", "sujato-corrected": "", "pts": "As to this, monks, an instructed disciple of the pure ones,\ntaking count of the pure ones, skilled in the dhamma of the pure ones,\ntrained in the dhamma of the pure ones, taking count of the true men,\nskilled in the dhamma of the true men, trained in the dhamma of the true men,", "bodhi-esque": "Here, friends, a learned noble disciple, who sees the noble ones,\nwho is skilled in the noble Dhamma, who is well disciplined in the noble Dhamma,\nwho sees the superior persons, who is skilled in the Dhamma of superior persons,\nwho is well disciplined in the Dhamma of superior persons,"}, {"key": "mn132:9.3", "pali": "na rūpaṁ attato samanupassati,\nna rūpavantaṁ vā attānaṁ, na atta·ni vā rūpaṁ, na rūpasmiṁ vā attānaṁ;", "sujato-corrected": "", "pts": "does not regard material shape as self or self as having material\nshape or material shape as in self or self as in material shape;", "bodhi-esque": "does not regard form as self, nor self as possessing form, nor form as in self, nor self as in form;"}, {"key": "mn132:9.4", "pali": "na vedanaṁ …", "sujato-corrected": "", "pts": "and he does not regard feeling as self or self as having feeling or feeling as in self or self as in feeling;", "bodhi-esque": "does not regard feeling …"}, {"key": "mn132:9.5", "pali": "na saññaṁ …", "sujato-corrected": "", "pts": "and he does not regard perception as self or self as having\nperception or perception as in self or self as in perception;", "bodhi-esque": "does not regard perception …"}, {"key": "mn132:9.6", "pali": "na saṅkhāre …", "sujato-corrected": "", "pts": "and he does not regard the habitual tendencies as self or self as having the habitual\ntendencies or the habitual tendencies as in self or self as in the habitual tendencies;", "bodhi-esque": "does not regard volitional activities …"}, {"key": "mn132:9.7", "pali": "na viññāṇaṁ attato samanupassati,\nna viññāṇavantaṁ vā attānaṁ, na atta·ni vā viññāṇaṁ, na viññāṇasmiṁ vā attānaṁ—", "sujato-corrected": "", "pts": "and he does not regard consciousness as self or self as having\nconsciousness or consciousness as in self or self as in consciousness.", "bodhi-esque": "He does not view consciousness as self, or self as possessing consciousness,\nor consciousness in self, or self in consciousness—"}, {"key": "mn132:9.8", "pali": "evaṁ kho, āvuso, pacc·uppannesu dhammesu na saṁhīrati.", "sujato-corrected": "That’s how you don’t falter amid presently arisen phenomena.", "pts": "Even so, monks, is one not drawn away among present things.", "bodhi-esque": "Thus, friend, he is not stirred in regard to presently arisen phenomena."}]}, {"id": "10", "label": "Atītaṁ nānvāgameyya,", "rows": [{"key": "mn132:10.1", "pali": "Atītaṁ nānvāgameyya,", "sujato-corrected": "‘Don’t run back to the past,", "pts": "The past should not be followed after, the future not desired.", "bodhi-esque": "One should not pursue the past,"}, {"key": "mn132:10.2", "pali": "nappaṭikaṅkhe an·āgataṁ;", "sujato-corrected": "don’t anticipate the future. …", "pts": "", "bodhi-esque": "should not yearn for the future;"}, {"key": "mn132:10.3", "pali": "Yadatītaṁ pahīnaṁ taṁ,", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come.", "bodhi-esque": "What is past has been abandoned,"}, {"key": "mn132:10.4", "pali": "appattañca an·āgataṁ.", "sujato-corrected": "", "pts": "", "bodhi-esque": "and what is future is unattained."}, {"key": "mn132:10.5", "pali": "Pacc·uppannañca yo dhammaṁ,", "sujato-corrected": "", "pts": "But whoever has vision now here, now there, of a present thing,", "bodhi-esque": "But whoever the present state,"}, {"key": "mn132:10.6", "pali": "tattha tattha vipassati;", "sujato-corrected": "", "pts": "", "bodhi-esque": "he discerns in each place;"}, {"key": "mn132:10.7", "pali": "Asaṁhīraṁ asaṅkuppaṁ,", "sujato-corrected": "", "pts": "Knowing that it is immovable, unshakable, let him cultivate it.", "bodhi-esque": "Unmoved, unshaken,"}, {"key": "mn132:10.8", "pali": "taṁ vidvā manubrūhaye.", "sujato-corrected": "", "pts": "", "bodhi-esque": "having known that, he should cultivate it."}, {"key": "mn132:10.9", "pali": "Ajjeva kiccam·ātappaṁ,", "sujato-corrected": "", "pts": "Swelter at the task this very day.", "bodhi-esque": "Today itself, ardour for the duty,"}, {"key": "mn132:10.10", "pali": "ko jaññā maraṇaṁ suve;", "sujato-corrected": "", "pts": "Who knows whether he will die tomorrow?", "bodhi-esque": "who knows about death tomorrow?"}, {"key": "mn132:10.11", "pali": "Na hi no saṅgaraṁ tena,", "sujato-corrected": "", "pts": "There is no bargaining with the great hosts of Death.", "bodhi-esque": "For there is no covenant for us with that"}, {"key": "mn132:10.12", "pali": "mahā·senena maccunā.", "sujato-corrected": "", "pts": "", "bodhi-esque": "with the great army of Death."}, {"key": "mn132:10.13", "pali": "Evaṁ·vihāriṁ ātāpiṁ,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\"", "bodhi-esque": "Thus dwelling, ardent,"}, {"key": "mn132:10.14", "pali": "aho·rattam·atanditaṁ;", "sujato-corrected": "", "pts": "", "bodhi-esque": "untiring by day and night;"}, {"key": "mn132:10.15", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "that’s who has one fine night—", "pts": "", "bodhi-esque": "That, indeed, is one of auspicious attachment,"}, {"key": "mn132:10.16", "pali": "santo ācikkhate munī’ti.", "sujato-corrected": "so declares the peaceful sage.’", "pts": "", "bodhi-esque": "the peaceful sage declares."}]}, {"id": "11", "label": "Evaṁ kho ahaṁ, bhante, bhikkhūnaṁ dhammiyā kathāya…", "rows": [{"key": "mn132:11.1", "pali": "Evaṁ kho ahaṁ, bhante,\nbhikkhūnaṁ dhammiyā kathāya sandassesiṁ\nsamādapesiṁ samuttejesiṁ sampahaṁsesiṁ,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsin”ti.", "sujato-corrected": "That’s how I was inspiring the mendicants with a talk on the summary\nrecital and the analysis of the one who has one fine night.”", "pts": "It was thus, revered sir, that I gladdened, roused, incited,\ndelighted the monks with talk on Dhamma and spoke the exposition and analysis of the Auspicious.\"", "bodhi-esque": "Thus, bhante, I instructed, roused, encouraged, and gladdened the bhikkhus with a Dhamma talk,\nand I spoke the summary and analysis of the One Auspicious Attachment."}, {"key": "mn132:11.2", "pali": "“Sādhu sādhu, ānanda.", "sujato-corrected": "“Good, good, Ānanda.", "pts": "\"It is good, Ānanda, it is good;", "bodhi-esque": "Good, good, Ānanda."}, {"key": "mn132:11.3", "pali": "Sādhu kho tvaṁ, ānanda,\nbhikkhūnaṁ dhammiyā kathāya sandassesi\nsamādapesi samuttejesi sampahaṁsesi,\nbhadd·eka·ratt·assa uddesañca vibhaṅgañca abhāsi:", "sujato-corrected": "It’s good that you were inspiring the mendicants with a talk on the\nsummary recital and the analysis of the one who has one fine night.”", "pts": "it is good that you, Ānanda, gladdened, roused, incited,\ndelighted the monks with talk on Dhamma and spoke the exposition and analysis of the Auspicious:", "bodhi-esque": "Good indeed, Ānanda, that you instructed, roused, encouraged, and gladdened the bhikkhus with a Dhamma talk,\nand spoke the summary and analysis of the One Auspicious Attachment:"}]}, {"id": "12", "label": "‘Atītaṁ nānvāgameyya,", "rows": [{"key": "mn132:12.1", "pali": "‘Atītaṁ nānvāgameyya,", "sujato-corrected": "", "pts": "\"The past should not be followed after, the future not desired.", "bodhi-esque": "‘One should not pursue the past,"}, {"key": "mn132:12.2", "pali": "…pe…", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come.\nBut whoever has vision now here, now there, of a present thing,\nKnowing that it is immovable, unshakable, let him cultivate it.\nSwelter at the task this very day.\nWho knows whether he will die tomorrow?\nThere is no bargaining with the great hosts of Death.", "bodhi-esque": "…"}, {"key": "mn132:12.3", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\"", "bodhi-esque": "That, indeed, is one of auspicious attachment,"}, {"key": "mn132:12.4", "pali": "santo ācikkhate munī’ti.", "sujato-corrected": "", "pts": "", "bodhi-esque": "the peaceful sage declares."}]}, {"id": "13", "label": "Kathañca, ānanda, atītaṁ anv·āgameti …pe…", "rows": [{"key": "mn132:13-19.1", "pali": "Kathañca, ānanda, atītaṁ anv·āgameti …pe…", "sujato-corrected": "And the Buddha repeated the verses and analysis once more.", "pts": "And how, Ānanda, does one follow after the past?\nHe thinks:\n'Such was my material shape in the distant past' and finds delight therein.\nHe thinks:\n'Such was my feeling in the distant past' and finds delight therein.\nHe thinks:\n'Such was my my perception in the distant past' and finds delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' and finds delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' and finds delight therein.", "bodhi-esque": "And how, Ānanda, does one pursue the past? …"}, {"key": "mn132:13-19.2", "pali": "evaṁ kho, ānanda, atītaṁ anv·āgameti.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one follow after the past.", "bodhi-esque": "It is in such a way, Ānanda, that one pursues the past."}, {"key": "mn132:13-19.3", "pali": "Kathañca, ānanda, atītaṁ nānvāgameti …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one not follow after the past?\nHe thinks:\n'Such was my material shape in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my feeling in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my perception in the distant past' but does not find delight therein.\nHe thinks:\n'Such were my habitual tendencies in the distant past' but does not find delight therein.\nHe thinks:\n'Such was my consciousness in the distant past' but does not find delight therein.", "bodhi-esque": "And how, Ānanda, does one not pursue the past? …"}, {"key": "mn132:13-19.4", "pali": "evaṁ kho, ānanda, atītaṁ nānvāgameti.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one not follow after the past.", "bodhi-esque": "It is in such a way, Ānanda, that one does not pursue the past."}, {"key": "mn132:13-19.5", "pali": "Kathañca, ānanda, an·āgataṁ paṭi·kaṅkhati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one desire the future?\nHe thinks:\n'May my material shape be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my perception be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my habitual tendencies be thus in the distant future' and finds delight therein.\nHe thinks:\n'May my consciousness be thus in the distant future' and finds delight therein.", "bodhi-esque": "And how, Ānanda, does one desire the future? …"}, {"key": "mn132:13-19.6", "pali": "evaṁ kho, ānanda, an·āgataṁ paṭi·kaṅkhati.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one desire the future.", "bodhi-esque": "Thus, Ānanda, he anticipates the future."}, {"key": "mn132:13-19.7", "pali": "Kathañca, ānanda, an·āgataṁ nappaṭikaṅkhati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, does one not desire the future?\nHe thinks:\n'May my material shape be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my feeling be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my perception be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my habitual tendencies be thus in the distant future' but does not find delight therein.\nHe thinks:\n'May my consciousness be thus in the distant future' but does not find delight therein.", "bodhi-esque": "And how, Ānanda, does one not anticipate the future …"}, {"key": "mn132:13-19.8", "pali": "evaṁ kho, ānanda, an·āgataṁ nappaṭikaṅkhati.", "sujato-corrected": "", "pts": "Even so, Ānanda, does one not desire the future.", "bodhi-esque": "Thus, Ānanda, one does not anticipate the future."}, {"key": "mn132:13-19.9", "pali": "Kathañca, ānanda, pacc·uppannesu dhammesu saṁhīrati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, is one drawn away among present things?\nAs to this, Ānanda, an uninstructed ordinary person, taking no count of the pure ones,\nunskilled in the Dhamma of the pure ones, untrained in the Dhamma of the pure ones, taking no count of the true men,\nunskilled in the Dhamma of the true men, untrained in the Dhamma of the true men,\nregards material shape as self or self as having material shape\nor material shape as in self or self as in material shape;\nor he regards feeling as self or self as having feeling or feeling as in self or self as in feeling;\nor he regards perception as self or self as having perception or perception as in self or self as in perception;\nor he regards the habitual tendencies as self or self as having habitual\ntendencies or habitual tendencies as in self or self as in habitual tendencies;\nor he regards consciousness as self or self as having consciousness\nor consciousness as in self or self as in consciousness.", "bodhi-esque": "And how, Ānanda, is one swept away in present phenomena …"}, {"key": "mn132:13-19.10", "pali": "evaṁ kho, ānanda, pacc·uppannesu dhammesu saṁhīrati.", "sujato-corrected": "", "pts": "Even so, Ānanda, is one drawn away among present things.", "bodhi-esque": "Thus, Ānanda, one is swept away in present phenomena."}, {"key": "mn132:13-19.11", "pali": "Kathañca, ānanda, pacc·uppannesu dhammesu na saṁhīrati …pe…", "sujato-corrected": "", "pts": "And how, Ānanda, is one not drawn away among present things?\nAs to this, Ānanda, an instructed disciple of the pure ones, taking count of the pure ones,\nskilled in the dhamma of the pure ones, trained in the dhamma of the pure ones, taking count of the true men,\nskilled in the dhamma of the true men, trained in the dhamma of the true men,\ndoes not regard material shape as self or self as having material\nshape or material shape as in self or self as in material shape;\nand he does not regard feeling as self or self as having feeling or feeling as in self or self as in feeling;\nand he does not regard perception as self or self as having\nperception or perception as in self or self as in perception;\nand he does not regard the habitual tendencies as self or self as having the habitual\ntendencies or the habitual tendencies as in self or self as in the habitual tendencies;\nand he does not regard consciousness as self or self as having\nconsciousness or consciousness as in self or self as in consciousness.", "bodhi-esque": "And how, Ānanda, is one not swept away in present phenomena …"}, {"key": "mn132:13-19.12", "pali": "evaṁ kho, ānanda, pacc·uppannesu dhammesu na saṁhīrati.", "sujato-corrected": "", "pts": "Even so, Ānanda, is one not drawn away among present things.", "bodhi-esque": "Thus, Ānanda, one is not swept away in present phenomena."}, {"key": "mn132:13-19.13", "pali": "‘Atītaṁ nānvāgameyya,", "sujato-corrected": "", "pts": "The past should not be followed after, the future not desired.", "bodhi-esque": "\"One should not pursue the past,"}, {"key": "mn132:13-19.14", "pali": "…pe…", "sujato-corrected": "", "pts": "What is past is got rid of and the future has not come.\nBut whoever has vision now here, now there, of a present thing,\nKnowing that it is immovable, unshakable, let him cultivate it.\nSwelter at the task this very day.\nWho knows whether he will die tomorrow?\nThere is no bargaining with the great hosts of Death.", "bodhi-esque": "…"}, {"key": "mn132:13-19.15", "pali": "Taṁ ve bhadd·eka·rattoti,", "sujato-corrected": "", "pts": "Thus abiding ardently, unwearied day and night, He indeed is 'Auspicious' called, described as a sage at peace.\"", "bodhi-esque": "That is the one fortunate night,"}, {"key": "mn132:13-19.16", "pali": "santo ācikkhate munī’”ti.", "sujato-corrected": "", "pts": "", "bodhi-esque": "the peaceful sage declares.\""}, {"key": "mn132:13-19.17", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord.", "bodhi-esque": "This the Blessed One said."}, {"key": "mn132:13-19.18", "pali": "Atta·mano āyasmā ānando bhagavato bhāsitaṁ abhi·nandīti.", "sujato-corrected": "Satisfied, Venerable Ānanda approved what the Buddha said.", "pts": "Delighted, the venerable Ānanda rejoiced in what the Lord had said.", "bodhi-esque": "The Venerable Ānanda, with a satisfied mind, delighted in the Blessed One's statement."}, {"key": "mn132:13-19.19", "pali": "Ānanda·bhadd·eka·ratta·suttaṁ niṭṭhitaṁ dutiyaṁ.", "sujato-corrected": "", "pts": "Ānanda's Discourse on the Auspicious:\nThe Second", "bodhi-esque": "The Ānanda-bhadda-ekaratta Sutta is finished, the second."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

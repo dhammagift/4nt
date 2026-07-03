@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 150", "rows": [{"key": "mn150:0.1", "pali": "Majjhima Nikāya 150", "sujato-corrected": "Middle Discourses 150", "pts": ""}, {"key": "mn150:0.2", "pali": "Nagara·vind·eyya·sutta", "sujato-corrected": "With the People of Nagaravinda", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn150:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn150:1.2", "pali": "ekaṁ samayaṁ bhagavā kosale·su cārikaṁ cara·māno mahatā bhikkhu·saṅghena\nsaddhiṁ yena nagara·vindaṁ nāma kosal·ānaṁ brāhmaṇānaṁ gāmo tadavasari.", "sujato-corrected": "At one time the Buddha was wandering in the land of the Kosalans together with a large\nSaṅgha of mendicants when he arrived at a village of the Kosalan brahmins named Nagaravinda.", "pts": "At one time, the Lord, walking on tour among the Kosalans together with a large Order of monks,\narrived at the brahman village of the Kosalans called Nagaravinda."}]}, {"id": "2", "label": "Assosuṁ kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā:", "rows": [{"key": "mn150:2.1", "pali": "Assosuṁ kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā:", "sujato-corrected": "The brahmins and householders of Nagaravinda heard,", "pts": "The brahman householders of Nagaravinda heard it said that"}, {"key": "mn150:2.2", "pali": "“samaṇo khalu, bho, gotamo sakya·putto sakya·kulā pabbajito kosale·su\ncārikaṁ cara·māno mahatā bhikkhu·saṅghena saddhiṁ nagara·vindaṁ anuppatto.", "sujato-corrected": "“It seems the ascetic Gotama—a Sakyan,\ngone forth from a Sakyan family—while wandering in the land of the Kosalans has arrived at Nagaravinda,\ntogether with a large Saṅgha of mendicants.", "pts": "\"Indeed, the recluse Gotama, gone forth from the Sakyan clan,\nand walking on tour among the Kosalans together with a large Order of monks,\nhas arrived at the brahman village of the Kosalans called Nagaravinda."}, {"key": "mn150:2.3", "pali": "Taṁ kho pana bhava·ntaṁ gotamaṁ evaṁ kalyāṇo kitti·saddo abbh·uggato:", "sujato-corrected": "He has this good reputation:", "pts": "A lovely reputation concerning the recluse Gotama has gone abroad thus:"}, {"key": "mn150:2.4", "pali": "‘itipi so bhagavā a·rahaṁ sammā·sambuddho vijjā·caraṇa·sampanno sugato loka·vidū\nan·uttaro purisa·damma·sārathi satthā deva·manu·s·sānaṁ buddho bhagavā’ti.", "sujato-corrected": "‘That Blessed One is perfected, a fully awakened Buddha, accomplished in knowledge and conduct, holy,\nknower of the world, supreme guide for those fit for training, teacher of gods and humans, awakened, blessed.’", "pts": "'He is indeed Lord, perfected one, fully Self-Awakened One, endowed with knowledge and (right) conduct, Well-farer,\nknower of the worlds, the matchless charioteer of men to be tamed,\nteacher of devas and mankind, the Awakened One, the Lord."}, {"key": "mn150:2.5", "pali": "So imaṁ lokaṁ sadevakaṁ samārakaṁ sabrahmakaṁ sa·s·samaṇa·brāhmaṇiṁ\npajaṁ sa·deva·manu·s·saṁ sayaṁ\nabhiññā sacchi·katvā pavedeti.", "sujato-corrected": "He has realized with his own insight this world—with its gods, Māras, and divinities,\nthis population with its ascetics and brahmins, gods and humans—and he makes it known to others.", "pts": "Having realized through his own super-knowledge,\nhe makes known this world together with devas including the Māras and the Brahmās;\ncreatures together with recluses and brahmans, with devas and mankind."}, {"key": "mn150:2.6", "pali": "So dhammaṁ deseti ādi·kalyāṇaṁ majjhe·kalyāṇaṁ pari·yosāna·kalyāṇaṁ sātthaṁ saby·añjanaṁ,\nkevala·pari·puṇṇaṁ pari·suddhaṁ brahma·cariyaṁ pakāseti.", "sujato-corrected": "He proclaims a teaching that is good in the beginning,\ngood in the middle, and good in the end, meaningful and well-phrased.\nAnd he reveals a spiritual practice that’s entirely full and pure.", "pts": "He teaches Dhamma that is lovely at the beginning, lovely in the middle and lovely at the ending;\nhe explains with the spirit and the letter the Brahma-faring completely fulfilled and wholly purified."}, {"key": "mn150:2.7", "pali": "Sādhu kho pana tathā·rūpānaṁ arahataṁ dassanaṁ hotī”ti.", "sujato-corrected": "It’s good to see such perfected ones.”", "pts": "Good indeed is the sight of perfected ones such as this.\""}]}, {"id": "3", "label": "Atha kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā yena bhagavā tenupasaṅkamiṁsu;…", "rows": [{"key": "mn150:3.1", "pali": "Atha kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā appekacce bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdiṁsu.\nAppekacce bhagavatā saddhiṁ sammodiṁsu;\nsammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdiṁsu.\nAppekacce yena bhagavā tena·ñjaliṁ paṇāmetvā ekam·antaṁ nisīdiṁsu.\nAppekacce bhagavato sa·ntike nāma·gottaṁ sāvetvā ekam·antaṁ nisīdiṁsu.\nAppekacce tuṇhī·bhūtā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinne kho nagara·vind·eyyake brāhmaṇa·gaha·patike bhagavā etadavoca:", "sujato-corrected": "Then the brahmins and householders of Nagaravinda went up to the Buddha.\nBefore sitting down to one side, some bowed, some exchanged greetings and polite conversation,\nsome held up their cupped palms toward the Buddha, some announced their name and clan, while some kept silent.\nThe Buddha said to them:", "pts": "Then the brahman householders of Nagaravinda approached the Lord;\nhaving approached him, some exchanged greetings with the Lord and having conversed in a friendly and courteous way,\nthey sat down at a respectful distance;\nsome, having saluted the Lord with joined palms, sat down at a respectful distance;\nsome, having informed the Lord of their names and clans, sat down at a respectful distance;\nsome, becoming silent, sat down at a respectful distance.\nThe Lord spoke thus to the brahman householders of Nagaravinda as they were sitting down at a respectful distance:"}]}, {"id": "4", "label": "“Sace vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "rows": [{"key": "mn150:4.1", "pali": "“Sace vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "“Householders, if wanderers who follow another religion were to ask you:", "pts": "\"If, householders, wanderers belonging to other sects should question you thus:"}, {"key": "mn150:4.2", "pali": "‘kathaṁ·bhūtā, gaha·patayo, samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā’ti?", "sujato-corrected": "‘What kind of ascetic or brahmin doesn’t deserve honor, respect, reverence, and veneration?’", "pts": "'Householders, what kind of recluses and brahmans should not be revered, reverenced, esteemed or honoured?'"}, {"key": "mn150:4.3", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "you, householders, being questioned thus, could answer thus:"}, {"key": "mn150:4.4", "pali": "‘ye te samaṇa·brāhmaṇā cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ caranti\nkāyena vācāya manasā,\nevarūpā samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "‘There are ascetics and brahmins who are not free of greed, hate, and delusion for sights known by the eye,\nwho are not peaceful inside, and who conduct themselves badly among the good by way of body, speech, and mind.\nThey don’t deserve honor, respect, reverence, and veneration.", "pts": "'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to material shapes cognisable by the eye, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.5", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?"}, {"key": "mn150:4.6", "pali": "Mayampi hi cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari a·passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, so we do not see that they have any higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to material shapes cognisable by the eye,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher."}, {"key": "mn150:4.7", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "That’s why they don’t deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.8", "pali": "Ye te samaṇa·brāhmaṇā sota·viññeyyesu saddesu …", "sujato-corrected": "There are ascetics and brahmins who are not free of greed, hate, and delusion for sounds known by the ear …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to sounds cognisable by the ear, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to sounds cognisable by the ear,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.9", "pali": "ghāna·viññeyyesu gandhesu …", "sujato-corrected": "smells known by the nose …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to smells cognisable by the nose, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to smells cognisable by the nose,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.10", "pali": "jivhā·viññeyyesu rasesu …", "sujato-corrected": "tastes known by the tongue…", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to tastes cognisable by the tongue, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to tastes cognisable by the tongue,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.11", "pali": "kāya·viññeyyesu phoṭṭhabbesu …", "sujato-corrected": "touches known by the body …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to touches cognisable by the body, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to touches cognisable by the body,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.12", "pali": "mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ caranti\nkāyena vācāya manasā,\nevarūpā samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "ideas known by the mind, who are not peaceful inside,\nand who conduct themselves badly among the good by way of body, speech, and mind.\nThey don’t deserve honor, respect, reverence, and veneration.", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to mental states cognisable by the mind,\nwhose minds are not inwardly tranquillised, who fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured."}, {"key": "mn150:4.13", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?"}, {"key": "mn150:4.14", "pali": "Mayampi hi mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari a·passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, so we do not see that they have any higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to mental states cognisable by the mind,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher."}, {"key": "mn150:4.15", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā’ti.", "sujato-corrected": "That’s why they don’t deserve honor, respect, reverence, and veneration.’", "pts": "Therefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured. ■"}, {"key": "mn150:4.16", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus."}]}, {"id": "5", "label": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ…", "rows": [{"key": "mn150:5.1", "pali": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "If wanderers of other religions were to ask you:", "pts": "But if, householders, wanderers belonging to other sects should question you thus:"}, {"key": "mn150:5.2", "pali": "‘kathaṁ·bhūtā, gaha·patayo, samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā’ti?", "sujato-corrected": "‘What kind of ascetic or brahmin deserves honor, respect, reverence, and veneration?’", "pts": "'Householders, what kind of recluses and brahmans should be revered, reverenced, esteemed and honoured?'"}, {"key": "mn150:5.3", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "you, householders, being questioned thus, could answer thus:"}, {"key": "mn150:5.4", "pali": "‘ye te samaṇa·brāhmaṇā cakkhu·viññeyyesu rūpesu vīta·rāgā vīta·dosā vīta·mohā, ajjh·attaṁ vūpa·santa·cittā,\nsama·cariyaṁ caranti\nkāyena vācāya manasā, evarūpā samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "‘There are ascetics and brahmins who are free of greed, hate, and delusion for sights known by the eye,\nwho are peaceful inside, and who conduct themselves well by way of body, speech, and mind.\nThey deserve honor, respect, reverence, and veneration.", "pts": "'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to material shapes cognisable by the eye, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured."}, {"key": "mn150:5.5", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?"}, {"key": "mn150:5.6", "pali": "Mayampi hi cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, but we see that they have a higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment,\naversion and confusion in regard to material shapes cognisable by the eye, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher."}, {"key": "mn150:5.7", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "That’s why they deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured."}, {"key": "mn150:5.8", "pali": "Ye te samaṇa·brāhmaṇā sota·viññeyyesu saddesu …", "sujato-corrected": "There are ascetics and brahmins who are free of greed, hate, and delusion for sounds known by the ear …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to sounds cognisable by the ear, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to sounds cognisable by the ear, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured."}, {"key": "mn150:5.9", "pali": "ghāna·viññeyyesu gandhesu …", "sujato-corrected": "smells known by the nose …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to smells cognisable by the nose, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to smells cognisable by the nose, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured."}, {"key": "mn150:5.10", "pali": "jivhā·viññeyyesu rasesu …", "sujato-corrected": "tastes known by the tongue …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to tastes cognisable by the tongue, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to tastes cognisable by the tongue, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured."}, {"key": "mn150:5.11", "pali": "kāya·viññeyyesu phoṭṭhabbesu …", "sujato-corrected": "touches known by the body …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to touches cognisable by the body, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to touches cognisable by the body, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured."}, {"key": "mn150:5.12", "pali": "mano·viññeyyesu dhammesu vīta·rāgā vīta·dosā vīta·mohā, ajjh·attaṁ vūpa·santa·cittā,\nsama·cariyaṁ caranti\nkāyena vācāya manasā, evarūpā samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "ideas known by the mind, who are peaceful inside, and who conduct themselves well by way of body, speech, and mind.\nThey deserve honor, respect, reverence, and veneration.", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to mental states cognisable by the mind, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured."}, {"key": "mn150:5.13", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?"}, {"key": "mn150:5.14", "pali": "Mayampi hi mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, but we see that they have a higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment,\naversion and confusion in regard to mental states cognisable by the mind, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher."}, {"key": "mn150:5.15", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā’ti.", "sujato-corrected": "That’s why they deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured. ■"}, {"key": "mn150:5.16", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus."}]}, {"id": "6", "label": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ…", "rows": [{"key": "mn150:6.1", "pali": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "If wanderers of other religions were to ask you:", "pts": "If, householders, wanderers belonging to other sects should question you thus:"}, {"key": "mn150:6.2", "pali": "‘ke panāyasmantānaṁ ākārā, ke anv·ayā, yena tumhe āyasmanto evaṁ vadetha?", "sujato-corrected": "‘But what reasons and evidence do you have regarding those venerables that justifies saying,", "pts": "'But what grounds do the venerable ones have, what is the authority by which you, venerable ones, should speak thus:"}, {"key": "mn150:6.3", "pali": "Addhā te āyasmanto vīta·rāgā vā rāga·vinayāya vā paṭi·pannā,\nvīta·dosā vā dosa·vinayāya vā paṭi·pannā, vīta·mohā vā moha·vinayāya vā paṭi·pannā’ti?", "sujato-corrected": "“Clearly those venerables are free of greed, hate, and delusion, or practicing to be free of them”?’", "pts": "Certainly, those venerable ones are either devoid of attachment or are practising for the driving out of attachment,\nthey are either devoid of aversion or are practising for the driving out of aversion;\nthey are either devoid of confusion or are practising for the driving out of confusion.'"}, {"key": "mn150:6.4", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "If you are questioned thus, householders, you could answer these wanderers belonging to other sects thus:"}, {"key": "mn150:6.5", "pali": "‘tathā hi te āyasmanto arañña·vana·patthāni pantāni senāsanāni paṭi·sevanti.", "sujato-corrected": "‘It’s because those venerables frequent remote lodgings in the wilderness and the forest.", "pts": "'Those venerable ones frequent remote lodgings in lonely forest glades."}, {"key": "mn150:6.6", "pali": "Natthi kho pana tattha tathā·rūpā cakkhu·viññeyyā rūpā ye\ndisvā disvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā sota·viññeyyā saddā ye\nsutvā sutvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā ghāna·viññeyyā gandhā ye\nghāy·itvā ghāy·itvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā jivhā·viññeyyā rasā ye\nsāyitvā sāyitvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā kāya·viññeyyā phoṭṭhabbā ye\nphusitvā phusitvā abhi·rameyyuṁ.", "sujato-corrected": "In such places there are no sights known by the eye to see and enjoy,\nthere are no sounds known by the ear to hear and enjoy,\nno odors known by the nose to smell and enjoy, no flavors known by the tongue to taste and enjoy,\nand no touches known by the body to feel and enjoy.", "pts": "But there are not there material shapes cognisable by the eye, sounds cognisable by the ear,\nsmells cognisable by the nose, tastes cognisable by the tongue,\ntouches cognisable by the body such as having been seen, heard,\nsmelt, tasted or touched over and over again, could delight them."}, {"key": "mn150:6.7", "pali": "Ime kho no, āvuso, ākārā, ime anv·ayā, yena mayaṁ evaṁ vadema—", "sujato-corrected": "These are the reasons and evidence that you have regarding those venerables that justifies saying,", "pts": "These, your reverences, are the grounds, this is the authority by which we, venerable ones, speak thus:"}, {"key": "mn150:6.8", "pali": "addhā te āyasmanto vīta·rāgā vā rāga·vinayāya vā paṭi·pannā,\nvīta·dosā vā dosa·vinayāya vā paṭi·pannā, vīta·mohā vā moha·vinayāya vā paṭi·pannā’ti.", "sujato-corrected": "“Clearly those venerables are free of greed, hate, and delusion, or practicing to be free of them”.’", "pts": "Certainly, those venerable ones are either devoid of attachment or are practising for the driving out of attachment,\nthey are either devoid of aversion or are practising for the driving out of aversion;\nthey are either devoid of confusion or are practising for the driving out of confusion.'"}, {"key": "mn150:6.9", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ byākareyyāthā”ti.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.”", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus.\""}]}, {"id": "7", "label": "Evaṁ vutte, nagara·vind·eyyakā brāhmaṇa·gaha·patikā bhagavantaṁ etadavocuṁ:", "rows": [{"key": "mn150:7.1", "pali": "Evaṁ vutte, nagara·vind·eyyakā brāhmaṇa·gaha·patikā bhagavantaṁ etadavocuṁ:", "sujato-corrected": "When he had spoken, the brahmins and householders of Nagaravinda said to the Buddha,", "pts": "When this had been said, the brahman householders of Nagaravinda spoke thus to the Lord:"}, {"key": "mn150:7.2", "pali": "“abhi·k·kantaṁ, bho gotama, abhi·k·kantaṁ, bho gotama.", "sujato-corrected": "“Excellent, worthy Gotama!\nExcellent!", "pts": "\"It is excellent, good Gotama, it is excellent, good Gotama."}, {"key": "mn150:7.3", "pali": "Seyyathāpi, bho gotama, nikkujjitaṁ vā ukkujjeyya,\npaṭi·c·cha·n·naṁ vā vivareyya,\nmūḷhassa vā maggaṁ ācikkheyya,\nandha·kāre vā tela·pajjotaṁ dhāreyya:\n‘cakkhumanto rūpāni dakkhantī’ti;\nevam·evaṁ bhotā gotamena a·neka·pari·yāyena dhammo pakāsito.", "sujato-corrected": "As if he were righting the overturned, or revealing the hidden, or pointing out the path to the lost,\nor lighting a lamp in the dark so people with clear eyes can see what’s there,\nworthy Gotama has made the Teaching clear in many ways.", "pts": "It is as if, good Gotama, one might set upright what had been upset,\nor might disclose what was covered, or point out the way to one who had gone astray,\nor might bring an oil-lamp into the darkness so that those with vision might see\nmaterial shapes - even so is Dhamma made clear in many a figure by the good Gotama."}, {"key": "mn150:7.4", "pali": "Ete mayaṁ bhava·ntaṁ gotamaṁ saraṇaṁ gacchāma\ndhammañca bhikkhu·saṅghañca.", "sujato-corrected": "We go for refuge to the worthy Gotama, to the teaching, and to the mendicant Saṅgha.", "pts": "We are going to the revered Gotama for refuge, and to Dhamma and to the Order of monks."}, {"key": "mn150:7.5", "pali": "Upāsake no bhavaṁ gotamo dhāretu\najjatagge pāṇupete saraṇaṁ gate”ti.", "sujato-corrected": "From this day forth, may the worthy Gotama remember us as lay followers who have gone for refuge for life.”", "pts": "May the revered Gotama accept us as a lay-follower, going for refuge from this day forth for as long as life lasts.\"\nDiscourse to the People of Nagaravinda:\nThe Eighth"}, {"key": "mn150:7.6", "pali": "Nagara·vind·eyya·suttaṁ niṭṭhitaṁ aṭṭhamaṁ.", "sujato-corrected": "", "pts": ""}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 150", "rows": [{"key": "mn150:0.1", "pali": "Majjhima Nikāya 150", "sujato-corrected": "Middle Discourses 150", "pts": "", "bodhi-esque": "Majjhima Nikāya 150"}, {"key": "mn150:0.2", "pali": "Nagara·vind·eyya·sutta", "sujato-corrected": "With the People of Nagaravinda", "pts": "", "bodhi-esque": "Nagaravindeyya Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn150:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:", "bodhi-esque": "Thus have I heard—"}, {"key": "mn150:1.2", "pali": "ekaṁ samayaṁ bhagavā kosale·su cārikaṁ cara·māno mahatā bhikkhu·saṅghena\nsaddhiṁ yena nagara·vindaṁ nāma kosal·ānaṁ brāhmaṇānaṁ gāmo tadavasari.", "sujato-corrected": "At one time the Buddha was wandering in the land of the Kosalans together with a large\nSaṅgha of mendicants when he arrived at a village of the Kosalan brahmins named Nagaravinda.", "pts": "At one time, the Lord, walking on tour among the Kosalans together with a large Order of monks,\narrived at the brahman village of the Kosalans called Nagaravinda.", "bodhi-esque": "On one occasion the Blessed One was wandering in the Kosalan country with a great\nSaṅgha of bhikkhus when he arrived at a town of the Kosalan brahmins named Nagaravinda."}]}, {"id": "2", "label": "Assosuṁ kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā:", "rows": [{"key": "mn150:2.1", "pali": "Assosuṁ kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā:", "sujato-corrected": "The brahmins and householders of Nagaravinda heard,", "pts": "The brahman householders of Nagaravinda heard it said that", "bodhi-esque": "The brahmin householders of Nagaravinda heard:"}, {"key": "mn150:2.2", "pali": "“samaṇo khalu, bho, gotamo sakya·putto sakya·kulā pabbajito kosale·su\ncārikaṁ cara·māno mahatā bhikkhu·saṅghena saddhiṁ nagara·vindaṁ anuppatto.", "sujato-corrected": "“It seems the ascetic Gotama—a Sakyan,\ngone forth from a Sakyan family—while wandering in the land of the Kosalans has arrived at Nagaravinda,\ntogether with a large Saṅgha of mendicants.", "pts": "\"Indeed, the recluse Gotama, gone forth from the Sakyan clan,\nand walking on tour among the Kosalans together with a large Order of monks,\nhas arrived at the brahman village of the Kosalans called Nagaravinda.", "bodhi-esque": "“Indeed, good sirs, the ascetic Gotama, the Sakyan son who went forth from the Sakyan clan,\nhas arrived at Nagaravinda while wandering in the Kosalan country with a great Saṅgha of bhikkhus."}, {"key": "mn150:2.3", "pali": "Taṁ kho pana bhava·ntaṁ gotamaṁ evaṁ kalyāṇo kitti·saddo abbh·uggato:", "sujato-corrected": "He has this good reputation:", "pts": "A lovely reputation concerning the recluse Gotama has gone abroad thus:", "bodhi-esque": "And a good report of that venerable Gotama has circulated thus:"}, {"key": "mn150:2.4", "pali": "‘itipi so bhagavā a·rahaṁ sammā·sambuddho vijjā·caraṇa·sampanno sugato loka·vidū\nan·uttaro purisa·damma·sārathi satthā deva·manu·s·sānaṁ buddho bhagavā’ti.", "sujato-corrected": "‘That Blessed One is perfected, a fully awakened Buddha, accomplished in knowledge and conduct, holy,\nknower of the world, supreme guide for those fit for training, teacher of gods and humans, awakened, blessed.’", "pts": "'He is indeed Lord, perfected one, fully Self-Awakened One, endowed with knowledge and (right) conduct, Well-farer,\nknower of the worlds, the matchless charioteer of men to be tamed,\nteacher of devas and mankind, the Awakened One, the Lord.", "bodhi-esque": "‘He is the Blessed One, the Arahant, the Perfectly Enlightened One,\naccomplished in knowledge and conduct, the Fortunate One,\nthe Knower of the world, the unsurpassed trainer of persons to be tamed,\nthe teacher of devas and humans, the Enlightened One, the Blessed One.’"}, {"key": "mn150:2.5", "pali": "So imaṁ lokaṁ sadevakaṁ samārakaṁ sabrahmakaṁ sa·s·samaṇa·brāhmaṇiṁ\npajaṁ sa·deva·manu·s·saṁ sayaṁ\nabhiññā sacchi·katvā pavedeti.", "sujato-corrected": "He has realized with his own insight this world—with its gods, Māras, and divinities,\nthis population with its ascetics and brahmins, gods and humans—and he makes it known to others.", "pts": "Having realized through his own super-knowledge,\nhe makes known this world together with devas including the Māras and the Brahmās;\ncreatures together with recluses and brahmans, with devas and mankind.", "bodhi-esque": "He, having realized by direct knowledge this world with its devas, Māra, and Brahmā,\nthis population with its ascetics and brahmins, its devas and humans, he makes it known."}, {"key": "mn150:2.6", "pali": "So dhammaṁ deseti ādi·kalyāṇaṁ majjhe·kalyāṇaṁ pari·yosāna·kalyāṇaṁ sātthaṁ saby·añjanaṁ,\nkevala·pari·puṇṇaṁ pari·suddhaṁ brahma·cariyaṁ pakāseti.", "sujato-corrected": "He proclaims a teaching that is good in the beginning,\ngood in the middle, and good in the end, meaningful and well-phrased.\nAnd he reveals a spiritual practice that’s entirely full and pure.", "pts": "He teaches Dhamma that is lovely at the beginning, lovely in the middle and lovely at the ending;\nhe explains with the spirit and the letter the Brahma-faring completely fulfilled and wholly purified.", "bodhi-esque": "He teaches the Dhamma good in the beginning, good in the middle, good in the end, with meaning and phrasing;\nhe reveals a holy life that is completely perfect and pure."}, {"key": "mn150:2.7", "pali": "Sādhu kho pana tathā·rūpānaṁ arahataṁ dassanaṁ hotī”ti.", "sujato-corrected": "It’s good to see such perfected ones.”", "pts": "Good indeed is the sight of perfected ones such as this.\"", "bodhi-esque": "It is good to see such arahants.”"}]}, {"id": "3", "label": "Atha kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā yena bhagavā tenupasaṅkamiṁsu;…", "rows": [{"key": "mn150:3.1", "pali": "Atha kho nagara·vind·eyyakā brāhmaṇa·gaha·patikā yena bhagavā tenupasaṅkamiṁsu;\nupasaṅkamitvā appekacce bhagavantaṁ abhi·vādetvā ekam·antaṁ nisīdiṁsu.\nAppekacce bhagavatā saddhiṁ sammodiṁsu;\nsammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ nisīdiṁsu.\nAppekacce yena bhagavā tena·ñjaliṁ paṇāmetvā ekam·antaṁ nisīdiṁsu.\nAppekacce bhagavato sa·ntike nāma·gottaṁ sāvetvā ekam·antaṁ nisīdiṁsu.\nAppekacce tuṇhī·bhūtā ekam·antaṁ nisīdiṁsu.\nEkam·antaṁ nisinne kho nagara·vind·eyyake brāhmaṇa·gaha·patike bhagavā etadavoca:", "sujato-corrected": "Then the brahmins and householders of Nagaravinda went up to the Buddha.\nBefore sitting down to one side, some bowed, some exchanged greetings and polite conversation,\nsome held up their cupped palms toward the Buddha, some announced their name and clan, while some kept silent.\nThe Buddha said to them:", "pts": "Then the brahman householders of Nagaravinda approached the Lord;\nhaving approached him, some exchanged greetings with the Lord and having conversed in a friendly and courteous way,\nthey sat down at a respectful distance;\nsome, having saluted the Lord with joined palms, sat down at a respectful distance;\nsome, having informed the Lord of their names and clans, sat down at a respectful distance;\nsome, becoming silent, sat down at a respectful distance.\nThe Lord spoke thus to the brahman householders of Nagaravinda as they were sitting down at a respectful distance:", "bodhi-esque": "Then the brahmin householders of Nagaravinda approached the Blessed One.\nHaving approached, some paid homage to the Blessed One and sat down to one side;\nsome exchanged greetings with the Blessed One,\nand after conversing in a friendly and courteous way, sat down to one side;\nsome, having raised their joined hands towards the Blessed One, sat down to one side;\nsome, having announced their name and clan in the Blessed One’s presence, sat down to one side;\nsome, keeping silent, sat down to one side.\nWhen the brahmin householders of Nagaravinda were seated to one side, the Blessed One spoke to them thus:"}]}, {"id": "4", "label": "“Sace vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "rows": [{"key": "mn150:4.1", "pali": "“Sace vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "“Householders, if wanderers who follow another religion were to ask you:", "pts": "\"If, householders, wanderers belonging to other sects should question you thus:", "bodhi-esque": "“If, householders, wanderers of other sects should ask you thus:"}, {"key": "mn150:4.2", "pali": "‘kathaṁ·bhūtā, gaha·patayo, samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā’ti?", "sujato-corrected": "‘What kind of ascetic or brahmin doesn’t deserve honor, respect, reverence, and veneration?’", "pts": "'Householders, what kind of recluses and brahmans should not be revered, reverenced, esteemed or honoured?'", "bodhi-esque": "‘Of what kind, householders, are ascetics and brahmins who should not be revered, respected, honored, and venerated?’"}, {"key": "mn150:4.3", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "you, householders, being questioned thus, could answer thus:", "bodhi-esque": "Questioned thus, you, householders, should answer those wanderers of other sects thus:"}, {"key": "mn150:4.4", "pali": "‘ye te samaṇa·brāhmaṇā cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ caranti\nkāyena vācāya manasā,\nevarūpā samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "‘There are ascetics and brahmins who are not free of greed, hate, and delusion for sights known by the eye,\nwho are not peaceful inside, and who conduct themselves badly among the good by way of body, speech, and mind.\nThey don’t deserve honor, respect, reverence, and veneration.", "pts": "'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to material shapes cognisable by the eye, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "‘Those recluses and brahmins who are not devoid of lust for forms cognizable by the eye,\nnot devoid of hate, not devoid of delusion, whose minds are internally unsettled,\nwho behave evenly and unevenly in body, speech, and mind –\nsuch recluses and brahmins should not be honored, respected, revered, or venerated."}, {"key": "mn150:4.5", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?", "bodhi-esque": "For what reason?"}, {"key": "mn150:4.6", "pali": "Mayampi hi cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari a·passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, so we do not see that they have any higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to material shapes cognisable by the eye,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.", "bodhi-esque": "For we too are not devoid of lust for forms cognizable by the eye,\nnot devoid of hate, not devoid of delusion, our minds internally unsettled,\nwe behave evenly and unevenly in body, speech, and mind, for we do not see anything higher even in their even behavior."}, {"key": "mn150:4.7", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "That’s why they don’t deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "Therefore, venerable sirs, those recluses and brahmins should not be honored, respected, revered, or venerated."}, {"key": "mn150:4.8", "pali": "Ye te samaṇa·brāhmaṇā sota·viññeyyesu saddesu …", "sujato-corrected": "There are ascetics and brahmins who are not free of greed, hate, and delusion for sounds known by the ear …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to sounds cognisable by the ear, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to sounds cognisable by the ear,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "Those recluses and brahmins who are not devoid of lust for sounds cognizable by the ear …"}, {"key": "mn150:4.9", "pali": "ghāna·viññeyyesu gandhesu …", "sujato-corrected": "smells known by the nose …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to smells cognisable by the nose, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to smells cognisable by the nose,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "… not devoid of lust for odors cognizable by the nose …"}, {"key": "mn150:4.10", "pali": "jivhā·viññeyyesu rasesu …", "sujato-corrected": "tastes known by the tongue…", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to tastes cognisable by the tongue, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to tastes cognisable by the tongue,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "… not devoid of lust for tastes cognizable by the tongue …"}, {"key": "mn150:4.11", "pali": "kāya·viññeyyesu phoṭṭhabbesu …", "sujato-corrected": "touches known by the body …", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to touches cognisable by the body, whose minds are not inwardly tranquillised,\nwho fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to touches cognisable by the body,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "… not devoid of lust for tangibles cognizable by the body …"}, {"key": "mn150:4.12", "pali": "mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ caranti\nkāyena vācāya manasā,\nevarūpā samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā.", "sujato-corrected": "ideas known by the mind, who are not peaceful inside,\nand who conduct themselves badly among the good by way of body, speech, and mind.\nThey don’t deserve honor, respect, reverence, and veneration.", "pts": "■ 'Those recluses and brahmans who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to mental states cognisable by the mind,\nwhose minds are not inwardly tranquillised, who fare along now evenly, now unevenly in body,\nspeech and thought - recluses and brahmans such as these are not to be revered, reverenced, esteemed or honoured.", "bodhi-esque": "… not devoid of lust for phenomena cognizable by the mind, not devoid of hate,\nnot devoid of delusion, whose minds are internally unsettled,\nwho behave evenly and unevenly in body, speech, and mind –\nsuch recluses and brahmins should not be honored, respected, revered, or venerated."}, {"key": "mn150:4.13", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?", "bodhi-esque": "For what reason?"}, {"key": "mn150:4.14", "pali": "Mayampi hi mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari a·passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, so we do not see that they have any higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment, not devoid of aversion,\nnot devoid of confusion in regard to mental states cognisable by the mind,\nour minds not inwardly tranquillised, fare along now evenly, now unevenly in body,\nspeech and thought, it is yet not seen by them that this even-faring of ours is the higher.", "bodhi-esque": "For we too are not devoid of lust for phenomena cognizable by the mind,\nnot devoid of hate, not devoid of delusion, our minds internally unsettled,\nwe behave evenly and unevenly in body, speech, and mind, for we do not see anything higher even in their even behavior."}, {"key": "mn150:4.15", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā na sakkātabbā na garu·kātabbā na māne·tabbā na pūje·tabbā’ti.", "sujato-corrected": "That’s why they don’t deserve honor, respect, reverence, and veneration.’", "pts": "Therefore these worthy recluses and brahmans are not to be revered, reverenced, esteemed or honoured. ■", "bodhi-esque": "Therefore, venerable sirs, those recluses and brahmins should not be honored, respected, revered, or venerated."}, {"key": "mn150:4.16", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus.", "bodhi-esque": "Thus questioned, householders, you should answer those other sectarian wanderers in such a way."}]}, {"id": "5", "label": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ…", "rows": [{"key": "mn150:5.1", "pali": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "If wanderers of other religions were to ask you:", "pts": "But if, householders, wanderers belonging to other sects should question you thus:", "bodhi-esque": "But if, householders, other sectarian wanderers should ask you thus:"}, {"key": "mn150:5.2", "pali": "‘kathaṁ·bhūtā, gaha·patayo, samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā’ti?", "sujato-corrected": "‘What kind of ascetic or brahmin deserves honor, respect, reverence, and veneration?’", "pts": "'Householders, what kind of recluses and brahmans should be revered, reverenced, esteemed and honoured?'", "bodhi-esque": "‘What kind of recluses and brahmins, householders, should be honored, respected, revered, venerated?’"}, {"key": "mn150:5.3", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "you, householders, being questioned thus, could answer thus:", "bodhi-esque": "Thus questioned, householders, you should answer those wanderers of other sects in this way:"}, {"key": "mn150:5.4", "pali": "‘ye te samaṇa·brāhmaṇā cakkhu·viññeyyesu rūpesu vīta·rāgā vīta·dosā vīta·mohā, ajjh·attaṁ vūpa·santa·cittā,\nsama·cariyaṁ caranti\nkāyena vācāya manasā, evarūpā samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "‘There are ascetics and brahmins who are free of greed, hate, and delusion for sights known by the eye,\nwho are peaceful inside, and who conduct themselves well by way of body, speech, and mind.\nThey deserve honor, respect, reverence, and veneration.", "pts": "'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to material shapes cognisable by the eye, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.", "bodhi-esque": "'Those ascetics and brahmins who are devoid of lust, devoid of hatred,\ndevoid of delusion in forms cognizable by the eye, with minds internally peaceful,\npracticing proper conduct in body, speech, and mind —\nsuch ascetics and brahmins are to be respected, revered, honored, and venerated.'"}, {"key": "mn150:5.5", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?", "bodhi-esque": "For what reason?"}, {"key": "mn150:5.6", "pali": "Mayampi hi cakkhu·viññeyyesu rūpesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā, ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, but we see that they have a higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment,\naversion and confusion in regard to material shapes cognisable by the eye, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.", "bodhi-esque": "For we too are those who are not devoid of lust, not devoid of hatred,\nnot devoid of delusion in forms cognizable by the eye,\nwith minds internally not peaceful,\npracticing conduct that is both consistent and inconsistent in body, speech, and mind;\nyet even their consistent conduct we see as superior."}, {"key": "mn150:5.7", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "That’s why they deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured.", "bodhi-esque": "Therefore, those venerable ascetics and brahmins are to be respected, revered, honored, and venerated."}, {"key": "mn150:5.8", "pali": "Ye te samaṇa·brāhmaṇā sota·viññeyyesu saddesu …", "sujato-corrected": "There are ascetics and brahmins who are free of greed, hate, and delusion for sounds known by the ear …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to sounds cognisable by the ear, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to sounds cognisable by the ear, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured.", "bodhi-esque": "Those ascetics and brahmins who, in sounds cognizable by the ear …"}, {"key": "mn150:5.9", "pali": "ghāna·viññeyyesu gandhesu …", "sujato-corrected": "smells known by the nose …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to smells cognisable by the nose, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to smells cognisable by the nose, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured.", "bodhi-esque": "in odors cognizable by the nose …"}, {"key": "mn150:5.10", "pali": "jivhā·viññeyyesu rasesu …", "sujato-corrected": "tastes known by the tongue …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to tastes cognisable by the tongue, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to tastes cognisable by the tongue, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured.", "bodhi-esque": "in flavors cognizable by the tongue …"}, {"key": "mn150:5.11", "pali": "kāya·viññeyyesu phoṭṭhabbesu …", "sujato-corrected": "touches known by the body …", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to touches cognisable by the body, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.\nWhat is the reason for this?\nIt is that while we, who are not devoid of attachment,\naversion and confusion in regard to touches cognisable by the body, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.\nTherefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured.", "bodhi-esque": "in tangibles cognizable by the body …"}, {"key": "mn150:5.12", "pali": "mano·viññeyyesu dhammesu vīta·rāgā vīta·dosā vīta·mohā, ajjh·attaṁ vūpa·santa·cittā,\nsama·cariyaṁ caranti\nkāyena vācāya manasā, evarūpā samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā.", "sujato-corrected": "ideas known by the mind, who are peaceful inside, and who conduct themselves well by way of body, speech, and mind.\nThey deserve honor, respect, reverence, and veneration.", "pts": "■ 'Those recluses and brahmans who are devoid of attachment,\naversion and confusion in regard to mental states cognisable by the mind, whose minds are inwardly tranquillised,\nwho fare the even-faring in body, speech and thought - recluses and brahmans such as these are to be revered,\nreverenced, esteemed and honoured.", "bodhi-esque": "who are devoid of lust, devoid of hatred,\ndevoid of delusion in phenomena cognizable by the mind, with minds internally peaceful,\npracticing proper conduct in body, speech, and mind —\nsuch ascetics and brahmins are to be respected, revered, honored, and venerated."}, {"key": "mn150:5.13", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What is the reason for this?", "bodhi-esque": "For what reason?"}, {"key": "mn150:5.14", "pali": "Mayampi hi mano·viññeyyesu dhammesu a·vīta·rāgā a·vīta·dosā a·vīta·mohā ajjh·attaṁ a·vūpa·santa·cittā,\nsama·vi·samaṁ carāma\nkāyena vācāya manasā, tesaṁ no sama·cariyampi hetaṁ uttari passataṁ.", "sujato-corrected": "Because we ourselves are not free of these things, but we see that they have a higher good conduct than us.", "pts": "It is that while we, who are not devoid of attachment,\naversion and confusion in regard to mental states cognisable by the mind, our minds not inwardly tranquillised,\nfare along now evenly, now unevenly in body, speech and thought,\nit is yet seen by them that this even-faring of ours is the higher.", "bodhi-esque": "For we too are those who are not devoid of lust, not devoid of hatred,\nnot devoid of delusion in phenomena cognizable by the mind,\nwith minds internally not peaceful,\npracticing conduct that is both consistent and inconsistent in body, speech, and mind;\nyet even their consistent conduct we see as superior."}, {"key": "mn150:5.15", "pali": "Tasmā te bhonto samaṇa·brāhmaṇā sakkātabbā garu·kātabbā māne·tabbā pūje·tabbā’ti.", "sujato-corrected": "That’s why they deserve honor, respect, reverence, and veneration.", "pts": "Therefore these worthy recluses and brahmans are to be revered, reverenced, esteemed and honoured. ■", "bodhi-esque": "'Therefore, those venerable ascetics and brahmins are to be respected, revered, honored, and venerated.'"}, {"key": "mn150:5.16", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus.", "bodhi-esque": "Thus questioned, householders, you should answer those wanderers of other sects in this way."}]}, {"id": "6", "label": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ…", "rows": [{"key": "mn150:6.1", "pali": "Sace pana vo, gaha·patayo, añña·titthiyā pari·b·bājakā evaṁ puccheyyuṁ:", "sujato-corrected": "If wanderers of other religions were to ask you:", "pts": "If, householders, wanderers belonging to other sects should question you thus:", "bodhi-esque": "But if, householders, wanderers of other sects should ask you in this way:"}, {"key": "mn150:6.2", "pali": "‘ke panāyasmantānaṁ ākārā, ke anv·ayā, yena tumhe āyasmanto evaṁ vadetha?", "sujato-corrected": "‘But what reasons and evidence do you have regarding those venerables that justifies saying,", "pts": "'But what grounds do the venerable ones have, what is the authority by which you, venerable ones, should speak thus:", "bodhi-esque": "‘But what are the reasons, what are the clues, by which you, venerable ones, speak thus?"}, {"key": "mn150:6.3", "pali": "Addhā te āyasmanto vīta·rāgā vā rāga·vinayāya vā paṭi·pannā,\nvīta·dosā vā dosa·vinayāya vā paṭi·pannā, vīta·mohā vā moha·vinayāya vā paṭi·pannā’ti?", "sujato-corrected": "“Clearly those venerables are free of greed, hate, and delusion, or practicing to be free of them”?’", "pts": "Certainly, those venerable ones are either devoid of attachment or are practising for the driving out of attachment,\nthey are either devoid of aversion or are practising for the driving out of aversion;\nthey are either devoid of confusion or are practising for the driving out of confusion.'", "bodhi-esque": "Surely those venerable ones are either devoid of lust or are practicing for the removal of lust,\ndevoid of hatred or are practicing for the removal of hatred,\ndevoid of delusion or are practicing for the removal of delusion’?"}, {"key": "mn150:6.4", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ by·ākareyyātha:", "sujato-corrected": "You should answer them:", "pts": "If you are questioned thus, householders, you could answer these wanderers belonging to other sects thus:", "bodhi-esque": "When asked thus, householders, you should answer those wanderers of other sects thus:"}, {"key": "mn150:6.5", "pali": "‘tathā hi te āyasmanto arañña·vana·patthāni pantāni senāsanāni paṭi·sevanti.", "sujato-corrected": "‘It’s because those venerables frequent remote lodgings in the wilderness and the forest.", "pts": "'Those venerable ones frequent remote lodgings in lonely forest glades.", "bodhi-esque": "‘Because those venerable ones resort to remote forest and wilderness dwellings."}, {"key": "mn150:6.6", "pali": "Natthi kho pana tattha tathā·rūpā cakkhu·viññeyyā rūpā ye\ndisvā disvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā sota·viññeyyā saddā ye\nsutvā sutvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā ghāna·viññeyyā gandhā ye\nghāy·itvā ghāy·itvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā jivhā·viññeyyā rasā ye\nsāyitvā sāyitvā abhi·rameyyuṁ,\nnatthi kho pana tattha tathā·rūpā kāya·viññeyyā phoṭṭhabbā ye\nphusitvā phusitvā abhi·rameyyuṁ.", "sujato-corrected": "In such places there are no sights known by the eye to see and enjoy,\nthere are no sounds known by the ear to hear and enjoy,\nno odors known by the nose to smell and enjoy, no flavors known by the tongue to taste and enjoy,\nand no touches known by the body to feel and enjoy.", "pts": "But there are not there material shapes cognisable by the eye, sounds cognisable by the ear,\nsmells cognisable by the nose, tastes cognisable by the tongue,\ntouches cognisable by the body such as having been seen, heard,\nsmelt, tasted or touched over and over again, could delight them.", "bodhi-esque": "But there are no such forms cognizable by the eye there, having seen which they might repeatedly delight;\nthere are no such sounds cognizable by the ear there, having heard which they might repeatedly delight;\nthere are no such odors cognizable by the nose there, having smelled which they might repeatedly delight;\nthere are no such tastes cognizable by the tongue there, having tasted which they might repeatedly delight;\nthere are no such tangibles cognizable by the body there, having touched which they might repeatedly delight."}, {"key": "mn150:6.7", "pali": "Ime kho no, āvuso, ākārā, ime anv·ayā, yena mayaṁ evaṁ vadema—", "sujato-corrected": "These are the reasons and evidence that you have regarding those venerables that justifies saying,", "pts": "These, your reverences, are the grounds, this is the authority by which we, venerable ones, speak thus:", "bodhi-esque": "These, friends, are the reasons, these are the clues, by which we speak thus—"}, {"key": "mn150:6.8", "pali": "addhā te āyasmanto vīta·rāgā vā rāga·vinayāya vā paṭi·pannā,\nvīta·dosā vā dosa·vinayāya vā paṭi·pannā, vīta·mohā vā moha·vinayāya vā paṭi·pannā’ti.", "sujato-corrected": "“Clearly those venerables are free of greed, hate, and delusion, or practicing to be free of them”.’", "pts": "Certainly, those venerable ones are either devoid of attachment or are practising for the driving out of attachment,\nthey are either devoid of aversion or are practising for the driving out of aversion;\nthey are either devoid of confusion or are practising for the driving out of confusion.'", "bodhi-esque": "surely those venerable ones are either devoid of lust or are practicing for the removal of lust,\ndevoid of hatred or are practicing for the removal of hatred,\ndevoid of delusion or are practicing for the removal of delusion.’"}, {"key": "mn150:6.9", "pali": "Evaṁ puṭṭhā tumhe, gaha·patayo, tesaṁ añña·titthiyānaṁ pari·b·bājakānaṁ evaṁ byākareyyāthā”ti.", "sujato-corrected": "When questioned by wanderers of other religions, that’s how you should answer them.”", "pts": "If you, householders, are questioned thus, you could answer those wanderers belonging to other sects thus.\"", "bodhi-esque": "When asked thus, householders, you should answer those wanderers of other sects thus.”"}]}, {"id": "7", "label": "Evaṁ vutte, nagara·vind·eyyakā brāhmaṇa·gaha·patikā bhagavantaṁ etadavocuṁ:", "rows": [{"key": "mn150:7.1", "pali": "Evaṁ vutte, nagara·vind·eyyakā brāhmaṇa·gaha·patikā bhagavantaṁ etadavocuṁ:", "sujato-corrected": "When he had spoken, the brahmins and householders of Nagaravinda said to the Buddha,", "pts": "When this had been said, the brahman householders of Nagaravinda spoke thus to the Lord:", "bodhi-esque": "When this was said, the brahmin householders of Nagaravinda said to the Blessed One:"}, {"key": "mn150:7.2", "pali": "“abhi·k·kantaṁ, bho gotama, abhi·k·kantaṁ, bho gotama.", "sujato-corrected": "“Excellent, worthy Gotama!\nExcellent!", "pts": "\"It is excellent, good Gotama, it is excellent, good Gotama.", "bodhi-esque": "“Magnificent, Master Gotama!\nMagnificent, Master Gotama!"}, {"key": "mn150:7.3", "pali": "Seyyathāpi, bho gotama, nikkujjitaṁ vā ukkujjeyya,\npaṭi·c·cha·n·naṁ vā vivareyya,\nmūḷhassa vā maggaṁ ācikkheyya,\nandha·kāre vā tela·pajjotaṁ dhāreyya:\n‘cakkhumanto rūpāni dakkhantī’ti;\nevam·evaṁ bhotā gotamena a·neka·pari·yāyena dhammo pakāsito.", "sujato-corrected": "As if he were righting the overturned, or revealing the hidden, or pointing out the path to the lost,\nor lighting a lamp in the dark so people with clear eyes can see what’s there,\nworthy Gotama has made the Teaching clear in many ways.", "pts": "It is as if, good Gotama, one might set upright what had been upset,\nor might disclose what was covered, or point out the way to one who had gone astray,\nor might bring an oil-lamp into the darkness so that those with vision might see\nmaterial shapes - even so is Dhamma made clear in many a figure by the good Gotama.", "bodhi-esque": "Just as, Master Gotama, one might set upright what had been overturned,\nor reveal what had been hidden, or point out the way to one who had gone astray,\nor hold up an oil lamp in the darkness so that those with good eyesight might\nsee forms—so too the Dhamma has been illuminated in many ways by Master Gotama."}, {"key": "mn150:7.4", "pali": "Ete mayaṁ bhava·ntaṁ gotamaṁ saraṇaṁ gacchāma\ndhammañca bhikkhu·saṅghañca.", "sujato-corrected": "We go for refuge to the worthy Gotama, to the teaching, and to the mendicant Saṅgha.", "pts": "We are going to the revered Gotama for refuge, and to Dhamma and to the Order of monks.", "bodhi-esque": "We go for refuge to Master Gotama, and to the Dhamma, and to the Saṅgha of bhikkhus."}, {"key": "mn150:7.5", "pali": "Upāsake no bhavaṁ gotamo dhāretu\najjatagge pāṇupete saraṇaṁ gate”ti.", "sujato-corrected": "From this day forth, may the worthy Gotama remember us as lay followers who have gone for refuge for life.”", "pts": "May the revered Gotama accept us as a lay-follower, going for refuge from this day forth for as long as life lasts.\"\nDiscourse to the People of Nagaravinda:\nThe Eighth", "bodhi-esque": "Let Master Gotama consider us as lay followers who have gone for refuge from today onward for as long as life lasts.”"}, {"key": "mn150:7.6", "pali": "Nagara·vind·eyya·suttaṁ niṭṭhitaṁ aṭṭhamaṁ.", "sujato-corrected": "", "pts": "", "bodhi-esque": "The Nagaravinda Sutta is finished, the eighth."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "pli-tv-pvr14/0", "label": "Pari·vāra", "rows": [{"key": "pli-tv-pvr14:0.1", "pali": "Pari·vāra", "brahmali": "The Compendium"}, {"key": "pli-tv-pvr14:0.2", "pali": "Cūḷa·saṅgāma", "brahmali": "The short chapter on the resolution of conflicts"}, {"key": "pli-tv-pvr14:0.3", "pali": "14.\nAnu·vijja·kassa·paṭi·patti", "brahmali": "The procedure for an investigator"}]}, {"id": "pli-tv-pvr14/1", "label": "Saṅgāmā·vacarena bhikkhunā saṅghaṁ upasaṅkamantena:", "rows": [{"key": "pli-tv-pvr14:1.1", "pali": "Saṅgāmā·vacarena bhikkhunā saṅghaṁ upasaṅkamantena:", "brahmali": "“When a monk who is involved in a conflict is about to approach the Sangha, he should:"}, {"key": "pli-tv-pvr14:1.2", "pali": "nīca·cittena saṅgho upasaṅkamitabbo;", "brahmali": "be humble;"}, {"key": "pli-tv-pvr14:1.3", "pali": "rajo·haraṇa·samena cittena;", "brahmali": "be intent on removing defilements;"}, {"key": "pli-tv-pvr14:1.4", "pali": "āsana·kusalena bhavitabbaṁ nisajja·kusalena;\nthere bhikkhū anupakhajjantena, nave bhikkhū\nāsanena a·p·paṭi·bāhantena, yathā·pati·rūpe āsane nisīd·itabbaṁ;", "brahmali": "be skilled in appropriate seating and where to sit down,\ntaking a seat without encroaching on the senior monks and without blocking the junior monks;"}, {"key": "pli-tv-pvr14:1.5", "pali": "anānākathikena bhavitabbaṁ ati·racchānakathikena;\nsāmaṁ vā dhammo bhāsitabbo paro vā ajjh·esitabbo ariyo vā tuṇhī·bhāvo nāti·maññ·itabbo.", "brahmali": "not ramble or engage in worldly talk,\nbut speak according to the Teaching or invite others to speak or value noble silence."}]}, {"id": "pli-tv-pvr14/2", "label": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena na upajjhāyo…", "rows": [{"key": "pli-tv-pvr14:2.1", "pali": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena na upajjhāyo pucchitabbo, na ācariyo pucchitabbo,\nna saddhivihāriko pucchitabbo, na ante·vāsiko pucchitabbo, na samān·upajjhāyako pucchitabbo,\nna samān·ācariyako pucchitabbo, na jāti pucchitabbā, na nāmaṁ pucchitabbaṁ, na gottaṁ pucchitabbaṁ,\nna āgamo pucchitabbo, na kula·padeso pucchitabbo, na jāti·bhūmi pucchitabbā.", "brahmali": "An investigator—who has been approved by the Sangha and who wishes to investigate—should not ask about preceptor,\nteacher, student, pupil, co-student, co-pupil, caste, name, family, reciter tradition, home address, or nationality."}, {"key": "pli-tv-pvr14:2.2", "pali": "Taṁ kiṁ kāraṇā?", "brahmali": "What is the reason for that?"}, {"key": "pli-tv-pvr14:2.3", "pali": "Atrassa pemaṁ vā doso vā.", "brahmali": "In these cases there is affection or ill will."}, {"key": "pli-tv-pvr14:2.4", "pali": "Peme vā sati dose vā, chandāpi gaccheyya,\ndosāpi gaccheyya, mohāpi gaccheyya,\nbhayāpi gaccheyya.", "brahmali": "When there is affection or ill will, one might be biased by favoritism, ill will, confusion, or fear."}]}, {"id": "pli-tv-pvr14/3", "label": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena saṅgha·garukena bhavitabbaṁ…", "rows": [{"key": "pli-tv-pvr14:3.1", "pali": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena saṅgha·garukena bhavitabbaṁ no puggala·garukena,\nsa·d·dhamma·garukena bhavitabbaṁ no āmisa·garu·kena,\natthavas·ikena bhavitabbaṁ no parisa·kappikena, kālena anu·vijj·itabbaṁ no a·kālena,\nbhūtena anu·vijj·itabbaṁ no a·bhūtena, saṇhena anu·vijj·itabbaṁ no pharusena,\nattha·saṁhitena anu·vijj·itabbaṁ no an·attha·saṁhitena,\nmettā·cittena anu·vijj·itabbaṁ no dosa·ntarena, na upakaṇṇaka·jappinā bhavitabbaṁ,\nna jimhaṁ pekkhitabbaṁ, na akkhi nikhaṇitabbaṁ, na bhamukaṁ ukkhipitabbaṁ,\nna sīsaṁ ukkhipitabbaṁ, na hattha·vikāro kātabbo, na hattha·muddā dassetabbā.", "brahmali": "An investigator—who has been approved by the Sangha and who\nwishes to investigate—should respect the Sangha, not individuals;\nshould value the true Dhamma, not worldly things;\nshould value the goal, not conforming to the gathering;\nshould investigate at an appropriate time, not at an inappropriate one;\nshould investigate truthfully, not falsely;\nshould investigate gently, not harshly;\nshould investigate beneficially, not unbeneficially;\nshould investigate with a mind of good will, not with ill will;\nshould not whisper in the ear;\nshould not look for flaws;\nshould not wink;\nshould not raise an eyebrow;\nshould not raise the head;\nshould not signal with the hand;\nshould not gesture with the hand."}]}, {"id": "pli-tv-pvr14/4", "label": "Āsana·kusalena bhavitabbaṁ nisajja·kusalena, yuga·mattaṁ pekkha·ntena atthaṁ anu·vidhi·yantena…", "rows": [{"key": "pli-tv-pvr14:4.1", "pali": "Āsana·kusalena bhavitabbaṁ nisajja·kusalena, yuga·mattaṁ pekkha·ntena atthaṁ anu·vidhi·yantena sake āsane nisīd·itabbaṁ,\nna ca āsanā vuṭṭhātabbaṁ, na vīti·hātabbaṁ, na kummaggo sevitabbo,\nna bāhā·vikkhepakaṁ bhaṇitabbaṁ, a·turitena bhavitabbaṁ a·sāhasikena,\na·caṇḍikatena bhavitabbaṁ vacana·k·khamena,\nmettā·cittena bhavitabbaṁ hitā·nukampinā, kāruṇikena bhavitabbaṁ hita·pari·sakk·inā,\na·sampha·p·palāpinā bhavitabbaṁ pari·yanta·bhāṇinā, a·vera·vasikena bhavitabbaṁ an·asur·uttena,\nattā pari·g·gahe·tabbo, paro pari·g·gahe·tabbo, codako pari·g·gahe·tabbo,\ncuditako pari·g·gahe·tabbo, a·dhamma·codako pari·g·gahe·tabbo, a·dhamma·cuditako pari·g·gahe·tabbo,\ndhamma·codako pari·g·gahe·tabbo, dhamma·cuditako pari·g·gahe·tabbo,\nvuttaṁ ahāpentena a·vuttaṁ a·pakāse·ntena otiṇṇāni padaby·añjanāni\nsādhukaṁ pari·g·gahetvā paro paṭi·pucchitvā yathā paṭi·ñ·ñāya kāre·tabbo,\nmando hāsetabbo, bhīrū assāsetabbo, caṇḍo nisedhetabbo, a·suci vi·bhāve·tabbo, uju·maddavena na chandā·gatiṁ gantabbaṁ,\nna dosā·gatiṁ gantabbaṁ, na mohā·gatiṁ gantabbaṁ, na bhayā·gatiṁ gantabbaṁ,\nmajjha·t·tena bhavitabbaṁ dhammesu ca puggalesu ca.", "brahmali": "He should be skilled in appropriate seating and where to sit down.\nLooking a plow’s length ahead, acting in line with his aim, he should sit down on his own seat.\nHe should not get up from his seat, bungle the investigation, take a wrong path, or gesticulate.\nHe should proceed without haste or force, not be fierce, and be patient with others’ speech.\nHe should have mind of loving kindness with compassion and empathy, and strive for what is beneficial.\nHe should not speak idly but to the point, without being angry or argumentative.\nHe should assess himself, the others, the accuser, the accused, one who accuses illegitimately,\none who is accused illegitimately, one who accuses legitimately, and one who is accused legitimately.\nNot omitting what has been said, nor announcing what has not been said,\nhe should carefully scrutinize the sentences and words under consideration,\nquestion the others, and deal with them according to what they have admitted.\nHe should gladden those who are confused, comfort those who are frightened,\nrestrain those who are fierce, and expose those who are impure.\nBeing upright and gentle, he should not be biased by favoritism, anger, confusion, or fear.\nHe should be impartial in regard to the Teaching and the people involved."}, {"key": "pli-tv-pvr14:4.2", "pali": "Evañca pana anu·vijjako anuvijja·māno satthu ceva sāsana·karo hoti,\nviññūnañca sa·brahma·cārīnaṁ piyo ca hoti\nmanāpo ca garu ca bhāv·a·nīyo ca.", "brahmali": "In this way an investigator is acting in accordance with the instruction of the Teacher.\nAnd they are dear, agreeable, respected, and esteemed by their discerning fellow monastics."}]}, {"id": "pli-tv-pvr14/5", "label": "Suttaṁ saṁsandana·t·thāya, opa·m·maṁ nidassanatthāya, attho viññāpana·t·thāya, paṭi·pucchā…", "rows": [{"key": "pli-tv-pvr14:5.1", "pali": "Suttaṁ saṁsandana·t·thāya, opa·m·maṁ nidassanatthāya, attho viññāpana·t·thāya,\npaṭi·pucchā ṭhapanatthāya, okāsa·kammaṁ codana·t·thāya,\ncodanā sāraṇ·atthāya, sāraṇā sa·vacanīyatthāya, savacanīyaṁ palibodh·atthāya,\npali·bodho vinicchay·atthāya, vinicchayo santī·raṇa·t·thāya,\nsantīraṇaṁ ṭhānā·ṭhāna·gamanatthāya, ṭhānā·ṭhāna·gamanaṁ dummaṅkūnaṁ puggalānaṁ niggah·atthāya,\npesalānaṁ bhikkhūnaṁ sampaggahatthāya,\nsaṅgho sampariggahasampaṭicchanatthāya, saṅghena anumatā puggalā pacc·eka·ṭ·ṭhāyino a·visaṁvādaka·ṭ·ṭhāyino.", "brahmali": "The Monastic Code is for the sake of concluding, a simile for the sake of illustration,\nthe goal is to be made known, and questioning is for sake of establishing.\nGetting permission is for the sake of accusing, accusing for reminding, reminding for directing,\ndirecting for obstructing, obstructing for investigating, investigating for weighing up,\nweighing up for deciding what is and is not the case,\nand deciding what is and is not the case is for the sake of restraining bad people and to support the good monks.\nThe Sangha has the purpose of examining and accepting the decision.\nThe Sangha should appoint people who are trustworthy to positions of authority."}]}, {"id": "pli-tv-pvr14/6", "label": "Vi·nayo saṁvara·t·thāya, saṁvaro a·vippaṭisāra·t·thāya, a·vippaṭisāro pāmujja·t·thāya, pāmujjaṁ…", "rows": [{"key": "pli-tv-pvr14:6.1", "pali": "Vi·nayo saṁvara·t·thāya, saṁvaro\na·vippaṭisāra·t·thāya, a·vippaṭisāro pāmujja·t·thāya, pāmujjaṁ pītatthāya,\npīti passaddh·atthāya, passaddhi sukha·t·thāya, sukhaṁ samādh·atthāya, samādhi yathā·bhūta·ñāṇa·dassana·t·thāya,\nyathā·bhūta·ñāṇa·dassanaṁ nibbid·atthāya, nibbidā virāga·t·thāya, virāgo vimutt·atthāya,\nvimutti vimutti·ñāṇa·dassana·t·thāya, vimutti·ñāṇa·dassanaṁ an·upādā·pari·nibbāna·t·thāya.", "brahmali": "The Monastic Law is for the sake of restraint, restraint for non-regret, non-regret for joy, joy for rapture,\nrapture for tranquility, tranquility for bliss, bliss for stillness, stillness for seeing things according to reality,\nseeing things according to reality for repulsion, repulsion for dispassion, dispassion for liberation,\nliberation for knowledge and vision of liberation,\nand knowledge and vision of liberation is for the sake of extinguishment without grasping."}, {"key": "pli-tv-pvr14:6.2", "pali": "Etad·atthā kathā, etad·atthā mantanā, etad·atthā upanisā, etad·atthaṁ sotā·vadhānaṁ—", "brahmali": "This is the purpose of discussion, this is the purpose of consultation,\nthis is the purpose of vital conditions, this is the purpose of listening,"}, {"key": "pli-tv-pvr14:6.3", "pali": "yadidaṁ an·upādā·cittassa vimokkhoti.", "brahmali": "that is, the release of mind without grasping.”"}]}, {"id": "pli-tv-pvr14/7", "label": "Anuyogavattaṁ nisāmaya,", "rows": [{"key": "pli-tv-pvr14:7.1", "pali": "Anuyogavattaṁ nisāmaya,", "brahmali": "“Consider carefully the proper procedure of examination,"}, {"key": "pli-tv-pvr14:7.2", "pali": "Kusalena buddh·imatā kataṁ;", "brahmali": "As formulated by the skilled Awakened One,"}, {"key": "pli-tv-pvr14:7.3", "pali": "Su·vuttaṁ sikkhā·padā·nulomikaṁ,", "brahmali": "Well-spoken in line with the training rules—"}, {"key": "pli-tv-pvr14:7.4", "pali": "Gatiṁ na nāsento samparāyikaṁ.", "brahmali": "Do not ruin your future rebirth."}]}, {"id": "pli-tv-pvr14/8", "label": "Vatthuṁ vipattiṁ āpattiṁ,", "rows": [{"key": "pli-tv-pvr14:8.1", "pali": "Vatthuṁ vipattiṁ āpattiṁ,", "brahmali": "Ignorant about basis, failure, and offense,"}, {"key": "pli-tv-pvr14:8.2", "pali": "Nidānaṁ ākāra·a·kovido;", "brahmali": "As well as source and ways;"}, {"key": "pli-tv-pvr14:8.3", "pali": "Pubbā·paraṁ na jānāti,", "brahmali": "Not knowing the right order,"}, {"key": "pli-tv-pvr14:8.4", "pali": "Katā·kataṁ samena ca.", "brahmali": "Nor what has and has not been done."}]}, {"id": "pli-tv-pvr14/9", "label": "Kammañca adhi·karaṇañca,", "rows": [{"key": "pli-tv-pvr14:9.1", "pali": "Kammañca adhi·karaṇañca,", "brahmali": "Ignorant about legal procedures and legal issues,"}, {"key": "pli-tv-pvr14:9.2", "pali": "samathe cāpi a·kovido;", "brahmali": "As well as their settling."}, {"key": "pli-tv-pvr14:9.3", "pali": "Ratto duṭṭho ca mūḷho ca,", "brahmali": "Greedy, angry, and confused,"}, {"key": "pli-tv-pvr14:9.4", "pali": "bhayā mohā ca gacchati.", "brahmali": "Biased by fear and confusion,"}]}, {"id": "pli-tv-pvr14/10", "label": "Na ca saññatti·kusalo,", "rows": [{"key": "pli-tv-pvr14:10.1", "pali": "Na ca saññatti·kusalo,", "brahmali": "Not skilled in persuasion,"}, {"key": "pli-tv-pvr14:10.2", "pali": "nijjhattiyā ca a·kovido;", "brahmali": "Nor in making others understand;"}, {"key": "pli-tv-pvr14:10.3", "pali": "Laddha·pakkho a·hiriko,", "brahmali": "A shameless one who has obtained supporters,"}, {"key": "pli-tv-pvr14:10.4", "pali": "kaṇha·kammo an·ādaro;", "brahmali": "Disrespectful and doing dark deeds—"}, {"key": "pli-tv-pvr14:10.5", "pali": "Sa ve tādisako bhikkhu,", "brahmali": "A monk such as this"}, {"key": "pli-tv-pvr14:10.6", "pali": "appaṭikkhoti vuccati.", "brahmali": "Is called ‘not worthy of attention’."}]}, {"id": "pli-tv-pvr14/11", "label": "Vatthuṁ vipattiṁ āpattiṁ,", "rows": [{"key": "pli-tv-pvr14:11.1", "pali": "Vatthuṁ vipattiṁ āpattiṁ,", "brahmali": "Understanding basis, failure, and offense,"}, {"key": "pli-tv-pvr14:11.2", "pali": "nidānaṁ ākāra·kovido;", "brahmali": "As well as source and ways;"}, {"key": "pli-tv-pvr14:11.3", "pali": "Pubbā·parañca jānāti,", "brahmali": "Knowing the right order,"}, {"key": "pli-tv-pvr14:11.4", "pali": "katā·kataṁ samena ca.", "brahmali": "And also what has and has not been done."}]}, {"id": "pli-tv-pvr14/12", "label": "Kammañca adhi·karaṇañca,", "rows": [{"key": "pli-tv-pvr14:12.1", "pali": "Kammañca adhi·karaṇañca,", "brahmali": "Understanding legal procedures and legal issues,"}, {"key": "pli-tv-pvr14:12.2", "pali": "samathe cāpi kovido;", "brahmali": "As well as their settling."}, {"key": "pli-tv-pvr14:12.3", "pali": "A·ratto a·duṭṭho a·mūḷho,", "brahmali": "Not greedy, angry, or confused,"}, {"key": "pli-tv-pvr14:12.4", "pali": "bhayā mohā na gacchati.", "brahmali": "Biased neither by fear nor confusion,"}]}, {"id": "pli-tv-pvr14/13", "label": "Saññattiyā ca kusalo,", "rows": [{"key": "pli-tv-pvr14:13.1", "pali": "Saññattiyā ca kusalo,", "brahmali": "Skilled in persuasion,"}, {"key": "pli-tv-pvr14:13.2", "pali": "nijjhattiyā ca kovido;", "brahmali": "And in making others understand;"}, {"key": "pli-tv-pvr14:13.3", "pali": "Laddha·pakkho hiri·mano,", "brahmali": "A conscientious one who has obtained supporters,"}, {"key": "pli-tv-pvr14:13.4", "pali": "sukkakammo sagāravo;", "brahmali": "Respectful and doing bright deeds—"}, {"key": "pli-tv-pvr14:13.5", "pali": "Sa ve tādisako bhikkhu,", "brahmali": "A monk such as this"}, {"key": "pli-tv-pvr14:13.6", "pali": "sappaṭikkhoti vucca·tīti.", "brahmali": "Is called ‘worthy of attention’.”"}]}, {"id": "pli-tv-pvr14/14", "label": "Cūḷa·saṅgāmaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr14:14.1", "pali": "Cūḷa·saṅgāmaṁ niṭṭhitaṁ.", "brahmali": "The short chapter on the resolution of conflicts is finished"}]}, {"id": "pli-tv-pvr14/15", "label": "Tass·uddānaṁ", "rows": [{"key": "pli-tv-pvr14:15.1", "pali": "Tass·uddānaṁ", "brahmali": "This is the summary:"}]}, {"id": "pli-tv-pvr14/16", "label": "Nīca·cittena puccheyya,", "rows": [{"key": "pli-tv-pvr14:16.1", "pali": "Nīca·cittena puccheyya,", "brahmali": "“Humble, one may ask,"}, {"key": "pli-tv-pvr14:16.2", "pali": "garu saṅghe na puggale;", "brahmali": "Respect for the Sangha, not individuals;"}, {"key": "pli-tv-pvr14:16.3", "pali": "Suttaṁ saṁsandana·t·thāya,", "brahmali": "The Monastic Code is for the sake of concluding,"}, {"key": "pli-tv-pvr14:16.4", "pali": "vi·nayā·nuggahena ca;", "brahmali": "And through supporting the training—"}, {"key": "pli-tv-pvr14:16.5", "pali": "uddānaṁ cūḷa·saṅgāme,", "brahmali": "The summary of the short chapter on the resolution of conflicts,"}, {"key": "pli-tv-pvr14:16.6", "pali": "ekuddeso idaṁ katanti.", "brahmali": "Made into one recitation.”"}]}];
+const TREE=[{"id": "pli-tv-pvr14/0", "label": "Pari·vāra", "rows": [{"key": "pli-tv-pvr14:0.1", "pali": "Pari·vāra", "brahmali": "The Compendium", "bodhi-esque": "Parivāra"}, {"key": "pli-tv-pvr14:0.2", "pali": "Cūḷa·saṅgāma", "brahmali": "The short chapter on the resolution of conflicts", "bodhi-esque": "Cūḷasaṅgāma"}, {"key": "pli-tv-pvr14:0.3", "pali": "14.\nAnu·vijja·kassa·paṭi·patti", "brahmali": "The procedure for an investigator", "bodhi-esque": "14.\nThe Procedure of an Investigator"}]}, {"id": "pli-tv-pvr14/1", "label": "Saṅgāmā·vacarena bhikkhunā saṅghaṁ upasaṅkamantena:", "rows": [{"key": "pli-tv-pvr14:1.1", "pali": "Saṅgāmā·vacarena bhikkhunā saṅghaṁ upasaṅkamantena:", "brahmali": "“When a monk who is involved in a conflict is about to approach the Sangha, he should:", "bodhi-esque": "When a bhikkhu who is a warrior approaches the Saṅgha:"}, {"key": "pli-tv-pvr14:1.2", "pali": "nīca·cittena saṅgho upasaṅkamitabbo;", "brahmali": "be humble;", "bodhi-esque": "The Saṅgha should be approached with a humble mind;"}, {"key": "pli-tv-pvr14:1.3", "pali": "rajo·haraṇa·samena cittena;", "brahmali": "be intent on removing defilements;", "bodhi-esque": "with a mind like a dust-wiper;"}, {"key": "pli-tv-pvr14:1.4", "pali": "āsana·kusalena bhavitabbaṁ nisajja·kusalena;\nthere bhikkhū anupakhajjantena, nave bhikkhū\nāsanena a·p·paṭi·bāhantena, yathā·pati·rūpe āsane nisīd·itabbaṁ;", "brahmali": "be skilled in appropriate seating and where to sit down,\ntaking a seat without encroaching on the senior monks and without blocking the junior monks;", "bodhi-esque": "one should be skilled in seats, skilled in sitting;\nwithout intruding among the bhikkhus, without obstructing the new bhikkhus from their seats,\none should sit on a seat that is suitable as appropriate;"}, {"key": "pli-tv-pvr14:1.5", "pali": "anānākathikena bhavitabbaṁ ati·racchānakathikena;\nsāmaṁ vā dhammo bhāsitabbo paro vā ajjh·esitabbo ariyo vā tuṇhī·bhāvo nāti·maññ·itabbo.", "brahmali": "not ramble or engage in worldly talk,\nbut speak according to the Teaching or invite others to speak or value noble silence.", "bodhi-esque": "one should not be given to various talk, not given to frivolous talk;\neither the Dhamma should be spoken by oneself, or another should be invited to speak,\nor the noble silence should not be looked down upon."}]}, {"id": "pli-tv-pvr14/2", "label": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena na upajjhāyo…", "rows": [{"key": "pli-tv-pvr14:2.1", "pali": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena na upajjhāyo pucchitabbo, na ācariyo pucchitabbo,\nna saddhivihāriko pucchitabbo, na ante·vāsiko pucchitabbo, na samān·upajjhāyako pucchitabbo,\nna samān·ācariyako pucchitabbo, na jāti pucchitabbā, na nāmaṁ pucchitabbaṁ, na gottaṁ pucchitabbaṁ,\nna āgamo pucchitabbo, na kula·padeso pucchitabbo, na jāti·bhūmi pucchitabbā.", "brahmali": "An investigator—who has been approved by the Sangha and who wishes to investigate—should not ask about preceptor,\nteacher, student, pupil, co-student, co-pupil, caste, name, family, reciter tradition, home address, or nationality.", "bodhi-esque": "For a person who is an investigator authorized by the Saṅgha,\nwho wishes to investigate, the preceptor should not be asked,\nthe teacher should not be asked, the co-resident should not be asked,\nthe pupil should not be asked, one with the same preceptor should not be asked,\none with the same teacher should not be asked, birth should not be asked,\nname should not be asked, clan should not be asked,\nthe scriptural tradition should not be asked,\nthe family district should not be asked, the birthplace should not be asked."}, {"key": "pli-tv-pvr14:2.2", "pali": "Taṁ kiṁ kāraṇā?", "brahmali": "What is the reason for that?", "bodhi-esque": "What is the reason for that?"}, {"key": "pli-tv-pvr14:2.3", "pali": "Atrassa pemaṁ vā doso vā.", "brahmali": "In these cases there is affection or ill will.", "bodhi-esque": "There might be affection or aversion towards him."}, {"key": "pli-tv-pvr14:2.4", "pali": "Peme vā sati dose vā, chandāpi gaccheyya,\ndosāpi gaccheyya, mohāpi gaccheyya,\nbhayāpi gaccheyya.", "brahmali": "When there is affection or ill will, one might be biased by favoritism, ill will, confusion, or fear.", "bodhi-esque": "When there is affection or hate, he might go by desire, might go by hate, might go by delusion, might go by fear."}]}, {"id": "pli-tv-pvr14/3", "label": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena saṅgha·garukena bhavitabbaṁ…", "rows": [{"key": "pli-tv-pvr14:3.1", "pali": "Saṅghena anumatena puggalena anu·vijja·kena anuvijjitukāmena saṅgha·garukena bhavitabbaṁ no puggala·garukena,\nsa·d·dhamma·garukena bhavitabbaṁ no āmisa·garu·kena,\natthavas·ikena bhavitabbaṁ no parisa·kappikena, kālena anu·vijj·itabbaṁ no a·kālena,\nbhūtena anu·vijj·itabbaṁ no a·bhūtena, saṇhena anu·vijj·itabbaṁ no pharusena,\nattha·saṁhitena anu·vijj·itabbaṁ no an·attha·saṁhitena,\nmettā·cittena anu·vijj·itabbaṁ no dosa·ntarena, na upakaṇṇaka·jappinā bhavitabbaṁ,\nna jimhaṁ pekkhitabbaṁ, na akkhi nikhaṇitabbaṁ, na bhamukaṁ ukkhipitabbaṁ,\nna sīsaṁ ukkhipitabbaṁ, na hattha·vikāro kātabbo, na hattha·muddā dassetabbā.", "brahmali": "An investigator—who has been approved by the Sangha and who\nwishes to investigate—should respect the Sangha, not individuals;\nshould value the true Dhamma, not worldly things;\nshould value the goal, not conforming to the gathering;\nshould investigate at an appropriate time, not at an inappropriate one;\nshould investigate truthfully, not falsely;\nshould investigate gently, not harshly;\nshould investigate beneficially, not unbeneficially;\nshould investigate with a mind of good will, not with ill will;\nshould not whisper in the ear;\nshould not look for flaws;\nshould not wink;\nshould not raise an eyebrow;\nshould not raise the head;\nshould not signal with the hand;\nshould not gesture with the hand.", "bodhi-esque": "For a person who is an investigator authorized by the Saṅgha, who wishes to investigate,\nhe should be one who respects the Saṅgha, not one who respects individuals;\nhe should be one who respects the true Dhamma, not one who respects material offerings;\nhe should be one who is intent on the goal, not one who is intent on the assembly;\nhe should investigate at the right time, not at the wrong time;\nhe should investigate what is true, not what is false;\nhe should investigate gently, not harshly;\nhe should investigate what is beneficial, not what is unbeneificial;\nhe should investigate with a mind of loving-kindness, not with a mind of hate;\nhe should not be a whisperer;\nhe should not look askance;\nhe should not wink;\nhe should not raise his eyebrows;\nhe should not raise his head;\nhe should not make gestures with his hands;\nhe should not show hand signs."}]}, {"id": "pli-tv-pvr14/4", "label": "Āsana·kusalena bhavitabbaṁ nisajja·kusalena, yuga·mattaṁ pekkha·ntena atthaṁ anu·vidhi·yantena…", "rows": [{"key": "pli-tv-pvr14:4.1", "pali": "Āsana·kusalena bhavitabbaṁ nisajja·kusalena, yuga·mattaṁ pekkha·ntena atthaṁ anu·vidhi·yantena sake āsane nisīd·itabbaṁ,\nna ca āsanā vuṭṭhātabbaṁ, na vīti·hātabbaṁ, na kummaggo sevitabbo,\nna bāhā·vikkhepakaṁ bhaṇitabbaṁ, a·turitena bhavitabbaṁ a·sāhasikena,\na·caṇḍikatena bhavitabbaṁ vacana·k·khamena,\nmettā·cittena bhavitabbaṁ hitā·nukampinā, kāruṇikena bhavitabbaṁ hita·pari·sakk·inā,\na·sampha·p·palāpinā bhavitabbaṁ pari·yanta·bhāṇinā, a·vera·vasikena bhavitabbaṁ an·asur·uttena,\nattā pari·g·gahe·tabbo, paro pari·g·gahe·tabbo, codako pari·g·gahe·tabbo,\ncuditako pari·g·gahe·tabbo, a·dhamma·codako pari·g·gahe·tabbo, a·dhamma·cuditako pari·g·gahe·tabbo,\ndhamma·codako pari·g·gahe·tabbo, dhamma·cuditako pari·g·gahe·tabbo,\nvuttaṁ ahāpentena a·vuttaṁ a·pakāse·ntena otiṇṇāni padaby·añjanāni\nsādhukaṁ pari·g·gahetvā paro paṭi·pucchitvā yathā paṭi·ñ·ñāya kāre·tabbo,\nmando hāsetabbo, bhīrū assāsetabbo, caṇḍo nisedhetabbo, a·suci vi·bhāve·tabbo, uju·maddavena na chandā·gatiṁ gantabbaṁ,\nna dosā·gatiṁ gantabbaṁ, na mohā·gatiṁ gantabbaṁ, na bhayā·gatiṁ gantabbaṁ,\nmajjha·t·tena bhavitabbaṁ dhammesu ca puggalesu ca.", "brahmali": "He should be skilled in appropriate seating and where to sit down.\nLooking a plow’s length ahead, acting in line with his aim, he should sit down on his own seat.\nHe should not get up from his seat, bungle the investigation, take a wrong path, or gesticulate.\nHe should proceed without haste or force, not be fierce, and be patient with others’ speech.\nHe should have mind of loving kindness with compassion and empathy, and strive for what is beneficial.\nHe should not speak idly but to the point, without being angry or argumentative.\nHe should assess himself, the others, the accuser, the accused, one who accuses illegitimately,\none who is accused illegitimately, one who accuses legitimately, and one who is accused legitimately.\nNot omitting what has been said, nor announcing what has not been said,\nhe should carefully scrutinize the sentences and words under consideration,\nquestion the others, and deal with them according to what they have admitted.\nHe should gladden those who are confused, comfort those who are frightened,\nrestrain those who are fierce, and expose those who are impure.\nBeing upright and gentle, he should not be biased by favoritism, anger, confusion, or fear.\nHe should be impartial in regard to the Teaching and the people involved.", "bodhi-esque": "One should be skilled in seats, skilled in sitting;\nlooking the distance of a yoke, attending to the meaning, one should sit on one's own seat;\none should not get up from the seat, should not pass by, should not resort to a wrong path;\none should not speak with flailing arms;\none should be unhurried, not reckless;\none should be without anger, patient with speech;\none should be with a mind of loving-kindness, compassionate for welfare;\none should be compassionate, seeking welfare;\none should not be one who speaks lightly, should be one who speaks with boundaries;\none should be one who does not dwell in enmity, not raised like an asura;\noneself should be taken up, another should be taken up, the accuser should be taken up,\nthe accused should be taken up, one who accuses wrongly should be taken up,\none who is accused wrongly should be taken up, one who accuses rightly should be taken up,\none who is accused rightly should be taken up;\nwithout omitting what has been said, without making known what has not been said,\nhaving well taken up the expressions and phrases that have been uttered,\nthen having asked the other, one should act according to the admission;\none who is foolish should be made to laugh, one who is timid should be encouraged,\none who is angry should be restrained, one who is impure should be exposed;\nwith upright gentleness one should not go by desire, not go by hate, not go by delusion, not go by fear;\none should be neutral towards both the Dhamma and persons."}, {"key": "pli-tv-pvr14:4.2", "pali": "Evañca pana anu·vijjako anuvijja·māno satthu ceva sāsana·karo hoti,\nviññūnañca sa·brahma·cārīnaṁ piyo ca hoti\nmanāpo ca garu ca bhāv·a·nīyo ca.", "brahmali": "In this way an investigator is acting in accordance with the instruction of the Teacher.\nAnd they are dear, agreeable, respected, and esteemed by their discerning fellow monastics.", "bodhi-esque": "And thus an investigator, while investigating, is one who does the Teacher's bidding,\nand is dear and agreeable and respected and esteemed by the wise fellow-farers in the holy life."}]}, {"id": "pli-tv-pvr14/5", "label": "Suttaṁ saṁsandana·t·thāya, opa·m·maṁ nidassanatthāya, attho viññāpana·t·thāya, paṭi·pucchā…", "rows": [{"key": "pli-tv-pvr14:5.1", "pali": "Suttaṁ saṁsandana·t·thāya, opa·m·maṁ nidassanatthāya, attho viññāpana·t·thāya,\npaṭi·pucchā ṭhapanatthāya, okāsa·kammaṁ codana·t·thāya,\ncodanā sāraṇ·atthāya, sāraṇā sa·vacanīyatthāya, savacanīyaṁ palibodh·atthāya,\npali·bodho vinicchay·atthāya, vinicchayo santī·raṇa·t·thāya,\nsantīraṇaṁ ṭhānā·ṭhāna·gamanatthāya, ṭhānā·ṭhāna·gamanaṁ dummaṅkūnaṁ puggalānaṁ niggah·atthāya,\npesalānaṁ bhikkhūnaṁ sampaggahatthāya,\nsaṅgho sampariggahasampaṭicchanatthāya, saṅghena anumatā puggalā pacc·eka·ṭ·ṭhāyino a·visaṁvādaka·ṭ·ṭhāyino.", "brahmali": "The Monastic Code is for the sake of concluding, a simile for the sake of illustration,\nthe goal is to be made known, and questioning is for sake of establishing.\nGetting permission is for the sake of accusing, accusing for reminding, reminding for directing,\ndirecting for obstructing, obstructing for investigating, investigating for weighing up,\nweighing up for deciding what is and is not the case,\nand deciding what is and is not the case is for the sake of restraining bad people and to support the good monks.\nThe Sangha has the purpose of examining and accepting the decision.\nThe Sangha should appoint people who are trustworthy to positions of authority.", "bodhi-esque": "The sutta for the purpose of comparison, the simile for the purpose of illustration,\nthe meaning for the purpose of making known, the counter-question for the purpose of establishing,\nthe act of granting permission for the purpose of prompting, the prompting for the purpose of reminding,\nthe reminding for the purpose of conciliation, the conciliation for the purpose of removing obstruction,\nthe removal of obstruction for the purpose of decision, the decision for the purpose of investigation,\nthe investigation for the purpose of understanding what is proper and improper,\nthe understanding of what is proper and improper for the purpose of rebuking stubborn persons,\nfor the purpose of supporting the gentle bhikkhus, the Saṅgha for the purpose of comprehensive acceptance;\nthe persons approved by the Saṅgha are of individual standing and non-contradictory standing."}]}, {"id": "pli-tv-pvr14/6", "label": "Vi·nayo saṁvara·t·thāya, saṁvaro a·vippaṭisāra·t·thāya, a·vippaṭisāro pāmujja·t·thāya, pāmujjaṁ…", "rows": [{"key": "pli-tv-pvr14:6.1", "pali": "Vi·nayo saṁvara·t·thāya, saṁvaro\na·vippaṭisāra·t·thāya, a·vippaṭisāro pāmujja·t·thāya, pāmujjaṁ pītatthāya,\npīti passaddh·atthāya, passaddhi sukha·t·thāya, sukhaṁ samādh·atthāya, samādhi yathā·bhūta·ñāṇa·dassana·t·thāya,\nyathā·bhūta·ñāṇa·dassanaṁ nibbid·atthāya, nibbidā virāga·t·thāya, virāgo vimutt·atthāya,\nvimutti vimutti·ñāṇa·dassana·t·thāya, vimutti·ñāṇa·dassanaṁ an·upādā·pari·nibbāna·t·thāya.", "brahmali": "The Monastic Law is for the sake of restraint, restraint for non-regret, non-regret for joy, joy for rapture,\nrapture for tranquility, tranquility for bliss, bliss for stillness, stillness for seeing things according to reality,\nseeing things according to reality for repulsion, repulsion for dispassion, dispassion for liberation,\nliberation for knowledge and vision of liberation,\nand knowledge and vision of liberation is for the sake of extinguishment without grasping.", "bodhi-esque": "Vinaya is for the purpose of restraint;\nrestraint for the purpose of non-remorse;\nnon-remorse for the purpose of joy;\njoy for the purpose of rapture;\nrapture for the purpose of tranquility;\ntranquility for the purpose of happiness;\nhappiness for the purpose of concentration;\nconcentration for the purpose of knowledge and vision of things as they are;\nknowledge and vision of things as they are for the purpose of disenchantment;\ndisenchantment for the purpose of dispassion;\ndispassion for the purpose of liberation;\nliberation for the purpose of knowledge and vision of liberation;\nknowledge and vision of liberation for the purpose of final Nibbāna without clinging."}, {"key": "pli-tv-pvr14:6.2", "pali": "Etad·atthā kathā, etad·atthā mantanā, etad·atthā upanisā, etad·atthaṁ sotā·vadhānaṁ—", "brahmali": "This is the purpose of discussion, this is the purpose of consultation,\nthis is the purpose of vital conditions, this is the purpose of listening,", "bodhi-esque": "For this purpose is the talk, for this purpose is the discussion,\nfor this purpose is the basis, for this purpose is the lending of the ear—"}, {"key": "pli-tv-pvr14:6.3", "pali": "yadidaṁ an·upādā·cittassa vimokkhoti.", "brahmali": "that is, the release of mind without grasping.”", "bodhi-esque": "that is, the liberation of the mind without clinging."}]}, {"id": "pli-tv-pvr14/7", "label": "Anuyogavattaṁ nisāmaya,", "rows": [{"key": "pli-tv-pvr14:7.1", "pali": "Anuyogavattaṁ nisāmaya,", "brahmali": "“Consider carefully the proper procedure of examination,", "bodhi-esque": "Listen to the duty of interrogation,"}, {"key": "pli-tv-pvr14:7.2", "pali": "Kusalena buddh·imatā kataṁ;", "brahmali": "As formulated by the skilled Awakened One,", "bodhi-esque": "made by the skilled one endowed with wisdom;"}, {"key": "pli-tv-pvr14:7.3", "pali": "Su·vuttaṁ sikkhā·padā·nulomikaṁ,", "brahmali": "Well-spoken in line with the training rules—", "bodhi-esque": "well spoken, in conformity with the training rules,"}, {"key": "pli-tv-pvr14:7.4", "pali": "Gatiṁ na nāsento samparāyikaṁ.", "brahmali": "Do not ruin your future rebirth.", "bodhi-esque": "not destroying the future destination."}]}, {"id": "pli-tv-pvr14/8", "label": "Vatthuṁ vipattiṁ āpattiṁ,", "rows": [{"key": "pli-tv-pvr14:8.1", "pali": "Vatthuṁ vipattiṁ āpattiṁ,", "brahmali": "Ignorant about basis, failure, and offense,", "bodhi-esque": "The basis, the failure, the offense,"}, {"key": "pli-tv-pvr14:8.2", "pali": "Nidānaṁ ākāra·a·kovido;", "brahmali": "As well as source and ways;", "bodhi-esque": "the cause, the aspect—one who is not skilled;"}, {"key": "pli-tv-pvr14:8.3", "pali": "Pubbā·paraṁ na jānāti,", "brahmali": "Not knowing the right order,", "bodhi-esque": "he does not know what comes before and after,"}, {"key": "pli-tv-pvr14:8.4", "pali": "Katā·kataṁ samena ca.", "brahmali": "Nor what has and has not been done.", "bodhi-esque": "what has been done and not done, and by the impartial one."}]}, {"id": "pli-tv-pvr14/9", "label": "Kammañca adhi·karaṇañca,", "rows": [{"key": "pli-tv-pvr14:9.1", "pali": "Kammañca adhi·karaṇañca,", "brahmali": "Ignorant about legal procedures and legal issues,", "bodhi-esque": "The act and the legal issue,"}, {"key": "pli-tv-pvr14:9.2", "pali": "samathe cāpi a·kovido;", "brahmali": "As well as their settling.", "bodhi-esque": "and also not skilled in the settlement;"}, {"key": "pli-tv-pvr14:9.3", "pali": "Ratto duṭṭho ca mūḷho ca,", "brahmali": "Greedy, angry, and confused,", "bodhi-esque": "lustful, hateful, and deluded."}, {"key": "pli-tv-pvr14:9.4", "pali": "bhayā mohā ca gacchati.", "brahmali": "Biased by fear and confusion,", "bodhi-esque": "He goes out of fear and delusion."}]}, {"id": "pli-tv-pvr14/10", "label": "Na ca saññatti·kusalo,", "rows": [{"key": "pli-tv-pvr14:10.1", "pali": "Na ca saññatti·kusalo,", "brahmali": "Not skilled in persuasion,", "bodhi-esque": "And he is not skilled in persuasion,"}, {"key": "pli-tv-pvr14:10.2", "pali": "nijjhattiyā ca a·kovido;", "brahmali": "Nor in making others understand;", "bodhi-esque": "and he is unskilled in approval;"}, {"key": "pli-tv-pvr14:10.3", "pali": "Laddha·pakkho a·hiriko,", "brahmali": "A shameless one who has obtained supporters,", "bodhi-esque": "He has gained a faction, shameless,"}, {"key": "pli-tv-pvr14:10.4", "pali": "kaṇha·kammo an·ādaro;", "brahmali": "Disrespectful and doing dark deeds—", "bodhi-esque": "of dark deeds, disrespectful;"}, {"key": "pli-tv-pvr14:10.5", "pali": "Sa ve tādisako bhikkhu,", "brahmali": "A monk such as this", "bodhi-esque": "That bhikkhu who is of such a kind,"}, {"key": "pli-tv-pvr14:10.6", "pali": "appaṭikkhoti vuccati.", "brahmali": "Is called ‘not worthy of attention’.", "bodhi-esque": "is called one who does not withdraw."}]}, {"id": "pli-tv-pvr14/11", "label": "Vatthuṁ vipattiṁ āpattiṁ,", "rows": [{"key": "pli-tv-pvr14:11.1", "pali": "Vatthuṁ vipattiṁ āpattiṁ,", "brahmali": "Understanding basis, failure, and offense,", "bodhi-esque": "The basis, the failure, the offense,"}, {"key": "pli-tv-pvr14:11.2", "pali": "nidānaṁ ākāra·kovido;", "brahmali": "As well as source and ways;", "bodhi-esque": "skilled in the origin, the manner;"}, {"key": "pli-tv-pvr14:11.3", "pali": "Pubbā·parañca jānāti,", "brahmali": "Knowing the right order,", "bodhi-esque": "And he knows the earlier and later,"}, {"key": "pli-tv-pvr14:11.4", "pali": "katā·kataṁ samena ca.", "brahmali": "And also what has and has not been done.", "bodhi-esque": "and what is done and not done, along with the equal."}]}, {"id": "pli-tv-pvr14/12", "label": "Kammañca adhi·karaṇañca,", "rows": [{"key": "pli-tv-pvr14:12.1", "pali": "Kammañca adhi·karaṇañca,", "brahmali": "Understanding legal procedures and legal issues,", "bodhi-esque": "And the legal procedure and the legal issue,"}, {"key": "pli-tv-pvr14:12.2", "pali": "samathe cāpi kovido;", "brahmali": "As well as their settling.", "bodhi-esque": "and also skilled in the settling;"}, {"key": "pli-tv-pvr14:12.3", "pali": "A·ratto a·duṭṭho a·mūḷho,", "brahmali": "Not greedy, angry, or confused,", "bodhi-esque": "Not lustful, not hateful, not deluded,"}, {"key": "pli-tv-pvr14:12.4", "pali": "bhayā mohā na gacchati.", "brahmali": "Biased neither by fear nor confusion,", "bodhi-esque": "he does not go out of fear or delusion."}]}, {"id": "pli-tv-pvr14/13", "label": "Saññattiyā ca kusalo,", "rows": [{"key": "pli-tv-pvr14:13.1", "pali": "Saññattiyā ca kusalo,", "brahmali": "Skilled in persuasion,", "bodhi-esque": "Skilled in persuasion,"}, {"key": "pli-tv-pvr14:13.2", "pali": "nijjhattiyā ca kovido;", "brahmali": "And in making others understand;", "bodhi-esque": "and expert in explanation;"}, {"key": "pli-tv-pvr14:13.3", "pali": "Laddha·pakkho hiri·mano,", "brahmali": "A conscientious one who has obtained supporters,", "bodhi-esque": "Having gained followers, conscientious,"}, {"key": "pli-tv-pvr14:13.4", "pali": "sukkakammo sagāravo;", "brahmali": "Respectful and doing bright deeds—", "bodhi-esque": "pure in action, respectful;"}, {"key": "pli-tv-pvr14:13.5", "pali": "Sa ve tādisako bhikkhu,", "brahmali": "A monk such as this", "bodhi-esque": "He, indeed, such a bhikkhu,"}, {"key": "pli-tv-pvr14:13.6", "pali": "sappaṭikkhoti vucca·tīti.", "brahmali": "Is called ‘worthy of attention’.”", "bodhi-esque": "is called 'one who is restrained'."}]}, {"id": "pli-tv-pvr14/14", "label": "Cūḷa·saṅgāmaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr14:14.1", "pali": "Cūḷa·saṅgāmaṁ niṭṭhitaṁ.", "brahmali": "The short chapter on the resolution of conflicts is finished", "bodhi-esque": "The Little Discourse on Conflict is concluded."}]}, {"id": "pli-tv-pvr14/15", "label": "Tass·uddānaṁ", "rows": [{"key": "pli-tv-pvr14:15.1", "pali": "Tass·uddānaṁ", "brahmali": "This is the summary:", "bodhi-esque": "Its summary."}]}, {"id": "pli-tv-pvr14/16", "label": "Nīca·cittena puccheyya,", "rows": [{"key": "pli-tv-pvr14:16.1", "pali": "Nīca·cittena puccheyya,", "brahmali": "“Humble, one may ask,", "bodhi-esque": "With a humble mind one should ask,"}, {"key": "pli-tv-pvr14:16.2", "pali": "garu saṅghe na puggale;", "brahmali": "Respect for the Sangha, not individuals;", "bodhi-esque": "respectful to the community, not to an individual;"}, {"key": "pli-tv-pvr14:16.3", "pali": "Suttaṁ saṁsandana·t·thāya,", "brahmali": "The Monastic Code is for the sake of concluding,", "bodhi-esque": "For the purpose of comparing the sutta(s),"}, {"key": "pli-tv-pvr14:16.4", "pali": "vi·nayā·nuggahena ca;", "brahmali": "And through supporting the training—", "bodhi-esque": "and with the assistance of the Vinaya;"}, {"key": "pli-tv-pvr14:16.5", "pali": "uddānaṁ cūḷa·saṅgāme,", "brahmali": "The summary of the short chapter on the resolution of conflicts,", "bodhi-esque": "the summary in the Little Discourse on Conflict,"}, {"key": "pli-tv-pvr14:16.6", "pali": "ekuddeso idaṁ katanti.", "brahmali": "Made into one recitation.”", "bodhi-esque": "this is a single recitation."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "vin";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "Vin";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

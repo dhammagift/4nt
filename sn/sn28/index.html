@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "sn28-sariputtavagga", "label": "Sāriputtavagga — The Chapter with Sāriputta", "children": [{"id": "sn28.1", "label": "SN 28.1 · Born of Seclusion", "children": [{"id": "sn28.1/0", "label": "Saṁyutta Nikāya 28.1", "rows": [{"key": "sn28.1:0.1", "pali": "Saṁyutta Nikāya 28.1", "sujato-corrected": "Linked Discourses 28.1"}, {"key": "sn28.1:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.1:0.3", "pali": "Vivekaja·sutta", "sujato-corrected": "Born of Seclusion"}]}, {"id": "sn28.1/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "sn28.1:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time Venerable Sāriputta was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn28.1:1.2", "pali": "Atha kho āyasmā sāri·putto pubbaṇha·samayaṁ ni·vāsetvā pattacīvaramādāya sāvatthiṁ piṇḍāya pāvisi.", "sujato-corrected": "Then Venerable Sāriputta robed up in the morning and, taking his bowl and robe, entered Sāvatthī for alms."}, {"key": "sn28.1:1.3", "pali": "Sāvatthiyaṁ piṇḍāya caritvā pacchā·bhattaṁ piṇḍa·pāta·paṭi·k·kanto yena andha·vanaṁ tenupasaṅkami divā·vihārāya.", "sujato-corrected": "He wandered for alms in Sāvatthī.\nAfter the meal, on his return from almsround, he went to the Dark Forest for the day’s meditation,"}, {"key": "sn28.1:1.4", "pali": "Andha·vanaṁ ajjh·ogāhetvā añña·tarasmiṁ rukkha·mūle divā·vihāraṁ nisīdi.", "sujato-corrected": "plunged deep into it, and sat at the root of a tree to meditate."}]}, {"id": "sn28.1/2", "label": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito…", "rows": [{"key": "sn28.1:2.1", "pali": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito\nyena jeta·vanaṁ a·nātha·piṇḍi·kassa ārāmo tenupasaṅkami.", "sujato-corrected": "Then in the late afternoon, Sāriputta came out of retreat and went to Jeta’s Grove, Anāthapiṇḍika’s monastery."}, {"key": "sn28.1:2.2", "pali": "Addasā kho āyasmā ānando āyasmantaṁ sāri·puttaṁ dūratova āgacchantaṁ.", "sujato-corrected": "Venerable Ānanda saw him coming off in the distance,"}, {"key": "sn28.1:2.3", "pali": "Disvāna āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "and said to him:"}, {"key": "sn28.1:2.4", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn28.1:2.5", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”"}]}, {"id": "sn28.1/3", "label": "“Idhāhaṁ, āvuso, vi·vicceva kāmehi vivicca a·kusalehi dhammehi…", "rows": [{"key": "sn28.1:3.1", "pali": "“Idhāhaṁ, āvuso, vi·vicceva kāmehi\nvivicca a·kusalehi dhammehi savitakkaṁ\nsa·vi·cāraṁ viveka·jaṁ pīti·sukhaṁ paṭhamaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, I entered and remained in the first jhāna,\nwhich has the mental joy and physical pleasure born of seclusion, while directing verbal thoughts and pondering them."}, {"key": "sn28.1:3.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:"}, {"key": "sn28.1:3.3", "pali": "‘ahaṁ paṭhamaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ paṭhamaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ paṭhamā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the first jhāna' or 'I have entered the first jhāna' or 'I am emerging from the first jhāna'.\""}, {"key": "sn28.1:3.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.1:3.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:"}, {"key": "sn28.1:3.6", "pali": "“‘ahaṁ paṭhamaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ paṭhamaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ paṭhamā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the first jhāna' or 'I have entered the first jhāna' or 'I am emerging from the first jhāna'.\""}, {"key": "sn28.1:3.7", "pali": "Paṭhamaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.2", "label": "SN 28.2 · Without Placing the Mind", "children": [{"id": "sn28.2/0", "label": "Saṁyutta Nikāya 28.2", "rows": [{"key": "sn28.2:0.1", "pali": "Saṁyutta Nikāya 28.2", "sujato-corrected": "Linked Discourses 28.2"}, {"key": "sn28.2:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.2:0.3", "pali": "A·vitakka·sutta", "sujato-corrected": "Without Directed Verbal Thoughts"}]}, {"id": "sn28.2/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.2:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.2:1.2", "pali": "Addasā kho āyasmā ānando …pe…\nāyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:"}, {"key": "sn28.2:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn28.2:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”"}]}, {"id": "sn28.2/2", "label": "“Idhāhaṁ, āvuso, vitakka·vi·cārānaṁ vūpa·samā ajjh·attaṁ sampasādanaṁ cetaso…", "rows": [{"key": "sn28.2:2.1", "pali": "“Idhāhaṁ, āvuso, vitakka·vi·cārānaṁ vūpa·samā ajjh·attaṁ sampasādanaṁ cetaso ekodi·bhāvaṁ\na·vitakkaṁ a·vi·cāraṁ samādhi·jaṁ pīti·sukhaṁ dutiyaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, as directed verbal thoughts and pondering them were stilled, I entered and remained in the second jhāna,\nwhich has the mental joy and physical pleasure born of samādhi,\nwith internal clarity and mind at one, without directed verbal thoughts and pondering them."}, {"key": "sn28.2:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:"}, {"key": "sn28.2:2.3", "pali": "‘ahaṁ dutiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ dutiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ dutiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the second jhāna' or 'I have entered the second jhāna' or 'I am emerging from the second jhāna'.\""}, {"key": "sn28.2:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.2:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:"}, {"key": "sn28.2:2.6", "pali": "“‘ahaṁ dutiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ dutiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ dutiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the second jhāna' or 'I have entered the second jhāna' or 'I am emerging from the second jhāna'.\""}, {"key": "sn28.2:2.7", "pali": "Dutiyaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.3", "label": "SN 28.3 · Rapture", "children": [{"id": "sn28.3/0", "label": "Saṁyutta Nikāya 28.3", "rows": [{"key": "sn28.3:0.1", "pali": "Saṁyutta Nikāya 28.3", "sujato-corrected": "Linked Discourses 28.3"}, {"key": "sn28.3:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.3:0.3", "pali": "Pīti·sutta", "sujato-corrected": "Mental Joy"}]}, {"id": "sn28.3/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.3:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.3:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:"}, {"key": "sn28.3:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn28.3:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”"}]}, {"id": "sn28.3/2", "label": "“Idhāhaṁ, āvuso, pītiyā ca virāgā upekkhako ca…", "rows": [{"key": "sn28.3:2.1", "pali": "“Idhāhaṁ, āvuso, pītiyā ca virāgā upekkhako ca vihāsiṁ\nsato ca sampa·jāno sukhañca kāyena paṭi·saṁvedemi;\nyaṁ taṁ ariyā ācikkhanti\n‘upekkhako satimā sukha·vihārī’ti tatiyaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, with the fading away of mental joy,\nI entered and remained in the third jhāna, where I meditated with equanimity,\nmindful and lucidly-discerning, personally experiencing the physical pleasure of which the noble ones declare,\n'Equanimous and mindful, one meditates in physical pleasure.'"}, {"key": "sn28.3:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:"}, {"key": "sn28.3:2.3", "pali": "‘ahaṁ tatiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ tatiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ tatiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the third jhāna' or 'I have entered the third jhāna' or 'I am emerging from the third jhāna'.\""}, {"key": "sn28.3:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.3:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:"}, {"key": "sn28.3:2.6", "pali": "“‘ahaṁ tatiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ tatiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ tatiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the third jhāna' or 'I have entered the third jhāna' or 'I am emerging from the third jhāna'.\""}, {"key": "sn28.3:2.7", "pali": "Tatiyaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.4", "label": "SN 28.4 · Equanimity", "children": [{"id": "sn28.4/0", "label": "Saṁyutta Nikāya 28.4", "rows": [{"key": "sn28.4:0.1", "pali": "Saṁyutta Nikāya 28.4", "sujato-corrected": "Linked Discourses 28.4"}, {"key": "sn28.4:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.4:0.3", "pali": "Upekkhā·sutta", "sujato-corrected": "Equanimity"}]}, {"id": "sn28.4/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.4:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.4:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:"}, {"key": "sn28.4:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright."}, {"key": "sn28.4:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”"}]}, {"id": "sn28.4/2", "label": "“Idhāhaṁ, āvuso, sukhassa ca pahānā dukkhassa ca…", "rows": [{"key": "sn28.4:2.1", "pali": "“Idhāhaṁ, āvuso, sukhassa ca pahānā dukkhassa ca pahānā pubbeva somanassa·domanassānaṁ\natthaṅgamā a·dukkham·a·sukhaṁ upekkhā·sati·pāri·suddhiṁ catu·t·thaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, with the giving up of physical pleasure and pain, and the ending of former happiness and sadness,\nI entered and remained in the fourth jhāna, without pleasure or pain, with pure equanimity and mindfulness."}, {"key": "sn28.4:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:"}, {"key": "sn28.4:2.3", "pali": "‘ahaṁ catu·t·thaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ catu·t·thaṁ\njhānaṁ samāpanno’ti vā ‘ahaṁ catu·t·thā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the fourth jhāna' or 'I have entered the fourth jhāna' or 'I am emerging from the fourth jhāna'.\""}, {"key": "sn28.4:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.4:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:"}, {"key": "sn28.4:2.6", "pali": "“‘ahaṁ catu·t·thaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ catu·t·thaṁ\njhānaṁ samāpanno’ti vā ‘ahaṁ catu·t·thā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the fourth jhāna' or 'I have entered the fourth jhāna' or 'I am emerging from the fourth jhāna'.\""}, {"key": "sn28.4:2.7", "pali": "Catu·t·thaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.5", "label": "SN 28.5 · The Dimension of Infinite Space", "children": [{"id": "sn28.5/0", "label": "Saṁyutta Nikāya 28.5", "rows": [{"key": "sn28.5:0.1", "pali": "Saṁyutta Nikāya 28.5", "sujato-corrected": "Linked Discourses 28.5"}, {"key": "sn28.5:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.5:0.3", "pali": "Ākās·ānañc·āyatana·sutta", "sujato-corrected": "The Dimension of Infinite Space"}]}, {"id": "sn28.5/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.5:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.5:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …"}, {"key": "sn28.5:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso rūpa·saññānaṁ samatikkamā\npaṭigha·saññānaṁ atthaṅgamā\nnānatta·saññānaṁ a·manasi·kārā an·anto ākāsoti\nākās·ānañc·āyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond perceptions of form, with the disappearance of perceptions of impingement,\nnot focusing on perceptions of diversity, aware that ‘space is infinite’,\nI entered and remained in the dimension of infinite space. …” …"}, {"key": "sn28.5:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": ""}, {"key": "sn28.5:1.5", "pali": "Pañcamaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.6", "label": "SN 28.6 · The Dimension of Infinite Consciousness", "children": [{"id": "sn28.6/0", "label": "Saṁyutta Nikāya 28.6", "rows": [{"key": "sn28.6:0.1", "pali": "Saṁyutta Nikāya 28.6", "sujato-corrected": "Linked Discourses 28.6"}, {"key": "sn28.6:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.6:0.3", "pali": "Viññāṇañcā·yatana·sutta", "sujato-corrected": "The Dimension of Infinite Consciousness"}]}, {"id": "sn28.6/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.6:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.6:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …"}, {"key": "sn28.6:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso ākās·ānañc·āyatanaṁ samatikkamma\nan·antaṁ viññāṇanti viññāṇañcāyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of infinite space, aware that ‘consciousness is infinite’,\nI entered and remained in the dimension of infinite consciousness. …” …"}, {"key": "sn28.6:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": ""}, {"key": "sn28.6:1.5", "pali": "Cha·ṭ·ṭhaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.7", "label": "SN 28.7 · The Dimension of Nothingness", "children": [{"id": "sn28.7/0", "label": "Saṁyutta Nikāya 28.7", "rows": [{"key": "sn28.7:0.1", "pali": "Saṁyutta Nikāya 28.7", "sujato-corrected": "Linked Discourses 28.7"}, {"key": "sn28.7:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.7:0.3", "pali": "Ākiñcaññ·āyatana·sutta", "sujato-corrected": "The Dimension of Nothingness"}]}, {"id": "sn28.7/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.7:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.7:1.2", "pali": "Atha kho āyasmā sāri·putto …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …"}, {"key": "sn28.7:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso viññāṇañcāyatanaṁ samatikkamma, natthi\nkiñcīti ākiñcaññ·āyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of infinite consciousness,\naware that ‘there is nothing at all’, I entered and remained in the dimension of nothingness. …” …"}, {"key": "sn28.7:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": ""}, {"key": "sn28.7:1.5", "pali": "Sa·t·tamaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.8", "label": "SN 28.8 · The Dimension of Neither Perception Nor Non-Perception", "children": [{"id": "sn28.8/0", "label": "Saṁyutta Nikāya 28.8", "rows": [{"key": "sn28.8:0.1", "pali": "Saṁyutta Nikāya 28.8", "sujato-corrected": "Linked Discourses 28.8"}, {"key": "sn28.8:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.8:0.3", "pali": "Neva·saññānā·saññā·yatana·sutta", "sujato-corrected": "The Dimension of Neither Perception Nor Non-Perception"}]}, {"id": "sn28.8/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.8:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.8:1.2", "pali": "Atha kho āyasmā sāri·putto …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …"}, {"key": "sn28.8:1.3", "pali": "“idhāhaṁ, āvuso, ākiñcaññ·āyatanaṁ samatikkamma neva·saññānā·saññā·yatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of nothingness,\nI entered and remained in the dimension of neither perception nor non-perception. …” …"}, {"key": "sn28.8:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": ""}, {"key": "sn28.8:1.5", "pali": "Aṭṭhamaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.9", "label": "SN 28.9 · The Attainment of Cessation", "children": [{"id": "sn28.9/0", "label": "Saṁyutta Nikāya 28.9", "rows": [{"key": "sn28.9:0.1", "pali": "Saṁyutta Nikāya 28.9", "sujato-corrected": "Linked Discourses 28.9"}, {"key": "sn28.9:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.9:0.3", "pali": "Nirodha·samā·patti·sutta", "sujato-corrected": "The Attainment of Cessation"}]}, {"id": "sn28.9/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.9:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī."}, {"key": "sn28.9:1.2", "pali": "Atha kho āyasmā sāri·putto …pe….", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …"}, {"key": "sn28.9:1.3", "pali": "“Idhāhaṁ, āvuso, sabbaso neva·saññānā·saññā·yatanaṁ samatikkamma saññā·vedayita·nirodhaṁ upasampajja viharāmi.", "sujato-corrected": "“Reverend, going totally beyond the dimension of neither perception nor non-perception,\nI entered and remained in the cessation of perception and feeling."}, {"key": "sn28.9:1.4", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:"}, {"key": "sn28.9:1.5", "pali": "‘ahaṁ saññā·vedayita·nirodhaṁ samāpajjāmī’ti vā ‘ahaṁ saññā·vedayita·nirodhaṁ\nsamāpanno’ti vā ‘ahaṁ saññā·vedayita·nirodhā vuṭṭhito’ti vā”ti.", "sujato-corrected": "‘I am entering the cessation of perception and feeling’ or ‘I have entered the cessation of\nperception and feeling’ or ‘I am emerging from the cessation of perception and feeling’.”"}, {"key": "sn28.9:1.6", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.9:1.7", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:"}, {"key": "sn28.9:1.8", "pali": "“‘ahaṁ saññā·vedayita·nirodhaṁ samāpajjāmī’ti vā ‘ahaṁ saññā·vedayita·nirodhaṁ\nsamāpanno’ti vā ‘ahaṁ saññā·vedayita·nirodhā vuṭṭhito’ti vā”ti.", "sujato-corrected": "‘I am entering the cessation of perception and feeling’ or ‘I have entered the cessation of\nperception and feeling’ or ‘I am emerging from the cessation of perception and feeling’.”"}, {"key": "sn28.9:1.9", "pali": "Navamaṁ.", "sujato-corrected": ""}]}]}, {"id": "sn28.10", "label": "SN 28.10 · With Sucimukhī", "children": [{"id": "sn28.10/0", "label": "Saṁyutta Nikāya 28.10", "rows": [{"key": "sn28.10:0.1", "pali": "Saṁyutta Nikāya 28.10", "sujato-corrected": "Linked Discourses 28.10"}, {"key": "sn28.10:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta"}, {"key": "sn28.10:0.3", "pali": "Suci·mukhī·sutta", "sujato-corrected": "With Sucimukhī"}]}, {"id": "sn28.10/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto rāja·gahe viharati veḷu·vane…", "rows": [{"key": "sn28.10:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time Venerable Sāriputta was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground."}, {"key": "sn28.10:1.2", "pali": "Atha kho āyasmā sāri·putto pubbaṇha·samayaṁ ni·vāsetvā pattacīvaramādāya rāja·gahe piṇḍāya pāvisi.", "sujato-corrected": "Then he robed up in the morning and, taking his bowl and robe, entered Rājagaha for alms."}, {"key": "sn28.10:1.3", "pali": "Rāja·gahe sapadānaṁ piṇḍāya caritvā taṁ piṇḍa·pātaṁ añña·taraṁ kuṭṭa·mūlaṁ nissāya pari·bhuñjati.", "sujato-corrected": "After wandering indiscriminately for almsfood in Rājagaha, he ate his almsfood by a wall."}, {"key": "sn28.10:1.4", "pali": "Atha kho suci·mukhī pari·b·bājikā yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "Then the wanderer Sucimukhī went up to Venerable Sāriputta and said to him:"}]}, {"id": "sn28.10/2", "label": "“Kiṁ nu kho, samaṇa, adho·mukho bhuñjasī”ti?", "rows": [{"key": "sn28.10:2.1", "pali": "“Kiṁ nu kho, samaṇa, adho·mukho bhuñjasī”ti?", "sujato-corrected": "“Ascetic, do you eat facing downwards?”"}, {"key": "sn28.10:2.2", "pali": "“Na khvāhaṁ, bhagini, adho·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”"}, {"key": "sn28.10:2.3", "pali": "“Tena hi, samaṇa, ubbha·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing upwards?”"}, {"key": "sn28.10:2.4", "pali": "“Na khvāhaṁ, bhagini, ubbha·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”"}, {"key": "sn28.10:2.5", "pali": "“Tena hi, samaṇa, disā·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing the cardinal directions?”"}, {"key": "sn28.10:2.6", "pali": "“Na khvāhaṁ, bhagini, disā·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”"}, {"key": "sn28.10:2.7", "pali": "“Tena hi, samaṇa, vidisā·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing the intermediate directions?”"}, {"key": "sn28.10:2.8", "pali": "“Na khvāhaṁ, bhagini, vidisā·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”"}]}, {"id": "sn28.10/3", "label": "“‘Kiṁ nu, samaṇa, adho·mukho bhuñjasī’ti iti puṭṭho…", "rows": [{"key": "sn28.10:3.1", "pali": "“‘Kiṁ nu, samaṇa, adho·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, adho·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": "“When asked if you eat facing all these directions, you answer ‘no, sister’."}, {"key": "sn28.10:3.2", "pali": "‘Tena hi, samaṇa, ubbha·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, ubbha·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": ""}, {"key": "sn28.10:3.3", "pali": "‘Tena hi, samaṇa, disā·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, disā·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": ""}, {"key": "sn28.10:3.4", "pali": "‘Tena hi, samaṇa, vidisā·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, vidisā·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": ""}]}, {"id": "sn28.10/4", "label": "Kathañcarahi, samaṇa, bhuñjasī”ti?", "rows": [{"key": "sn28.10:4.1", "pali": "Kathañcarahi, samaṇa, bhuñjasī”ti?", "sujato-corrected": "How then do you eat, ascetic?”"}, {"key": "sn28.10:4.2", "pali": "“Ye hi keci, bhagini, samaṇa·brāhmaṇā vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘adho·mukhā bhuñjantī’ti.", "sujato-corrected": "“Sister, those ascetics and brahmins who earn a living by geomancy—a low lore,\na wrong livelihood—are said to eat facing downwards."}, {"key": "sn28.10:4.3", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā nakkhatta·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘ubbha·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by astrology—a low lore,\na wrong livelihood—are said to eat facing upwards."}, {"key": "sn28.10:4.4", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā dūteyya·pahiṇa·gamanā·nuyogāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘disā·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by running errands and\nmessages—a wrong livelihood—are said to eat facing the cardinal directions."}, {"key": "sn28.10:4.5", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā aṅga·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘vidisā·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by limb-reading—a low lore,\na wrong livelihood—are said to eat facing the intermediate directions."}]}, {"id": "sn28.10/5", "label": "So khvāhaṁ, bhagini, na vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ…", "rows": [{"key": "sn28.10:5.1", "pali": "So khvāhaṁ, bhagini, na vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi,\nna nakkhatta·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi,\nna dūteyya·pahiṇa·gamanā·nuyogāya micchā·jīvena jīvikaṁ kappemi,\nna aṅga·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi.", "sujato-corrected": "I don’t earn a living by any of these means."}, {"key": "sn28.10:5.2", "pali": "Dhammena bhikkhaṁ pari·yesāmi;", "sujato-corrected": "I seek alms in a principled manner,"}, {"key": "sn28.10:5.3", "pali": "dhammena bhikkhaṁ pari·yesitvā bhuñjāmī”ti.", "sujato-corrected": "and I eat it in a principled manner.”"}]}, {"id": "sn28.10/6", "label": "Atha kho suci·mukhī pari·b·bājikā rāja·gahe rath·iyāya rath·iyaṁ,…", "rows": [{"key": "sn28.10:6.1", "pali": "Atha kho suci·mukhī pari·b·bājikā rāja·gahe rath·iyāya rath·iyaṁ, siṅghāṭakena siṅghāṭakaṁ upasaṅkamitvā evamārocesi:", "sujato-corrected": "Then Sucimukhī the wanderer went around Rājagaha from street to street and from square to square, and announced:"}, {"key": "sn28.10:6.2", "pali": "“dhammikaṁ samaṇā sakya·puttiyā āhāraṁ āhārenti;", "sujato-corrected": "“The ascetics who follow the Sakyan eat food in a principled manner!"}, {"key": "sn28.10:6.3", "pali": "an·a·vajjaṁ samaṇā sakya·puttiyā āhāraṁ āhārenti.", "sujato-corrected": "The ascetics who follow the Sakyan eat food blamelessly!"}, {"key": "sn28.10:6.4", "pali": "Detha samaṇānaṁ sakya·putt·iyānaṁ piṇḍan”ti.", "sujato-corrected": "Give almsfood to the ascetics who follow the Sakyan!”"}, {"key": "sn28.10:6.5", "pali": "Dasamaṁ.", "sujato-corrected": ""}, {"key": "sn28.10:6.6", "pali": "Sāri·putta·vaggo paṭhamo.", "sujato-corrected": ""}]}, {"id": "sn28.10/7", "label": "Tass·uddānaṁ", "rows": [{"key": "sn28.10:7.0", "pali": "Tass·uddānaṁ", "sujato-corrected": ""}, {"key": "sn28.10:7.1", "pali": "Viveka·jaṁ a·vitakkaṁ,", "sujato-corrected": ""}, {"key": "sn28.10:7.2", "pali": "pīti upekkhā catu·t·thakaṁ;", "sujato-corrected": ""}, {"key": "sn28.10:7.3", "pali": "Ākāsañceva viññāṇaṁ,", "sujato-corrected": ""}, {"key": "sn28.10:7.4", "pali": "ākiñcaṁ neva·saññinā;", "sujato-corrected": ""}, {"key": "sn28.10:7.5", "pali": "Nirodho navamo vutto,", "sujato-corrected": ""}, {"key": "sn28.10:7.6", "pali": "dasamaṁ sūci·mukhī cāti.", "sujato-corrected": ""}, {"key": "sn28.10:7.7", "pali": "Sāri·putta·saṁyuttaṁ sama·t·taṁ.", "sujato-corrected": "The Linked Discourses on Sāriputta are complete."}]}]}]}];
+const TREE=[{"id": "sn28-sariputtavagga", "label": "Sāriputtavagga — The Chapter with Sāriputta", "children": [{"id": "sn28.1", "label": "SN 28.1 · Born of Seclusion", "children": [{"id": "sn28.1/0", "label": "Saṁyutta Nikāya 28.1", "rows": [{"key": "sn28.1:0.1", "pali": "Saṁyutta Nikāya 28.1", "sujato-corrected": "Linked Discourses 28.1", "bodhi-esque": "Saṃyutta Nikāya 28.1"}, {"key": "sn28.1:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Chapter on Sāriputta"}, {"key": "sn28.1:0.3", "pali": "Vivekaja·sutta", "sujato-corrected": "Born of Seclusion", "bodhi-esque": "Born of Seclusion"}]}, {"id": "sn28.1/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "sn28.1:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time Venerable Sāriputta was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "bodhi-esque": "On one occasion the Venerable Sāriputta was dwelling at Sāvatthī in Jeta's Grove, Anāthapiṇḍika's Park."}, {"key": "sn28.1:1.2", "pali": "Atha kho āyasmā sāri·putto pubbaṇha·samayaṁ ni·vāsetvā pattacīvaramādāya sāvatthiṁ piṇḍāya pāvisi.", "sujato-corrected": "Then Venerable Sāriputta robed up in the morning and, taking his bowl and robe, entered Sāvatthī for alms.", "bodhi-esque": "Then, in the morning, the Venerable Sāriputta dressed, took his bowl and robe, and entered Sāvatthī for alms."}, {"key": "sn28.1:1.3", "pali": "Sāvatthiyaṁ piṇḍāya caritvā pacchā·bhattaṁ piṇḍa·pāta·paṭi·k·kanto yena andha·vanaṁ tenupasaṅkami divā·vihārāya.", "sujato-corrected": "He wandered for alms in Sāvatthī.\nAfter the meal, on his return from almsround, he went to the Dark Forest for the day’s meditation,", "bodhi-esque": "Having walked for alms in Sāvatthī, after the meal, on returning from his alms round,\nhe approached the Blind Men's Grove for the day's abiding."}, {"key": "sn28.1:1.4", "pali": "Andha·vanaṁ ajjh·ogāhetvā añña·tarasmiṁ rukkha·mūle divā·vihāraṁ nisīdi.", "sujato-corrected": "plunged deep into it, and sat at the root of a tree to meditate.", "bodhi-esque": "Having plunged into the Blind Men's Grove, he sat down at the foot of a certain tree for the day's abiding."}]}, {"id": "sn28.1/2", "label": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito…", "rows": [{"key": "sn28.1:2.1", "pali": "Atha kho āyasmā sāri·putto sāyanha·samayaṁ paṭi·sallānā vuṭṭhito\nyena jeta·vanaṁ a·nātha·piṇḍi·kassa ārāmo tenupasaṅkami.", "sujato-corrected": "Then in the late afternoon, Sāriputta came out of retreat and went to Jeta’s Grove, Anāthapiṇḍika’s monastery.", "bodhi-esque": "Then, in the evening, the Venerable Sāriputta emerged from seclusion and approached Jeta's Grove, Anāthapiṇḍika's Park."}, {"key": "sn28.1:2.2", "pali": "Addasā kho āyasmā ānando āyasmantaṁ sāri·puttaṁ dūratova āgacchantaṁ.", "sujato-corrected": "Venerable Ānanda saw him coming off in the distance,", "bodhi-esque": "The Venerable Ānanda saw the Venerable Sāriputta coming from afar."}, {"key": "sn28.1:2.3", "pali": "Disvāna āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "and said to him:", "bodhi-esque": "Having seen him, he said to the Venerable Sāriputta:"}, {"key": "sn28.1:2.4", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright.", "bodhi-esque": "‘Friend Sāriputta, your faculties are serene;\nyour complexion is pure and bright."}, {"key": "sn28.1:2.5", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”", "bodhi-esque": "With what dwelling did the Venerable Sāriputta dwell today?’"}]}, {"id": "sn28.1/3", "label": "“Idhāhaṁ, āvuso, vi·vicceva kāmehi vivicca a·kusalehi dhammehi…", "rows": [{"key": "sn28.1:3.1", "pali": "“Idhāhaṁ, āvuso, vi·vicceva kāmehi\nvivicca a·kusalehi dhammehi savitakkaṁ\nsa·vi·cāraṁ viveka·jaṁ pīti·sukhaṁ paṭhamaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, I entered and remained in the first jhāna,\nwhich has the mental joy and physical pleasure born of seclusion, while directing verbal thoughts and pondering them.", "bodhi-esque": "‘Here, friend, quite secluded from sensual pleasures,\nsecluded from unwholesome states, I entered and dwelt in the first jhāna,\nwhich is accompanied by thought and examination, born of seclusion, with rapture and pleasure."}, {"key": "sn28.1:3.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:", "bodhi-esque": "And it did not occur to me, friend:"}, {"key": "sn28.1:3.3", "pali": "‘ahaṁ paṭhamaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ paṭhamaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ paṭhamā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the first jhāna' or 'I have entered the first jhāna' or 'I am emerging from the first jhāna'.\"", "bodhi-esque": "‘I am attaining the first jhāna,’ or ‘I have attained the first jhāna,’ or ‘I have emerged from the first jhāna.’"}, {"key": "sn28.1:3.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit.", "bodhi-esque": "For the Venerable Sāriputta’s underlying tendencies to I-making,\nmine-making, and conceit have been thoroughly uprooted for a long time."}, {"key": "sn28.1:3.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:", "bodhi-esque": "Therefore it does not occur to the Venerable Sāriputta:"}, {"key": "sn28.1:3.6", "pali": "“‘ahaṁ paṭhamaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ paṭhamaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ paṭhamā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the first jhāna' or 'I have entered the first jhāna' or 'I am emerging from the first jhāna'.\"", "bodhi-esque": "‘I am attaining the first jhāna’ or ‘I have attained the first jhāna’ or ‘I have emerged from the first jhāna.’"}, {"key": "sn28.1:3.7", "pali": "Paṭhamaṁ.", "sujato-corrected": "", "bodhi-esque": "The first."}]}]}, {"id": "sn28.2", "label": "SN 28.2 · Without Placing the Mind", "children": [{"id": "sn28.2/0", "label": "Saṁyutta Nikāya 28.2", "rows": [{"key": "sn28.2:0.1", "pali": "Saṁyutta Nikāya 28.2", "sujato-corrected": "Linked Discourses 28.2", "bodhi-esque": "Connected Discourses 28.2"}, {"key": "sn28.2:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Section about Sāriputta"}, {"key": "sn28.2:0.3", "pali": "A·vitakka·sutta", "sujato-corrected": "Without Directed Verbal Thoughts", "bodhi-esque": "The Sutta on the Second Jhāna"}]}, {"id": "sn28.2/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.2:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.2:1.2", "pali": "Addasā kho āyasmā ānando …pe…\nāyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:", "bodhi-esque": "Then the Venerable Ānanda saw … and said to the Venerable Sāriputta:"}, {"key": "sn28.2:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright.", "bodhi-esque": "“Your faculties are serene, friend Sāriputta;\nyour facial complexion is pure and clear."}, {"key": "sn28.2:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”", "bodhi-esque": "With what dwelling did the Venerable Sāriputta dwell today?”"}]}, {"id": "sn28.2/2", "label": "“Idhāhaṁ, āvuso, vitakka·vi·cārānaṁ vūpa·samā ajjh·attaṁ sampasādanaṁ cetaso…", "rows": [{"key": "sn28.2:2.1", "pali": "“Idhāhaṁ, āvuso, vitakka·vi·cārānaṁ vūpa·samā ajjh·attaṁ sampasādanaṁ cetaso ekodi·bhāvaṁ\na·vitakkaṁ a·vi·cāraṁ samādhi·jaṁ pīti·sukhaṁ dutiyaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, as directed verbal thoughts and pondering them were stilled, I entered and remained in the second jhāna,\nwhich has the mental joy and physical pleasure born of samādhi,\nwith internal clarity and mind at one, without directed verbal thoughts and pondering them.", "bodhi-esque": "“Here, friend, with the subsiding of thought and examination,\ninternally tranquilized, with the mind unified, without thought,\nwithout examination, having rapture and happiness born of concentration, I entered and dwell in the second jhāna."}, {"key": "sn28.2:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:", "bodhi-esque": "To me, friend, it does not occur:"}, {"key": "sn28.2:2.3", "pali": "‘ahaṁ dutiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ dutiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ dutiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the second jhāna' or 'I have entered the second jhāna' or 'I am emerging from the second jhāna'.\"", "bodhi-esque": "‘I am attaining the second jhāna,’ or ‘I have attained the second jhāna,’ or ‘I have emerged from the second jhāna.’”"}, {"key": "sn28.2:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit.", "bodhi-esque": "Because for a long time the Venerable Sāriputta has thoroughly uprooted I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.2:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:", "bodhi-esque": "Therefore it does not occur to the Venerable Sāriputta:"}, {"key": "sn28.2:2.6", "pali": "“‘ahaṁ dutiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ dutiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ dutiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the second jhāna' or 'I have entered the second jhāna' or 'I am emerging from the second jhāna'.\"", "bodhi-esque": "‘I am attaining the second jhāna,’ or ‘I have attained the second jhāna,’ or ‘I have emerged from the second jhāna.’”"}, {"key": "sn28.2:2.7", "pali": "Dutiyaṁ.", "sujato-corrected": "", "bodhi-esque": "Second."}]}]}, {"id": "sn28.3", "label": "SN 28.3 · Rapture", "children": [{"id": "sn28.3/0", "label": "Saṁyutta Nikāya 28.3", "rows": [{"key": "sn28.3:0.1", "pali": "Saṁyutta Nikāya 28.3", "sujato-corrected": "Linked Discourses 28.3", "bodhi-esque": "Connected Discourses 28.3"}, {"key": "sn28.3:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Sāriputta Chapter"}, {"key": "sn28.3:0.3", "pali": "Pīti·sutta", "sujato-corrected": "Mental Joy", "bodhi-esque": "The Discourse on Rapture"}]}, {"id": "sn28.3/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.3:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.3:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:", "bodhi-esque": "The Venerable Ānanda saw …"}, {"key": "sn28.3:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright.", "bodhi-esque": "\"Your faculties are serene, friend Sāriputta;\nyour facial complexion is pure and bright."}, {"key": "sn28.3:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”", "bodhi-esque": "\"With what dwelling has the Venerable Sāriputta been dwelling today?\""}]}, {"id": "sn28.3/2", "label": "“Idhāhaṁ, āvuso, pītiyā ca virāgā upekkhako ca…", "rows": [{"key": "sn28.3:2.1", "pali": "“Idhāhaṁ, āvuso, pītiyā ca virāgā upekkhako ca vihāsiṁ\nsato ca sampa·jāno sukhañca kāyena paṭi·saṁvedemi;\nyaṁ taṁ ariyā ācikkhanti\n‘upekkhako satimā sukha·vihārī’ti tatiyaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, with the fading away of mental joy,\nI entered and remained in the third jhāna, where I meditated with equanimity,\nmindful and lucidly-discerning, personally experiencing the physical pleasure of which the noble ones declare,\n'Equanimous and mindful, one meditates in physical pleasure.'", "bodhi-esque": "\"Here, friend, with the fading away of rapture, I dwelt equanimous,\nmindful and clearly comprehending,\nand I experienced happiness with the body;\nthat which the noble ones call\n‘equanimous,\nmindful, one dwelling happily,’ I entered and dwelt in the third jhāna."}, {"key": "sn28.3:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:", "bodhi-esque": "To me, friend, it did not occur thus:"}, {"key": "sn28.3:2.3", "pali": "‘ahaṁ tatiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ tatiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ tatiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the third jhāna' or 'I have entered the third jhāna' or 'I am emerging from the third jhāna'.\"", "bodhi-esque": "\"‘I am attaining the third jhāna’ or ‘I have attained the third jhāna’ or ‘I have emerged from the third jhāna.’\""}, {"key": "sn28.3:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit.", "bodhi-esque": "For the Venerable Sāriputta has long since thoroughly uprooted the underlying tendencies to I-making,\nmine-making, and conceit."}, {"key": "sn28.3:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:", "bodhi-esque": "Therefore, it does not occur to the Venerable Sāriputta thus:"}, {"key": "sn28.3:2.6", "pali": "“‘ahaṁ tatiyaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ tatiyaṁ jhānaṁ samāpanno’ti vā ‘ahaṁ tatiyā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the third jhāna' or 'I have entered the third jhāna' or 'I am emerging from the third jhāna'.\"", "bodhi-esque": "\"‘I am attaining the third jhāna’ or ‘I have attained the third jhāna’ or ‘I have emerged from the third jhāna.’\""}, {"key": "sn28.3:2.7", "pali": "Tatiyaṁ.", "sujato-corrected": "", "bodhi-esque": "Third."}]}]}, {"id": "sn28.4", "label": "SN 28.4 · Equanimity", "children": [{"id": "sn28.4/0", "label": "Saṁyutta Nikāya 28.4", "rows": [{"key": "sn28.4:0.1", "pali": "Saṁyutta Nikāya 28.4", "sujato-corrected": "Linked Discourses 28.4", "bodhi-esque": "Saṃyutta Nikāya 28.4"}, {"key": "sn28.4:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Chapter on Sāriputta"}, {"key": "sn28.4:0.3", "pali": "Upekkhā·sutta", "sujato-corrected": "Equanimity", "bodhi-esque": "Equanimity Sutta"}]}, {"id": "sn28.4/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.4:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.4:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta and said to him:", "bodhi-esque": "The Venerable Ānanda saw …"}, {"key": "sn28.4:1.3", "pali": "“vippasannāni kho te, āvuso sāri·putta, indr·iyāni;\npari·suddho mukha·vaṇṇo pari·yodāto.", "sujato-corrected": "“Reverend Sāriputta, your faculties are so very clear, and your complexion is pure and bright.", "bodhi-esque": "“Your faculties are serene, friend Sāriputta;\nyour facial complexion is pure and clear.\n“"}, {"key": "sn28.4:1.4", "pali": "Katamen·āyasmā sāri·putto ajja vihārena vihāsī”ti?", "sujato-corrected": "What meditation were you practicing today?”", "bodhi-esque": "“With what dwelling has the Venerable Sāriputta been dwelling today?”"}]}, {"id": "sn28.4/2", "label": "“Idhāhaṁ, āvuso, sukhassa ca pahānā dukkhassa ca…", "rows": [{"key": "sn28.4:2.1", "pali": "“Idhāhaṁ, āvuso, sukhassa ca pahānā dukkhassa ca pahānā pubbeva somanassa·domanassānaṁ\natthaṅgamā a·dukkham·a·sukhaṁ upekkhā·sati·pāri·suddhiṁ catu·t·thaṁ jhānaṁ upasampajja viharāmi.", "sujato-corrected": "\"Reverend, with the giving up of physical pleasure and pain, and the ending of former happiness and sadness,\nI entered and remained in the fourth jhāna, without pleasure or pain, with pure equanimity and mindfulness.", "bodhi-esque": "“Here, friend, with the abandoning of pleasure and pain, and with the previous disappearance of joy and displeasure,\nI dwell having entered upon the fourth jhāna,\nwhich is neither painful nor pleasant and includes the purification of mindfulness by equanimity.\n“"}, {"key": "sn28.4:2.2", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:", "bodhi-esque": "It does not occur to me, friend:"}, {"key": "sn28.4:2.3", "pali": "‘ahaṁ catu·t·thaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ catu·t·thaṁ\njhānaṁ samāpanno’ti vā ‘ahaṁ catu·t·thā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the fourth jhāna' or 'I have entered the fourth jhāna' or 'I am emerging from the fourth jhāna'.\"", "bodhi-esque": "‘I am attaining the fourth jhāna,’ or ‘I have attained the fourth jhāna,’ or ‘I have emerged from the fourth jhāna.’”"}, {"key": "sn28.4:2.4", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit.", "bodhi-esque": "For it is because the Venerable Sāriputta has long thoroughly uprooted the I-making,\nmine-making, and the underlying tendency to conceit."}, {"key": "sn28.4:2.5", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:", "bodhi-esque": "Therefore, it does not occur to the Venerable Sāriputta:"}, {"key": "sn28.4:2.6", "pali": "“‘ahaṁ catu·t·thaṁ jhānaṁ samāpajjāmī’ti vā ‘ahaṁ catu·t·thaṁ\njhānaṁ samāpanno’ti vā ‘ahaṁ catu·t·thā jhānā vuṭṭhito’ti vā”ti.", "sujato-corrected": "'I am entering the fourth jhāna' or 'I have entered the fourth jhāna' or 'I am emerging from the fourth jhāna'.\"", "bodhi-esque": "‘I am attaining the fourth jhāna,’ or ‘I have attained the fourth jhāna,’ or ‘I have emerged from the fourth jhāna.’”"}, {"key": "sn28.4:2.7", "pali": "Catu·t·thaṁ.", "sujato-corrected": "", "bodhi-esque": "The Fourth."}]}]}, {"id": "sn28.5", "label": "SN 28.5 · The Dimension of Infinite Space", "children": [{"id": "sn28.5/0", "label": "Saṁyutta Nikāya 28.5", "rows": [{"key": "sn28.5:0.1", "pali": "Saṁyutta Nikāya 28.5", "sujato-corrected": "Linked Discourses 28.5", "bodhi-esque": "Connected Discourses 28.5"}, {"key": "sn28.5:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Chapter on Sāriputta"}, {"key": "sn28.5:0.3", "pali": "Ākās·ānañc·āyatana·sutta", "sujato-corrected": "The Dimension of Infinite Space", "bodhi-esque": "The Discourse on the Base of Infinite Space"}]}, {"id": "sn28.5/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.5:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.5:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …", "bodhi-esque": "The Venerable Ānanda saw …"}, {"key": "sn28.5:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso rūpa·saññānaṁ samatikkamā\npaṭigha·saññānaṁ atthaṅgamā\nnānatta·saññānaṁ a·manasi·kārā an·anto ākāsoti\nākās·ānañc·āyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond perceptions of form, with the disappearance of perceptions of impingement,\nnot focusing on perceptions of diversity, aware that ‘space is infinite’,\nI entered and remained in the dimension of infinite space. …” …", "bodhi-esque": "“Here, friend, with the complete transcendence of perceptions of form,\nwith the passing away of perceptions of sensory impact,\nwith non-attention to perceptions of diversity,\naware of ‘infinite space,’ I enter and dwell in the base of infinite space …"}, {"key": "sn28.5:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": "", "bodhi-esque": "or emerged.”"}, {"key": "sn28.5:1.5", "pali": "Pañcamaṁ.", "sujato-corrected": "", "bodhi-esque": "Fifth."}]}]}, {"id": "sn28.6", "label": "SN 28.6 · The Dimension of Infinite Consciousness", "children": [{"id": "sn28.6/0", "label": "Saṁyutta Nikāya 28.6", "rows": [{"key": "sn28.6:0.1", "pali": "Saṁyutta Nikāya 28.6", "sujato-corrected": "Linked Discourses 28.6", "bodhi-esque": "Connected Discourses 28.6"}, {"key": "sn28.6:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Chapter on Sāriputta"}, {"key": "sn28.6:0.3", "pali": "Viññāṇañcā·yatana·sutta", "sujato-corrected": "The Dimension of Infinite Consciousness", "bodhi-esque": "The Discourse on the Sphere of Infinite Consciousness"}]}, {"id": "sn28.6/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.6:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.6:1.2", "pali": "Addasā kho āyasmā ānando …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …", "bodhi-esque": "The Venerable Ānanda saw ..."}, {"key": "sn28.6:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso ākās·ānañc·āyatanaṁ samatikkamma\nan·antaṁ viññāṇanti viññāṇañcāyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of infinite space, aware that ‘consciousness is infinite’,\nI entered and remained in the dimension of infinite consciousness. …” …", "bodhi-esque": "“Here, friend, having entirely transcended the sphere of infinite space,\n[thinking] ‘consciousness is infinite,’ I enter and dwell in the sphere of infinite consciousness ..."}, {"key": "sn28.6:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": "", "bodhi-esque": "or ‘emerged.’”"}, {"key": "sn28.6:1.5", "pali": "Cha·ṭ·ṭhaṁ.", "sujato-corrected": "", "bodhi-esque": "The Sixth."}]}]}, {"id": "sn28.7", "label": "SN 28.7 · The Dimension of Nothingness", "children": [{"id": "sn28.7/0", "label": "Saṁyutta Nikāya 28.7", "rows": [{"key": "sn28.7:0.1", "pali": "Saṁyutta Nikāya 28.7", "sujato-corrected": "Linked Discourses 28.7", "bodhi-esque": "Connected Discourses 28.7"}, {"key": "sn28.7:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Sāriputta Chapter"}, {"key": "sn28.7:0.3", "pali": "Ākiñcaññ·āyatana·sutta", "sujato-corrected": "The Dimension of Nothingness", "bodhi-esque": "The Sutta on the Base of Nothingness"}]}, {"id": "sn28.7/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.7:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.7:1.2", "pali": "Atha kho āyasmā sāri·putto …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …", "bodhi-esque": "Then the Venerable Sāriputta …"}, {"key": "sn28.7:1.3", "pali": "“idhāhaṁ, āvuso, sabbaso viññāṇañcāyatanaṁ samatikkamma, natthi\nkiñcīti ākiñcaññ·āyatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of infinite consciousness,\naware that ‘there is nothing at all’, I entered and remained in the dimension of nothingness. …” …", "bodhi-esque": "“Here, friend, having completely transcended the base of infinite consciousness,\nwith the thought ‘there is nothing,’ I enter and dwell in the base of nothingness …"}, {"key": "sn28.7:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": "", "bodhi-esque": "or ‘I emerged.’”"}, {"key": "sn28.7:1.5", "pali": "Sa·t·tamaṁ.", "sujato-corrected": "", "bodhi-esque": "Seventh."}]}]}, {"id": "sn28.8", "label": "SN 28.8 · The Dimension of Neither Perception Nor Non-Perception", "children": [{"id": "sn28.8/0", "label": "Saṁyutta Nikāya 28.8", "rows": [{"key": "sn28.8:0.1", "pali": "Saṁyutta Nikāya 28.8", "sujato-corrected": "Linked Discourses 28.8", "bodhi-esque": "Connected Discourses 28.8"}, {"key": "sn28.8:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nSāriputta Chapter"}, {"key": "sn28.8:0.3", "pali": "Neva·saññānā·saññā·yatana·sutta", "sujato-corrected": "The Dimension of Neither Perception Nor Non-Perception", "bodhi-esque": "The Base of Neither-Perception-Nor-Non-Perception"}]}, {"id": "sn28.8/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.8:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.8:1.2", "pali": "Atha kho āyasmā sāri·putto …pe…", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …", "bodhi-esque": "Then the Venerable Sāriputta …"}, {"key": "sn28.8:1.3", "pali": "“idhāhaṁ, āvuso, ākiñcaññ·āyatanaṁ samatikkamma neva·saññānā·saññā·yatanaṁ upasampajja viharāmi …pe…", "sujato-corrected": "“Reverend, going totally beyond the dimension of nothingness,\nI entered and remained in the dimension of neither perception nor non-perception. …” …", "bodhi-esque": "“Here, friend, having transcended the base of nothingness,\nI enter and dwell in the base of neither-perception-nor-non-perception …"}, {"key": "sn28.8:1.4", "pali": "vuṭṭhitoti vā”ti.", "sujato-corrected": "", "bodhi-esque": "or emerged.”"}, {"key": "sn28.8:1.5", "pali": "Aṭṭhamaṁ.", "sujato-corrected": "", "bodhi-esque": "Eighth."}]}]}, {"id": "sn28.9", "label": "SN 28.9 · The Attainment of Cessation", "children": [{"id": "sn28.9/0", "label": "Saṁyutta Nikāya 28.9", "rows": [{"key": "sn28.9:0.1", "pali": "Saṁyutta Nikāya 28.9", "sujato-corrected": "Linked Discourses 28.9", "bodhi-esque": "Connected Discourses 28.9"}, {"key": "sn28.9:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nThe Chapter on Sāriputta"}, {"key": "sn28.9:0.3", "pali": "Nirodha·samā·patti·sutta", "sujato-corrected": "The Attainment of Cessation", "bodhi-esque": "The Discourse on the Attainment of Cessation"}]}, {"id": "sn28.9/1", "label": "Sāvatthi·nidānaṁ.", "rows": [{"key": "sn28.9:1.1", "pali": "Sāvatthi·nidānaṁ.", "sujato-corrected": "At Sāvatthī.", "bodhi-esque": "At Sāvatthī."}, {"key": "sn28.9:1.2", "pali": "Atha kho āyasmā sāri·putto …pe….", "sujato-corrected": "Venerable Ānanda saw Venerable Sāriputta …", "bodhi-esque": "Then the Venerable Sāriputta …"}, {"key": "sn28.9:1.3", "pali": "“Idhāhaṁ, āvuso, sabbaso neva·saññānā·saññā·yatanaṁ samatikkamma saññā·vedayita·nirodhaṁ upasampajja viharāmi.", "sujato-corrected": "“Reverend, going totally beyond the dimension of neither perception nor non-perception,\nI entered and remained in the cessation of perception and feeling.", "bodhi-esque": "“Here, friend, having completely transcended the base of neither-perception-nor-non-perception,\nI enter and dwell in the cessation of perception and feeling."}, {"key": "sn28.9:1.4", "pali": "Tassa mayhaṁ, āvuso, na evaṁ hoti:", "sujato-corrected": "But it didn’t occur to me:", "bodhi-esque": "It does not occur to me, friend:"}, {"key": "sn28.9:1.5", "pali": "‘ahaṁ saññā·vedayita·nirodhaṁ samāpajjāmī’ti vā ‘ahaṁ saññā·vedayita·nirodhaṁ\nsamāpanno’ti vā ‘ahaṁ saññā·vedayita·nirodhā vuṭṭhito’ti vā”ti.", "sujato-corrected": "‘I am entering the cessation of perception and feeling’ or ‘I have entered the cessation of\nperception and feeling’ or ‘I am emerging from the cessation of perception and feeling’.”", "bodhi-esque": "‘I am attaining the cessation of perception and feeling,’ or ‘I have attained the cessation of\nperception and feeling,’ or ‘I have emerged from the cessation of perception and feeling.’”"}, {"key": "sn28.9:1.6", "pali": "Tathā hi panāyasmato sāri·puttassa dīgha·rattaṁ ahaṅkāra·mamaṅkāra·mānā·nusayā susamūhatā.", "sujato-corrected": "“That must be because Venerable Sāriputta has long ago totally eradicated I-making,\nmine-making, and the underlying tendency to conceit.", "bodhi-esque": "For the Venerable Sāriputta has long been thoroughly uprooted from the underlying tendencies to I-making,\nmine-making, and conceit."}, {"key": "sn28.9:1.7", "pali": "Tasmā āyasmato sāri·puttassa na evaṁ hoti:", "sujato-corrected": "That’s why it didn’t occur to you:", "bodhi-esque": "Therefore it does not occur to the Venerable Sāriputta:"}, {"key": "sn28.9:1.8", "pali": "“‘ahaṁ saññā·vedayita·nirodhaṁ samāpajjāmī’ti vā ‘ahaṁ saññā·vedayita·nirodhaṁ\nsamāpanno’ti vā ‘ahaṁ saññā·vedayita·nirodhā vuṭṭhito’ti vā”ti.", "sujato-corrected": "‘I am entering the cessation of perception and feeling’ or ‘I have entered the cessation of\nperception and feeling’ or ‘I am emerging from the cessation of perception and feeling’.”", "bodhi-esque": "‘I am attaining the cessation of perception and feeling,’ or ‘I have attained the cessation of\nperception and feeling,’ or ‘I have emerged from the cessation of perception and feeling.’”"}, {"key": "sn28.9:1.9", "pali": "Navamaṁ.", "sujato-corrected": "", "bodhi-esque": "The ninth."}]}]}, {"id": "sn28.10", "label": "SN 28.10 · With Sucimukhī", "children": [{"id": "sn28.10/0", "label": "Saṁyutta Nikāya 28.10", "rows": [{"key": "sn28.10:0.1", "pali": "Saṁyutta Nikāya 28.10", "sujato-corrected": "Linked Discourses 28.10", "bodhi-esque": "Connected Discourses 28.10"}, {"key": "sn28.10:0.2", "pali": "1.\nSāri·putta·vagga", "sujato-corrected": "1.\nWith Sāriputta", "bodhi-esque": "1.\nSāriputta"}, {"key": "sn28.10:0.3", "pali": "Suci·mukhī·sutta", "sujato-corrected": "With Sucimukhī", "bodhi-esque": "Sucimukhī Sutta"}]}, {"id": "sn28.10/1", "label": "Ekaṁ samayaṁ āyasmā sāri·putto rāja·gahe viharati veḷu·vane…", "rows": [{"key": "sn28.10:1.1", "pali": "Ekaṁ samayaṁ āyasmā sāri·putto rāja·gahe viharati\nveḷu·vane kalandaka·nivāpe.", "sujato-corrected": "At one time Venerable Sāriputta was staying near Rājagaha, in the Bamboo Grove, the squirrels’ feeding ground.", "bodhi-esque": "On one occasion the Venerable Sāriputta was dwelling at Rājagaha in the Bamboo Grove, the Squirrels' Feeding Ground."}, {"key": "sn28.10:1.2", "pali": "Atha kho āyasmā sāri·putto pubbaṇha·samayaṁ ni·vāsetvā pattacīvaramādāya rāja·gahe piṇḍāya pāvisi.", "sujato-corrected": "Then he robed up in the morning and, taking his bowl and robe, entered Rājagaha for alms.", "bodhi-esque": "Then, in the morning, the Venerable Sāriputta dressed, took his bowl and robe, and entered Rājagaha for alms."}, {"key": "sn28.10:1.3", "pali": "Rāja·gahe sapadānaṁ piṇḍāya caritvā taṁ piṇḍa·pātaṁ añña·taraṁ kuṭṭa·mūlaṁ nissāya pari·bhuñjati.", "sujato-corrected": "After wandering indiscriminately for almsfood in Rājagaha, he ate his almsfood by a wall.", "bodhi-esque": "Having walked for alms in Rājagaha from house to house,\nhe consumed his almsfood while sitting at the foot of a certain wall."}, {"key": "sn28.10:1.4", "pali": "Atha kho suci·mukhī pari·b·bājikā yenāyasmā sāri·putto tenupasaṅkami;\nupasaṅkamitvā āyasmantaṁ sāri·puttaṁ etadavoca:", "sujato-corrected": "Then the wanderer Sucimukhī went up to Venerable Sāriputta and said to him:", "bodhi-esque": "Then the wandering ascetic Sucimukhī approached the Venerable Sāriputta;\nhaving approached, she said to him:"}]}, {"id": "sn28.10/2", "label": "“Kiṁ nu kho, samaṇa, adho·mukho bhuñjasī”ti?", "rows": [{"key": "sn28.10:2.1", "pali": "“Kiṁ nu kho, samaṇa, adho·mukho bhuñjasī”ti?", "sujato-corrected": "“Ascetic, do you eat facing downwards?”", "bodhi-esque": "“Do you, ascetic, eat facing downwards?”"}, {"key": "sn28.10:2.2", "pali": "“Na khvāhaṁ, bhagini, adho·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”", "bodhi-esque": "“I do not, sister, eat facing downwards.”"}, {"key": "sn28.10:2.3", "pali": "“Tena hi, samaṇa, ubbha·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing upwards?”", "bodhi-esque": "“Then, ascetic, do you eat facing upwards?”"}, {"key": "sn28.10:2.4", "pali": "“Na khvāhaṁ, bhagini, ubbha·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”", "bodhi-esque": "“I do not, sister, eat facing upwards.”"}, {"key": "sn28.10:2.5", "pali": "“Tena hi, samaṇa, disā·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing the cardinal directions?”", "bodhi-esque": "“Then, ascetic, do you eat facing a cardinal direction?”"}, {"key": "sn28.10:2.6", "pali": "“Na khvāhaṁ, bhagini, disā·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”", "bodhi-esque": "“I do not, sister, eat facing a cardinal direction.”"}, {"key": "sn28.10:2.7", "pali": "“Tena hi, samaṇa, vidisā·mukho bhuñjasī”ti?", "sujato-corrected": "“Well then, do you eat facing the intermediate directions?”", "bodhi-esque": "“Then, ascetic, do you eat facing an intermediate direction?”"}, {"key": "sn28.10:2.8", "pali": "“Na khvāhaṁ, bhagini, vidisā·mukho bhuñjāmī”ti.", "sujato-corrected": "“No, sister.”", "bodhi-esque": "“I do not, sister, eat facing an intermediate direction.”"}]}, {"id": "sn28.10/3", "label": "“‘Kiṁ nu, samaṇa, adho·mukho bhuñjasī’ti iti puṭṭho…", "rows": [{"key": "sn28.10:3.1", "pali": "“‘Kiṁ nu, samaṇa, adho·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, adho·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": "“When asked if you eat facing all these directions, you answer ‘no, sister’.", "bodhi-esque": "‘Now, recluse, do you eat facing downwards?’\nWhen asked thus, you say:\n‘No, sister, I do not eat facing downwards.’"}, {"key": "sn28.10:3.2", "pali": "‘Tena hi, samaṇa, ubbha·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, ubbha·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": "", "bodhi-esque": "‘Then, recluse, do you eat facing upwards?’\nWhen asked thus, you say:\n‘No, sister, I do not eat facing upwards.’"}, {"key": "sn28.10:3.3", "pali": "‘Tena hi, samaṇa, disā·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, disā·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": "", "bodhi-esque": "‘Then, recluse, do you eat facing the cardinal directions?’\nWhen asked thus, you say:\n‘No, sister, I do not eat facing the cardinal directions.’"}, {"key": "sn28.10:3.4", "pali": "‘Tena hi, samaṇa, vidisā·mukho bhuñjasī’ti iti\npuṭṭho sa·māno ‘na khvāhaṁ, bhagini, vidisā·mukho bhuñjāmī’ti vadesi.", "sujato-corrected": "", "bodhi-esque": "‘Then, recluse, do you eat facing the intermediate directions?’\nWhen asked thus, you say:\n‘No, sister, I do not eat facing the intermediate directions.’"}]}, {"id": "sn28.10/4", "label": "Kathañcarahi, samaṇa, bhuñjasī”ti?", "rows": [{"key": "sn28.10:4.1", "pali": "Kathañcarahi, samaṇa, bhuñjasī”ti?", "sujato-corrected": "How then do you eat, ascetic?”", "bodhi-esque": "How then, recluse, do you eat?”"}, {"key": "sn28.10:4.2", "pali": "“Ye hi keci, bhagini, samaṇa·brāhmaṇā vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘adho·mukhā bhuñjantī’ti.", "sujato-corrected": "“Sister, those ascetics and brahmins who earn a living by geomancy—a low lore,\na wrong livelihood—are said to eat facing downwards.", "bodhi-esque": "“Sister, whatever recluses and brahmins earn their living by a wrong\nlivelihood based on the low art of fortune-telling from objects—these,\nsister, are called ‘recluses and brahmins who eat facing downwards.’"}, {"key": "sn28.10:4.3", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā nakkhatta·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘ubbha·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by astrology—a low lore,\na wrong livelihood—are said to eat facing upwards.", "bodhi-esque": "Whatever recluses and brahmins earn their living by a wrong\nlivelihood based on the low art of fortune-telling from stars—these,\nsister, are called ‘recluses and brahmins who eat facing upwards.’"}, {"key": "sn28.10:4.4", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā dūteyya·pahiṇa·gamanā·nuyogāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘disā·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by running errands and\nmessages—a wrong livelihood—are said to eat facing the cardinal directions.", "bodhi-esque": "Whatever recluses and brahmins earn their living by a wrong livelihood based on running messages and errands—these,\nsister, are called ‘recluses and brahmins who eat facing the cardinal directions.’"}, {"key": "sn28.10:4.5", "pali": "Ye hi keci, bhagini, samaṇa·brāhmaṇā aṅga·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappenti,\nime vuccanti, bhagini, samaṇa·brāhmaṇā ‘vidisā·mukhā bhuñjantī’ti.", "sujato-corrected": "Those ascetics and brahmins who earn a living by limb-reading—a low lore,\na wrong livelihood—are said to eat facing the intermediate directions.", "bodhi-esque": "Whatever recluses and brahmins earn their living by a wrong livelihood based on the low art of physiognomy—these,\nsister, are called ‘recluses and brahmins who eat facing the intermediate directions.’"}]}, {"id": "sn28.10/5", "label": "So khvāhaṁ, bhagini, na vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ…", "rows": [{"key": "sn28.10:5.1", "pali": "So khvāhaṁ, bhagini, na vatthu·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi,\nna nakkhatta·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi,\nna dūteyya·pahiṇa·gamanā·nuyogāya micchā·jīvena jīvikaṁ kappemi,\nna aṅga·vijjā·tiracchāna·vijjāya micchā·jīvena jīvikaṁ kappemi.", "sujato-corrected": "I don’t earn a living by any of these means.", "bodhi-esque": "But I, sister, do not earn my living by a wrong livelihood based on the low art of fortune-telling from objects,\nnor by a wrong livelihood based on the low art of fortune-telling from stars,\nnor by a wrong livelihood based on running messages and errands,\nnor by a wrong livelihood based on the low art of physiognomy."}, {"key": "sn28.10:5.2", "pali": "Dhammena bhikkhaṁ pari·yesāmi;", "sujato-corrected": "I seek alms in a principled manner,", "bodhi-esque": "I seek almsfood righteously;"}, {"key": "sn28.10:5.3", "pali": "dhammena bhikkhaṁ pari·yesitvā bhuñjāmī”ti.", "sujato-corrected": "and I eat it in a principled manner.”", "bodhi-esque": "having sought almsfood righteously, I eat it.”"}]}, {"id": "sn28.10/6", "label": "Atha kho suci·mukhī pari·b·bājikā rāja·gahe rath·iyāya rath·iyaṁ,…", "rows": [{"key": "sn28.10:6.1", "pali": "Atha kho suci·mukhī pari·b·bājikā rāja·gahe rath·iyāya rath·iyaṁ, siṅghāṭakena siṅghāṭakaṁ upasaṅkamitvā evamārocesi:", "sujato-corrected": "Then Sucimukhī the wanderer went around Rājagaha from street to street and from square to square, and announced:", "bodhi-esque": "Then the female wanderer Sucīmukhī,\ngoing from street to street and from crossroads to crossroads in Rājagaha, announced:"}, {"key": "sn28.10:6.2", "pali": "“dhammikaṁ samaṇā sakya·puttiyā āhāraṁ āhārenti;", "sujato-corrected": "“The ascetics who follow the Sakyan eat food in a principled manner!", "bodhi-esque": "“The recluses, the sons of the Sakyan, consume food righteously;"}, {"key": "sn28.10:6.3", "pali": "an·a·vajjaṁ samaṇā sakya·puttiyā āhāraṁ āhārenti.", "sujato-corrected": "The ascetics who follow the Sakyan eat food blamelessly!", "bodhi-esque": "the recluses, the sons of the Sakyan, consume blameless food.”"}, {"key": "sn28.10:6.4", "pali": "Detha samaṇānaṁ sakya·putt·iyānaṁ piṇḍan”ti.", "sujato-corrected": "Give almsfood to the ascetics who follow the Sakyan!”", "bodhi-esque": "Give alms to the ascetics, the sons of the Sakyans."}, {"key": "sn28.10:6.5", "pali": "Dasamaṁ.", "sujato-corrected": "", "bodhi-esque": "The tenth."}, {"key": "sn28.10:6.6", "pali": "Sāri·putta·vaggo paṭhamo.", "sujato-corrected": "", "bodhi-esque": "The first chapter on Sariputta."}]}, {"id": "sn28.10/7", "label": "Tass·uddānaṁ", "rows": [{"key": "sn28.10:7.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "bodhi-esque": "Its summary:"}, {"key": "sn28.10:7.1", "pali": "Viveka·jaṁ a·vitakkaṁ,", "sujato-corrected": "", "bodhi-esque": "Born of seclusion, without thought,"}, {"key": "sn28.10:7.2", "pali": "pīti upekkhā catu·t·thakaṁ;", "sujato-corrected": "", "bodhi-esque": "rapture, equanimity, the fourth;"}, {"key": "sn28.10:7.3", "pali": "Ākāsañceva viññāṇaṁ,", "sujato-corrected": "", "bodhi-esque": "And the base of infinite space, the base of infinite consciousness,"}, {"key": "sn28.10:7.4", "pali": "ākiñcaṁ neva·saññinā;", "sujato-corrected": "", "bodhi-esque": "the base of nothingness, and neither-perception-nor-non-perception;"}, {"key": "sn28.10:7.5", "pali": "Nirodho navamo vutto,", "sujato-corrected": "", "bodhi-esque": "Cessation is said to be the ninth,"}, {"key": "sn28.10:7.6", "pali": "dasamaṁ sūci·mukhī cāti.", "sujato-corrected": "", "bodhi-esque": "the tenth is Sucimukhi."}, {"key": "sn28.10:7.7", "pali": "Sāri·putta·saṁyuttaṁ sama·t·taṁ.", "sujato-corrected": "The Linked Discourses on Sāriputta are complete.", "bodhi-esque": "The connected with Sariputta is finished."}]}]}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": null}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": null}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "sn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "SN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

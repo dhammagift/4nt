@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 47", "rows": [{"key": "mn47:0.1", "pali": "Majjhima Nikāya 47", "bodhi": "", "sujato-corrected": "Middle Discourses 47", "pts": ""}, {"key": "mn47:0.2", "pali": "Vīmaṁsaka·sutta", "bodhi": "", "sujato-corrected": "The Inquirer", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn47:1.1", "pali": "Evaṁ me sutaṁ—", "bodhi": "THUS HAVE I HEARD.", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:"}, {"key": "mn47:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "bodhi": "On one occasion the Blessed One was living at Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s Park.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthi in the Jeta Grove in Anāthapiṇḍika's monastery."}, {"key": "mn47:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "bodhi": "There he addressed the bhikkhus thus:", "sujato-corrected": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:"}, {"key": "mn47:1.4", "pali": "“bhikkhavo”ti.", "bodhi": "“Bhikkhus.”—“Venerable sir,” they replied.", "sujato-corrected": "“Mendicants!”", "pts": "\"Monks.\""}, {"key": "mn47:1.5", "pali": "“Bhadante”ti te bhikkhū\nbhagavato pacc·assosuṁ.", "bodhi": "", "sujato-corrected": "“Venerable sir,” they replied.", "pts": "\"Revered one,\" these monks answered the Lord in assent."}, {"key": "mn47:1.6", "pali": "Bhagavā etadavoca:", "bodhi": "The Blessed One said this:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "2", "label": "“vīmaṁsakena, bhikkhave, bhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena tathā·gate…", "rows": [{"key": "mn47:2.1", "pali": "“vīmaṁsakena, bhikkhave,\nbhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena tathā·gate\nsamannesanā kātabbā ‘sammā·sambuddho vā no vā’ iti viññāṇāyā”ti.", "bodhi": "“Bhikkhus, a bhikkhu who is an inquirer, not knowing how to gauge another’s mind,\nshould make an investigation of the Tathāgata in order to find out whether or not he is fully enlightened.”", "sujato-corrected": "“Mendicants, a mendicant who is an inquirer, unable to encompass another’s mind,\nshould scrutinize the Realized One to understand whether he is a fully awakened Buddha or not.”", "pts": "\"Monks, an inquiring monk, learning the range of another's mind,\nshould make a study of the Tathāgata so as to distinguish whether he is a fully Self-awakened One or not.\""}]}, {"id": "3", "label": "“Bhagavaṁ·mūlakā no, bhante, dhammā, bhagavaṁ·nettikā bhagavaṁ·paṭi·saraṇā; sādhu…", "rows": [{"key": "mn47:3.1", "pali": "“Bhagavaṁ·mūlakā no, bhante,\ndhammā, bhagavaṁ·nettikā bhagavaṁ·paṭi·saraṇā;\nsādhu vata, bhante, bhagavantaṁ·yeva paṭi·bhātu etassa bhāsitassa attho;\nbhagavato sutvā bhikkhū dhāressantī”ti.", "bodhi": "“Venerable sir, our teachings are rooted in the Blessed One,\nguided by the Blessed One, have the Blessed One as their resort.\nIt would be good if the Blessed One would explain the meaning of these words.\nHaving heard it from the Blessed One, the bhikkhus will remember it.”", "sujato-corrected": "“Our teachings are rooted in the Buddha.\nHe is our guide and our refuge.\nSir, may the Buddha himself please clarify the meaning of this.\nThe mendicants will listen and remember it.”", "pts": "\"For us, Lord, things are rooted in the Lord, have the Lord for their conduit, the Lord for their arbiter.\nWell for us, Lord, if the Lord would reveal the meaning of this saying;\nhaving heard the Lord, the monks will remember.\""}, {"key": "mn47:3.2", "pali": "“Tena hi, bhikkhave, suṇātha,\nsādhukaṁ manasi karotha, bhāsi·s·sāmī”ti.", "bodhi": "“Then listen, bhikkhus, and attend closely to what I shall say.”", "sujato-corrected": "“Well then, mendicants, listen and apply your mind well, I will speak.”", "pts": "\"Very well, monks;\nlisten, attend carefully and I will speak.\""}, {"key": "mn47:3.3", "pali": "“Evaṁ, bhante”ti kho te bhikkhū\nbhagavato pacc·assosuṁ.", "bodhi": "“Yes, venerable sir,” the bhikkhus replied.", "sujato-corrected": "“Yes, sir,” they replied.", "pts": "\"Yes, Lord,\" these monks answered the Lord in assent."}, {"key": "mn47:3.4", "pali": "Bhagavā etadavoca:", "bodhi": "The Blessed One said this:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "4", "label": "“Vīmaṁsakena, bhikkhave, bhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena dvīsu…", "rows": [{"key": "mn47:4.1", "pali": "“Vīmaṁsakena, bhikkhave,\nbhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena dvīsu dhammesu tathā·gato samannesitabbo cakkhu·sota·viññeyyesu dhammesu:", "bodhi": "“Bhikkhus, a bhikkhu who is an inquirer, not knowing how to gauge another’s mind,\nshould investigate the Tathāgata with respect to two kinds of states,\nstates cognizable through the eye and through the ear thus:", "sujato-corrected": "“Mendicants, a mendicant who is an inquirer, unable to encompass another’s mind,\nshould scrutinize the Realized One for two things—things that can be seen and heard:", "pts": "\"Monks, an inquiring monk, learning the range of another's mind,\nshould make a study of the Tathāgata in regard to two things:\nthings cognisable through the eye and through the ear, thinking:"}, {"key": "mn47:4.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any defiled states cognizable through\nthe eye or through the ear?ʹ When he investigates him, he comes to know:", "sujato-corrected": "‘Can anything corrupt be seen or heard in the Realized One or not?’", "pts": "'Do those that are impure states cognisable through the eye and the ear exist in a Tathāgata or not?'"}, {"key": "mn47:4.3", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:"}, {"key": "mn47:4.4", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No defiled states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "nothing corrupt can be seen or heard in the Realized One.", "pts": "'Those impure states which are cognisable through the eye and the ear do not exist in a Tathāgata.'"}]}, {"id": "5", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:5.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:"}, {"key": "mn47:5.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Those impure states which are cognisable through the eye and the\near do not exist in a Tathāgata,' he then studies further, thinking:"}, {"key": "mn47:5.3", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any mixed states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything mixed be seen or heard in the Realized One or not?’", "pts": "'Do those that are mixed states cognisable through the eye and the ear exist in a Tathāgata or not?'"}, {"key": "mn47:5.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:"}, {"key": "mn47:5.5", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No mixed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "nothing mixed can be seen or heard in the Realized One.", "pts": "'Those mixed states cognisable through the eye and the ear do not exist in a Tathāgata.'"}]}, {"id": "6", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:6.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:"}, {"key": "mn47:6.2", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Those mixed states cognisable through the eye and the ear do\nnot exist in a Tathāgata,' he then studies further, thinking:"}, {"key": "mn47:6.3", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not cleansed states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything clean be seen or heard in the Realized One or not?’", "pts": "'Do those that are absolutely pure states cognisable through the eye and the ear exist in a Tathāgata or not?'"}, {"key": "mn47:6.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:"}, {"key": "mn47:6.5", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nte tathāgat·assā’ti.", "bodhi": "‘Cleansed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "clean things can be seen and heard in the Realized One.", "pts": "'Those which are absolutely pure states cognisable through the eye and the ear exist in a Tathāgata.'"}]}, {"id": "7", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:7.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:"}, {"key": "mn47:7.2", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nte tathāgat·assā’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'These absolutely pure states which are cognisable through the eye and\nthe ear exist in the Tathāgata,' he then studies further, thinking:"}, {"key": "mn47:7.3", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ, udāhu ittara·samāpanno’ti?", "bodhi": "‘Has this venerable one attained this wholesome state over a long time or did he attain it recently?’", "sujato-corrected": "‘Did the venerable attain this skillful state a long time ago, or just recently?’", "pts": "'Has this venerable one been possessed of this skilled state for a long time or only for a short time?'"}, {"key": "mn47:7.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:"}, {"key": "mn47:7.5", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ, nāya·māyasmā ittara·samāpanno’ti.", "bodhi": "‘This venerable one has attained this wholesome state over a long time;\nhe did not attain it only recently.’", "sujato-corrected": "the venerable attained this skillful state a long time ago, not just recently.", "pts": "'This venerable one has been possessed of this skilled state for a long time,\nthis venerable one has not been possessed of it for only a short time.'"}]}, {"id": "8", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:8.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:"}, {"key": "mn47:8.2", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ,\nnāya·māyasmā ittara·samāpanno’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'This venerable one has been possessed of this skilled state for a long time,\nthis venerable one has not been possessed of it for only a short time,' he then studies further:"}, {"key": "mn47:8.3", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, saṁvijjant·assa idhekacce ādīnavā’ti?", "bodhi": "‘Has this venerable one acquired renown and attained fame,\nso that the dangers [connected with renown and fame] are found in him?’", "sujato-corrected": "‘Are certain dangers found in that venerable mendicant who has achieved fame and renown?’", "pts": "'Do there exist any perils for that venerable monk who has attained to fame and won renown?'"}, {"key": "mn47:8.4", "pali": "Na tāva, bhikkhave, bhikkhuno idhekacce ādīnavā saṁvijjanti\nyāva na ñatta·j·jhāpanno hoti yasappatto.", "bodhi": "For, bhikkhus, as long as a bhikkhu has not acquired renown and attained fame,\nthe dangers [connected with renown and fame] are not found in him;", "sujato-corrected": "For, mendicants, so long as a mendicant has not achieved fame and renown, certain dangers are not found in them.", "pts": "Monks, there are some perils that do not exist here for a monk until he has attained to fame and won renown."}, {"key": "mn47:8.5", "pali": "Yato ca kho, bhikkhave, bhikkhu ñatta·j·jhāpanno hoti\nyasappatto, athassa idhekacce ādīnavā saṁvijjanti.", "bodhi": "but when he has acquired renown and attained fame,", "sujato-corrected": "But when they achieve fame and renown, those dangers appear.", "pts": "It is, monks, after a monk has attained to fame and won renown that some perils exist for him here."}, {"key": "mn47:8.6", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "those dangers are found in him.\nWhen he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:"}, {"key": "mn47:8.7", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, nāssa\nidhekacce ādīnavā saṁvijjantī’ti.", "bodhi": "‘This venerable one has acquired renown and attained fame,\nbut the dangers [connected with renown and fame] are not found in him.’", "sujato-corrected": "those dangers are not found in that venerable mendicant who has achieved fame and renown.", "pts": "'Although the venerable monk has attained to fame and won renown, some perils do not exist for him here.'"}]}, {"id": "9", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:9.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:"}, {"key": "mn47:9.2", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, nāssa\nidhekacce ādīnavā saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Although this venerable monk has attained to fame and won renown,\nsome perils do not exist for him here,' he then studies further:"}, {"key": "mn47:9.3", "pali": "‘a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "‘Is this venerable one restrained without fear, not restrained by fear,", "sujato-corrected": "‘Is this venerable securely stilled or insecurely stilled?", "pts": "'Does this venerable one refrain out of fearlessness, does not he refrain out of fear?"}, {"key": "mn47:9.4", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti?", "bodhi": "and does he avoid indulging in sensual pleasures because he is without lust through the destruction of lust?’", "sujato-corrected": "Is the reason they don’t indulge in sensual pleasures that they’re free of greed because greed has ended?’", "pts": "Is it because, through the destruction of attachment, that,\nbeing without attachment, he does not follow pleasures of the senses?'"}, {"key": "mn47:9.5", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "As he is studying this he knows thus:"}, {"key": "mn47:9.6", "pali": "‘a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "‘This venerable one is restrained without fear, not restrained by fear,", "sujato-corrected": "that venerable is securely stilled, not insecurely stilled.", "pts": "'This venerable one refrains out of fearlessness, this venerable one refrains not out of fear;"}, {"key": "mn47:9.7", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti.", "bodhi": "and he avoids indulging in sensual pleasure because he is without lust through the destruction of lust.’", "sujato-corrected": "The reason they don’t indulge in sensual pleasures is that they’re free of greed because greed has ended.", "pts": "he does not follow pleasures of the senses because, through the destruction of attachment, he is without attachment.'"}]}, {"id": "10", "label": "Tañce, bhikkhave, bhikkhuṁ pare evaṁ puccheyyuṁ:", "rows": [{"key": "mn47:10.1", "pali": "Tañce, bhikkhave, bhikkhuṁ\npare evaṁ puccheyyuṁ:", "bodhi": "“Now, bhikkhus, if others should ask that bhikkhu thus:", "sujato-corrected": "If others should ask that mendicant,", "pts": "If, monks, others should question this monk thus:"}, {"key": "mn47:10.2", "pali": "‘ke panāyasmato ākārā, ke anv·ayā, yenāyasmā evaṁ vadesi—", "bodhi": "‘What are the venerable one’s reasons and what is his evidence whereby he says:", "sujato-corrected": "‘But what reason and evidence does the venerable have for saying this?’", "pts": "'What are the venerable one's facts, what his evidence by reason of which the venerable one speaks thus:"}, {"key": "mn47:10.3", "pali": "a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "“That venerable one is restrained without fear, not restrained by fear,", "sujato-corrected": "", "pts": "'This venerable one refrains out of fearlessness, this venerable one refrains not out of fear;"}, {"key": "mn47:10.4", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti.", "bodhi": "and he avoids indulging in sensual pleasures because he is without lust through the destruction of lust”?’—", "sujato-corrected": "", "pts": "he does not follow pleasures of the senses because, through the destruction of attachment, he is without attachment'?'"}, {"key": "mn47:10.5", "pali": "Sammā by·ākara·māno, bhikkhave, bhikkhu evaṁ by·ākareyya:", "bodhi": "answering rightly, that bhikkhu would answer thus:", "sujato-corrected": "Answering rightly, the mendicant should say,", "pts": "Monks, a monk answering properly would answer thus:"}, {"key": "mn47:10.6", "pali": "‘tathā hi pana ayam·āyasmā saṅghe vā vi·haranto eko vā vi·haranto, ye\nca tattha sugatā ye ca tattha duggatā,\nye ca tattha gaṇamanusāsanti,\nye ca idhekacce āmisesu sandissanti,\nye ca idhekacce āmisena an·upalittā, nāya·māyasmā taṁ tena avajānāti.", "bodhi": "‘Whether that venerable one dwells in the Sangha or alone,\nwhile some there are well behaved and some are ill behaved and some there teach a group,\nwhile some here are seen concerned about material things and some are unsullied by material things,", "sujato-corrected": "‘Because, whether that venerable is staying in a community or alone,\nsome people there are in a good state or a sorry state,\nsome instruct a group, and some are seen among pleasures of the flesh while others remain unsullied.\nYet that venerable doesn’t look down on them for that.", "pts": "'This venerable one, whether staying in an Order or staying alone,\nwhether those near him are progressing well, whether they are progressing badly, whether they lead a group,\nwhether they are engaged with any material things here or whether they are unstained by any material things here –\nthis venerable one does not despise them because of this."}, {"key": "mn47:10.7", "pali": "Sammukhā kho pana metaṁ bhagavato sutaṁ sammukhā paṭi·g·gahitaṁ—", "bodhi": "still that venerable one does not despise anyone because of that.\nAnd I have heard and learned this from the Blessed One’s own lips:", "sujato-corrected": "Also, I have heard and learned this in the presence of the Buddha:", "pts": "This have I heard face to face with the Lord, this have I learnt face to face with him:"}, {"key": "mn47:10.8", "pali": "abhayūparatohamasmi, nāhamasmi bhayū·parato, vīta·rāgattā kāme\nna sevāmi khayā rāgassā’ti.", "bodhi": "“I am restrained without fear, not restrained by fear,\nand I avoid indulging in sensual pleasures because I am without lust through the destruction of lust.”’", "sujato-corrected": "“I am securely stilled, not insecurely stilled.\nThe reason I don’t indulge in sensual pleasures is that I’m free of greed because greed has ended.”’", "pts": "'I am restrained out of fearlessness, I am not restrained out of fear;\nwithout attachment because of the destruction of attachment, I do not follow pleasures of the senses.'"}]}, {"id": "11", "label": "Tatra, bhikkhave, tathā·gatova uttariṁ paṭi·pucchitabbo:", "rows": [{"key": "mn47:11.1", "pali": "Tatra, bhikkhave, tathā·gatova uttariṁ paṭi·pucchitabbo:", "bodhi": "“The Tathāgata, bhikkhus, should be questioned further about that thus:", "sujato-corrected": "Next, they should ask the Realized One himself about this,", "pts": "Monks, the Tathāgata should himself be further questioned hereon:"}, {"key": "mn47:11.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any defiled states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything corrupt be seen or heard in the Realized One or not?’", "pts": "'Do those impure states cognisable through the eye and through the ear exist in the Tathāgata or not?'"}, {"key": "mn47:11.3", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "The Tathāgata would answer thus:", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:"}, {"key": "mn47:11.4", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No defiled states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "‘Nothing corrupt can be seen or heard in the Realized One.’", "pts": "'Those impure states cognisable through the eye and through the ear do not exist in a Tathāgata.'"}]}, {"id": "12", "label": "‘Ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti vā te…", "rows": [{"key": "mn47:12.1", "pali": "‘Ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "“If asked,\n‘Are there found in the Tathāgata or not any mixed states cognizable\nthrough the eye or through the ear?’ the Tathāgata would answer thus:", "sujato-corrected": "‘Can anything mixed be seen or heard in the Realized One or not?’", "pts": "'Do those mixed states cognisable through the eye and through the ear exist in a Tathāgata or not?'"}, {"key": "mn47:12.2", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:"}, {"key": "mn47:12.3", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No mixed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "‘Nothing mixed can be seen or heard in the Realized One.’", "pts": "'Those mixed states cognisable through the eye and through the ear do not exist in a Tathāgata.'"}]}, {"id": "13", "label": "‘Ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti vā te…", "rows": [{"key": "mn47:13.1", "pali": "‘Ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "13 . ʺIf asked,\n‘Are there found in the Tathāgata or not cleansed states cognizable\nthrough the eye or through the ear?’ the Tathāgata would answer thus:", "sujato-corrected": "‘Can anything clean be seen or heard in the Realized One or not?’", "pts": "'Do those absolutely pure states cognisable through the eye and through the ear exist in a Tathāgata or not?'"}, {"key": "mn47:13.2", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:"}, {"key": "mn47:13.3", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti te tathā·gatassa;", "bodhi": "‘Cleansed states cognizable through the eye or through the ear are found in the Tathāgata.", "sujato-corrected": "‘Clean things can be seen and heard in the Realized One.", "pts": "'Those absolutely pure states cognisable through the eye and through the ear exist in a Tathāgata."}, {"key": "mn47:13.4", "pali": "etaṁ pathohamasmi, etaṁ\ngocaro, no ca tena tammayo’ti.", "bodhi": "They are my pathway and my domain, yet I do not identify with them.’", "sujato-corrected": "I am the scope and the range of that, but I am not determined by that.’", "pts": "This is my path, this is my pasture and no one is like (me) in this.'"}]}, {"id": "14", "label": "Evaṁ·vādiṁ kho, bhikkhave, satthāraṁ arahati sāvako upasaṅkamituṁ…", "rows": [{"key": "mn47:14.1", "pali": "Evaṁ·vādiṁ kho, bhikkhave, satthāraṁ arahati\nsāvako upasaṅkamituṁ dhamma·s·savanāya.", "bodhi": "“Bhikkhus, a disciple should approach the Teacher who speaks thus in order to hear the Dhamma.", "sujato-corrected": "A disciple ought to approach a teacher who has such a doctrine in order to listen to the teaching.", "pts": "Monks, a disciple should draw near a teacher who speaks like this so as to hear Dhamma."}, {"key": "mn47:14.2", "pali": "Tassa satthā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ.", "bodhi": "The Teacher teaches him the Dhamma with its higher and higher levels,\nwith its more and more sublime levels, with its dark and bright counterparts.", "sujato-corrected": "The teacher explains Dhamma with its higher and higher stages,\nwith its better and better stages, with its dark and bright sides.", "pts": "From further to further, from excellence to excellence, the Teacher teaches him Dhamma,\nwhat is dark and what is bright, with their counterparts."}, {"key": "mn47:14.3", "pali": "Yathā yathā kho, bhikkhave,\nbhikkhuno satthā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ tathā tathā\nso tasmiṁ dhamme abhi·ñ·ñāya idhekaccaṁ dhammaṁ dhammesu niṭṭhaṁ gacchati,\nsatthari pasīdati:", "bodhi": "As the Teacher teaches the Dhamma to a bhikkhu in this way,\nthrough direct knowledge of a certain teaching here in that Dhamma,\nthe bhikkhu comes to a conclusion about the teachings.\nHe places confidence in the Teacher thus:", "sujato-corrected": "When they directly know a certain principle of those teachings,\nin accordance with how they were taught, the mendicant comes to a conclusion about the teachings.\nThey have confidence in the teacher:", "pts": "As, monks, the Teacher gradually teaches Dhamma to the monk, from further to further, from excellence to excellence,\nwhat is dark and what is bright with their counterparts,\nso does he gradually by his superknowledge of point after point of Dhamma come to fulfilment in Dhamma.\nHe has confidence in the Teacher, that:"}, {"key": "mn47:14.4", "pali": "‘sammā·sambuddho bhagavā, svākkhāto bhagavatā dhammo, suppaṭipanno saṅgho’ti.", "bodhi": "‘The Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,\nthe Sangha is practising the good way.’", "sujato-corrected": "‘The Blessed One is a fully awakened Buddha!\nThe teaching is well explained!\nThe Saṅgha is practicing well!’", "pts": "'The Lord is a fully Self-awakened One, well taught is Dhamma by the Lord, the Order fares along well.'"}]}, {"id": "15", "label": "Tañce, bhikkhave, bhikkhuṁ pare evaṁ puccheyyuṁ:", "rows": [{"key": "mn47:15.1", "pali": "Tañce, bhikkhave, bhikkhuṁ\npare evaṁ puccheyyuṁ:", "bodhi": "“Now if others should ask that bhikkhu thus:", "sujato-corrected": "If others should ask that mendicant,", "pts": "Monks, if others should ask that monk:"}, {"key": "mn47:15.2", "pali": "‘ke panāyasmato ākārā, ke anv·ayā, yenāyasmā evaṁ vadesi—", "bodhi": "‘What are the venerable one’s reasons and what is his evidence whereby he says,\n“The Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,", "sujato-corrected": "‘But what reason and evidence does the venerable have for saying this?’", "pts": "'But what are the venerable one's facts, what the evidence by reason of which he speaks thus:"}, {"key": "mn47:15.3", "pali": "sammā·sambuddho bhagavā, svākkhāto bhagavatā dhammo, suppaṭipanno saṅgho’ti?", "bodhi": "", "sujato-corrected": "", "pts": "'The Lord is a fully Self-awakened one, well taught is Dhamma by the Lord, the Order fares along well?'"}, {"key": "mn47:15.4", "pali": "Sammā by·ākara·māno, bhikkhave, bhikkhu evaṁ by·ākareyya:", "bodhi": "the Sangha is practising the good way”?’—answering rightly, that bhikkhu would answer thus:", "sujato-corrected": "Answering rightly, the mendicant should say,", "pts": "that monk, monks, answering rightly would answer thus:"}, {"key": "mn47:15.5", "pali": "‘idhāhaṁ, āvuso, yena bhagavā tenupasaṅkamiṁ\ndhamma·s·savanāya.", "bodhi": "‘Here, friends, I approached the Blessed One in order to hear the Dhamma.", "sujato-corrected": "‘Reverends, I approached the Buddha to listen to the teaching.", "pts": "'I, your reverences, drew near the Lord so as to hear Dhamma."}, {"key": "mn47:15.6", "pali": "Tassa me bhagavā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ.", "bodhi": "The Blessed One taught me the Dhamma with its higher and higher levels,\nwith its more and more sublime levels, with its dark and bright counterparts.", "sujato-corrected": "He explained Dhamma with its higher and higher stages,\nwith its better and better stages, with its dark and bright sides.", "pts": "The Lord taught me Dhamma from further to further, from excellence to excellence,\nwhat is dark and what is bright with their counterparts."}, {"key": "mn47:15.7", "pali": "Yathā yathā me, āvuso,\nbhagavā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ tathā tathāhaṁ\ntasmiṁ dhamme abhi·ñ·ñāya idhekaccaṁ dhammaṁ dhammesu niṭṭhamagamaṁ, satthari pasīdiṁ—", "bodhi": "As the Blessed One taught the Dhamma to me in this way,\nthrough direct knowledge of a certain teaching here in that Dhamma, I came to a conclusion about the teachings.\nI placed confidence in the Teacher thus:", "sujato-corrected": "When I directly knew a certain principle of those teachings,\nin accordance with how I was taught, I came to a conclusion about the teachings.\nI had confidence in the Teacher:", "pts": "As the Lord gradually taught me Dhamma from further to further,\nfrom excellence to excellence, what is dark and what is bright with their counterparts,\nso did I gradually by my superknowledge of point after point in Dhamma come to fulfilment in Dhamma.\nI have confidence in the Teacher, that:"}, {"key": "mn47:15.8", "pali": "sammā·sambuddho bhagavā, svākkhāto bhagavatā, dhammo, suppaṭipanno saṅgho’ti.", "bodhi": "ʺThe Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,\nthe Sangha is Dhamma is well proclaimed by the Blessed One, the Sangha is practising the good way.”’", "sujato-corrected": "“The Blessed One is a fully awakened Buddha!\nThe teaching is well explained!\nThe Saṅgha is practicing well!”’", "pts": "'The Lord is a fully Self-awakened One, well taught is Dhamma by the Lord, the Order fares along well.'"}]}, {"id": "16", "label": "Yassa kassaci, bhikkhave, imehi ākārehi imehi padehi…", "rows": [{"key": "mn47:16.1", "pali": "Yassa kassaci, bhikkhave,\nimehi ākārehi imehi padehi imehi by·añjanehi tathā·gate saddhā niviṭṭhā hoti\nmūla·jātā patiṭṭhitā,\nayaṁ vuccati, bhikkhave, ākāravatī saddhā dassana·mūlikā;", "bodhi": "“Bhikkhus, when anyone’s faith has been planted, rooted, and established in the Tathāgata through these reasons,\nterms, and phrases, his faith is said to be supported by reasons, rooted in vision,", "sujato-corrected": "When someone’s faith is settled, rooted, and planted in the Realized One in this manner,\nwith these words and phrases, it’s said to be grounded faith that’s based on evidence.", "pts": "\"Monks, in anyone in whom faith in the Teacher is established, rooted, supported by these methods,\nby these sentences, by these words, that faith is called reasoned, based on vision, strong;"}, {"key": "mn47:16.2", "pali": "daḷhā asaṁhāriyā samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ.", "bodhi": "firm;\nit is invincible by any recluse or brahmin or god or Māra or Brahmā or by anyone in the world.", "sujato-corrected": "It is strong, and cannot be shifted by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "pts": "it is indestructible by a recluse or brahman or deva or Māra or a Brahmā or by anyone in the world."}, {"key": "mn47:16.3", "pali": "Evaṁ kho, bhikkhave, tathā·gate dhamma·samannesanā hoti.", "bodhi": "That is how, bhikkhus, there is an investigation of the Tathāgata in accordance with the Dhamma,", "sujato-corrected": "That is how there is legitimate scrutiny of the Realized One,", "pts": "Thus, monks, does there come to be study of the Tathāgata's Dhamma,"}, {"key": "mn47:16.4", "pali": "Evañca pana tathā·gato dhammatā·susam·anniṭṭho hotī”ti.", "bodhi": "and that is how the Tathāgata is well investigated in accordance with the Dhamma.”", "sujato-corrected": "and that is how the Realized One is legitimately well-scrutinized.”", "pts": "and thus does the Tathāgata come to be well studied in the proper manner.\""}, {"key": "mn47:16.5", "pali": "Idam·avoca bhagavā.", "bodhi": "That is what the Blessed One said.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord."}, {"key": "mn47:16.6", "pali": "Atta·manā te bhikkhū\nbhagavato bhāsitaṁ abhi·nandunti.", "bodhi": "The bhikkhus were satisfied and delighted in the Blessed One’s words.", "sujato-corrected": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said."}, {"key": "mn47:16.7", "pali": "Vīmaṁsaka·suttaṁ niṭṭhitaṁ sa·t·tamaṁ.", "bodhi": "", "sujato-corrected": "", "pts": ""}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 47", "rows": [{"key": "mn47:0.1", "pali": "Majjhima Nikāya 47", "bodhi": "", "sujato-corrected": "Middle Discourses 47", "pts": "", "bodhi-esque": "Majjhima Nikāya 47"}, {"key": "mn47:0.2", "pali": "Vīmaṁsaka·sutta", "bodhi": "", "sujato-corrected": "The Inquirer", "pts": "", "bodhi-esque": "The Inquirer Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn47:1.1", "pali": "Evaṁ me sutaṁ—", "bodhi": "THUS HAVE I HEARD.", "sujato-corrected": "So I have heard.", "pts": "Thus have I heard:", "bodhi-esque": "Thus have I heard—"}, {"key": "mn47:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "bodhi": "On one occasion the Blessed One was living at Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s Park.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthi in the Jeta Grove in Anāthapiṇḍika's monastery.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta's Grove, Anāthapiṇḍika's park."}, {"key": "mn47:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "bodhi": "There he addressed the bhikkhus thus:", "sujato-corrected": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:", "bodhi-esque": "There the Blessed One addressed the bhikkhus:"}, {"key": "mn47:1.4", "pali": "“bhikkhavo”ti.", "bodhi": "“Bhikkhus.”—“Venerable sir,” they replied.", "sujato-corrected": "“Mendicants!”", "pts": "\"Monks.\"", "bodhi-esque": "“Bhikkhus,”"}, {"key": "mn47:1.5", "pali": "“Bhadante”ti te bhikkhū\nbhagavato pacc·assosuṁ.", "bodhi": "", "sujato-corrected": "“Venerable sir,” they replied.", "pts": "\"Revered one,\" these monks answered the Lord in assent.", "bodhi-esque": "“Bhante,” those bhikkhus replied to the Blessed One."}, {"key": "mn47:1.6", "pali": "Bhagavā etadavoca:", "bodhi": "The Blessed One said this:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:", "bodhi-esque": "The Blessed One said this:"}]}, {"id": "2", "label": "“vīmaṁsakena, bhikkhave, bhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena tathā·gate…", "rows": [{"key": "mn47:2.1", "pali": "“vīmaṁsakena, bhikkhave,\nbhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena tathā·gate\nsamannesanā kātabbā ‘sammā·sambuddho vā no vā’ iti viññāṇāyā”ti.", "bodhi": "“Bhikkhus, a bhikkhu who is an inquirer, not knowing how to gauge another’s mind,\nshould make an investigation of the Tathāgata in order to find out whether or not he is fully enlightened.”", "sujato-corrected": "“Mendicants, a mendicant who is an inquirer, unable to encompass another’s mind,\nshould scrutinize the Realized One to understand whether he is a fully awakened Buddha or not.”", "pts": "\"Monks, an inquiring monk, learning the range of another's mind,\nshould make a study of the Tathāgata so as to distinguish whether he is a fully Self-awakened One or not.\"", "bodhi-esque": "“Bhikkhus, for a bhikkhu who is an inquirer, not knowing the state of another's mind,\nan investigation should be made into the Tathāgata in order to know whether he is perfectly enlightened or not.”"}]}, {"id": "3", "label": "“Bhagavaṁ·mūlakā no, bhante, dhammā, bhagavaṁ·nettikā bhagavaṁ·paṭi·saraṇā; sādhu…", "rows": [{"key": "mn47:3.1", "pali": "“Bhagavaṁ·mūlakā no, bhante,\ndhammā, bhagavaṁ·nettikā bhagavaṁ·paṭi·saraṇā;\nsādhu vata, bhante, bhagavantaṁ·yeva paṭi·bhātu etassa bhāsitassa attho;\nbhagavato sutvā bhikkhū dhāressantī”ti.", "bodhi": "“Venerable sir, our teachings are rooted in the Blessed One,\nguided by the Blessed One, have the Blessed One as their resort.\nIt would be good if the Blessed One would explain the meaning of these words.\nHaving heard it from the Blessed One, the bhikkhus will remember it.”", "sujato-corrected": "“Our teachings are rooted in the Buddha.\nHe is our guide and our refuge.\nSir, may the Buddha himself please clarify the meaning of this.\nThe mendicants will listen and remember it.”", "pts": "\"For us, Lord, things are rooted in the Lord, have the Lord for their conduit, the Lord for their arbiter.\nWell for us, Lord, if the Lord would reveal the meaning of this saying;\nhaving heard the Lord, the monks will remember.\"", "bodhi-esque": "“Bhante, the teachings are rooted in the Blessed One, guided by the Blessed One, take recourse in the Blessed One.\nIt would be good if the Blessed One would clarify the meaning of this statement.\nHaving heard it from the Blessed One, the bhikkhus will remember it.”"}, {"key": "mn47:3.2", "pali": "“Tena hi, bhikkhave, suṇātha,\nsādhukaṁ manasi karotha, bhāsi·s·sāmī”ti.", "bodhi": "“Then listen, bhikkhus, and attend closely to what I shall say.”", "sujato-corrected": "“Well then, mendicants, listen and apply your mind well, I will speak.”", "pts": "\"Very well, monks;\nlisten, attend carefully and I will speak.\"", "bodhi-esque": "“Then, bhikkhus, listen and attend carefully, I will speak.”"}, {"key": "mn47:3.3", "pali": "“Evaṁ, bhante”ti kho te bhikkhū\nbhagavato pacc·assosuṁ.", "bodhi": "“Yes, venerable sir,” the bhikkhus replied.", "sujato-corrected": "“Yes, sir,” they replied.", "pts": "\"Yes, Lord,\" these monks answered the Lord in assent.", "bodhi-esque": "“Yes, bhante,” those bhikkhus replied to the Blessed One."}, {"key": "mn47:3.4", "pali": "Bhagavā etadavoca:", "bodhi": "The Blessed One said this:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:", "bodhi-esque": "The Blessed One said this:"}]}, {"id": "4", "label": "“Vīmaṁsakena, bhikkhave, bhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena dvīsu…", "rows": [{"key": "mn47:4.1", "pali": "“Vīmaṁsakena, bhikkhave,\nbhikkhunā parassa ceto·pari·yāyaṁ a·jāna·ntena dvīsu dhammesu tathā·gato samannesitabbo cakkhu·sota·viññeyyesu dhammesu:", "bodhi": "“Bhikkhus, a bhikkhu who is an inquirer, not knowing how to gauge another’s mind,\nshould investigate the Tathāgata with respect to two kinds of states,\nstates cognizable through the eye and through the ear thus:", "sujato-corrected": "“Mendicants, a mendicant who is an inquirer, unable to encompass another’s mind,\nshould scrutinize the Realized One for two things—things that can be seen and heard:", "pts": "\"Monks, an inquiring monk, learning the range of another's mind,\nshould make a study of the Tathāgata in regard to two things:\nthings cognisable through the eye and through the ear, thinking:", "bodhi-esque": "“Bhikkhus, for a bhikkhu who is an inquirer, not knowing the state of another's mind,\nthe Tathāgata should be investigated in two things:\nthings cognizable by the eye and the ear:"}, {"key": "mn47:4.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any defiled states cognizable through\nthe eye or through the ear?ʹ When he investigates him, he comes to know:", "sujato-corrected": "‘Can anything corrupt be seen or heard in the Realized One or not?’", "pts": "'Do those that are impure states cognisable through the eye and the ear exist in a Tathāgata or not?'", "bodhi-esque": "‘Are there any defiled things cognizable by the eye or ear present in the Tathāgata or not?’"}, {"key": "mn47:4.3", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:", "bodhi-esque": "While examining him, he knows thus:"}, {"key": "mn47:4.4", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No defiled states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "nothing corrupt can be seen or heard in the Realized One.", "pts": "'Those impure states which are cognisable through the eye and the ear do not exist in a Tathāgata.'", "bodhi-esque": "‘The defiled phenomena cognizable by the eye and ear are not found in the Tathāgata.’"}]}, {"id": "5", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:5.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:", "bodhi-esque": "When, while examining him, he knows thus:"}, {"key": "mn47:5.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Those impure states which are cognisable through the eye and the\near do not exist in a Tathāgata,' he then studies further, thinking:", "bodhi-esque": "‘The defiled phenomena cognizable by the eye and ear are not found in the Tathāgata,’ then he examines him further:"}, {"key": "mn47:5.3", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any mixed states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything mixed be seen or heard in the Realized One or not?’", "pts": "'Do those that are mixed states cognisable through the eye and the ear exist in a Tathāgata or not?'", "bodhi-esque": "‘Do the mixed phenomena cognizable by the eye and ear exist in the Tathāgata or not?’"}, {"key": "mn47:5.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:", "bodhi-esque": "While examining him, he knows thus:"}, {"key": "mn47:5.5", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No mixed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "nothing mixed can be seen or heard in the Realized One.", "pts": "'Those mixed states cognisable through the eye and the ear do not exist in a Tathāgata.'", "bodhi-esque": "‘The mixed phenomena cognizable by the eye and ear are not found in the Tathāgata.’"}]}, {"id": "6", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:6.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:", "bodhi-esque": "When, while examining him, he knows thus:"}, {"key": "mn47:6.2", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Those mixed states cognisable through the eye and the ear do\nnot exist in a Tathāgata,' he then studies further, thinking:", "bodhi-esque": "‘The mixed phenomena cognizable by the eye and ear are not found in the Tathāgata,’ then he examines him further:"}, {"key": "mn47:6.3", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not cleansed states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything clean be seen or heard in the Realized One or not?’", "pts": "'Do those that are absolutely pure states cognisable through the eye and the ear exist in a Tathāgata or not?'", "bodhi-esque": "‘Do the pure phenomena cognizable by the eye and ear exist in the Tathāgata or not?’"}, {"key": "mn47:6.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:", "bodhi-esque": "While examining him, he knows thus:"}, {"key": "mn47:6.5", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nte tathāgat·assā’ti.", "bodhi": "‘Cleansed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "clean things can be seen and heard in the Realized One.", "pts": "'Those which are absolutely pure states cognisable through the eye and the ear exist in a Tathāgata.'", "bodhi-esque": "‘The pure phenomena cognizable by the eye and ear exist in the Tathāgata.’"}]}, {"id": "7", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:7.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:", "bodhi-esque": "When, while examining him, he knows thus:"}, {"key": "mn47:7.2", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nte tathāgat·assā’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'These absolutely pure states which are cognisable through the eye and\nthe ear exist in the Tathāgata,' he then studies further, thinking:", "bodhi-esque": "‘The pure phenomena cognizable by the eye and ear exist in the Tathāgata,’ then he examines him further:"}, {"key": "mn47:7.3", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ, udāhu ittara·samāpanno’ti?", "bodhi": "‘Has this venerable one attained this wholesome state over a long time or did he attain it recently?’", "sujato-corrected": "‘Did the venerable attain this skillful state a long time ago, or just recently?’", "pts": "'Has this venerable one been possessed of this skilled state for a long time or only for a short time?'", "bodhi-esque": "‘Has this venerable been long in the attainment of this wholesome state, or is it a temporary attainment?’"}, {"key": "mn47:7.4", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:", "bodhi-esque": "Examining him, he knows thus:"}, {"key": "mn47:7.5", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ, nāya·māyasmā ittara·samāpanno’ti.", "bodhi": "‘This venerable one has attained this wholesome state over a long time;\nhe did not attain it only recently.’", "sujato-corrected": "the venerable attained this skillful state a long time ago, not just recently.", "pts": "'This venerable one has been possessed of this skilled state for a long time,\nthis venerable one has not been possessed of it for only a short time.'", "bodhi-esque": "‘This venerable has for a long time been attained to this wholesome state;\nthis venerable is not one who has attained only temporarily.’"}]}, {"id": "8", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:8.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:", "bodhi-esque": "When examining him, he knows thus:"}, {"key": "mn47:8.2", "pali": "‘dīgha·rattaṁ samāpanno ayam·āyasmā imaṁ kusalaṁ dhammaṁ,\nnāya·māyasmā ittara·samāpanno’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'This venerable one has been possessed of this skilled state for a long time,\nthis venerable one has not been possessed of it for only a short time,' he then studies further:", "bodhi-esque": "‘This venerable has for a long time been attained to this wholesome state;\nthis venerable is not one who has attained only temporarily,’ then he examines him further:"}, {"key": "mn47:8.3", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, saṁvijjant·assa idhekacce ādīnavā’ti?", "bodhi": "‘Has this venerable one acquired renown and attained fame,\nso that the dangers [connected with renown and fame] are found in him?’", "sujato-corrected": "‘Are certain dangers found in that venerable mendicant who has achieved fame and renown?’", "pts": "'Do there exist any perils for that venerable monk who has attained to fame and won renown?'", "bodhi-esque": "‘Is this venerable bhikkhu one who has attained to fame, one who has attained to honor?\nDo there exist for him here some dangers?’"}, {"key": "mn47:8.4", "pali": "Na tāva, bhikkhave, bhikkhuno idhekacce ādīnavā saṁvijjanti\nyāva na ñatta·j·jhāpanno hoti yasappatto.", "bodhi": "For, bhikkhus, as long as a bhikkhu has not acquired renown and attained fame,\nthe dangers [connected with renown and fame] are not found in him;", "sujato-corrected": "For, mendicants, so long as a mendicant has not achieved fame and renown, certain dangers are not found in them.", "pts": "Monks, there are some perils that do not exist here for a monk until he has attained to fame and won renown.", "bodhi-esque": "Not yet, bhikkhus, do there exist for the bhikkhu some dangers here as long\nas he has not become one who has attained to fame and attained to honor."}, {"key": "mn47:8.5", "pali": "Yato ca kho, bhikkhave, bhikkhu ñatta·j·jhāpanno hoti\nyasappatto, athassa idhekacce ādīnavā saṁvijjanti.", "bodhi": "but when he has acquired renown and attained fame,", "sujato-corrected": "But when they achieve fame and renown, those dangers appear.", "pts": "It is, monks, after a monk has attained to fame and won renown that some perils exist for him here.", "bodhi-esque": "But when, bhikkhus, a bhikkhu has attained to fame and attained to honor, then for him there exist some dangers here."}, {"key": "mn47:8.6", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "those dangers are found in him.\nWhen he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "While he is studying this he knows thus:", "bodhi-esque": "Examining him, he knows thus:"}, {"key": "mn47:8.7", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, nāssa\nidhekacce ādīnavā saṁvijjantī’ti.", "bodhi": "‘This venerable one has acquired renown and attained fame,\nbut the dangers [connected with renown and fame] are not found in him.’", "sujato-corrected": "those dangers are not found in that venerable mendicant who has achieved fame and renown.", "pts": "'Although the venerable monk has attained to fame and won renown, some perils do not exist for him here.'", "bodhi-esque": "‘This venerable bhikkhu has attained to fame, has attained to honor;\nthere do not exist for him some dangers here.’"}]}, {"id": "9", "label": "Yato naṁ samannesa·māno evaṁ jānāti:", "rows": [{"key": "mn47:9.1", "pali": "Yato naṁ samannesa·māno evaṁ jānāti:", "bodhi": "", "sujato-corrected": "", "pts": "After he has studied this and knows thus:", "bodhi-esque": "When examining him, he knows thus:"}, {"key": "mn47:9.2", "pali": "‘ñatta·j·jhāpanno ayam·āyasmā bhikkhu yasappatto, nāssa\nidhekacce ādīnavā saṁvijjantī’ti, tato naṁ uttariṁ samannesati:", "bodhi": "“When he comes to know this, he investigates him further thus:", "sujato-corrected": "They scrutinize further:", "pts": "'Although this venerable monk has attained to fame and won renown,\nsome perils do not exist for him here,' he then studies further:", "bodhi-esque": "‘This venerable bhikkhu has attained to fame, has attained to honor;\nthere do not exist for him some dangers here,’ then he examines him further:"}, {"key": "mn47:9.3", "pali": "‘a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "‘Is this venerable one restrained without fear, not restrained by fear,", "sujato-corrected": "‘Is this venerable securely stilled or insecurely stilled?", "pts": "'Does this venerable one refrain out of fearlessness, does not he refrain out of fear?", "bodhi-esque": "‘This venerable is one who is not restrained by fear;\nthis venerable is not one who is restrained by fear;"}, {"key": "mn47:9.4", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti?", "bodhi": "and does he avoid indulging in sensual pleasures because he is without lust through the destruction of lust?’", "sujato-corrected": "Is the reason they don’t indulge in sensual pleasures that they’re free of greed because greed has ended?’", "pts": "Is it because, through the destruction of attachment, that,\nbeing without attachment, he does not follow pleasures of the senses?'", "bodhi-esque": "‘Because of being devoid of lust, he does not enjoy sensual pleasures, because of the destruction of lust?’"}, {"key": "mn47:9.5", "pali": "Tamenaṁ samannesa·māno evaṁ jānāti:", "bodhi": "When he investigates him, he comes to know:", "sujato-corrected": "Scrutinizing him they find that", "pts": "As he is studying this he knows thus:", "bodhi-esque": "Examining him, he knows thus:"}, {"key": "mn47:9.6", "pali": "‘a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "‘This venerable one is restrained without fear, not restrained by fear,", "sujato-corrected": "that venerable is securely stilled, not insecurely stilled.", "pts": "'This venerable one refrains out of fearlessness, this venerable one refrains not out of fear;", "bodhi-esque": "‘This venerable is one who is not restrained by fear;\nthis venerable is not one who is restrained by fear;"}, {"key": "mn47:9.7", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti.", "bodhi": "and he avoids indulging in sensual pleasure because he is without lust through the destruction of lust.’", "sujato-corrected": "The reason they don’t indulge in sensual pleasures is that they’re free of greed because greed has ended.", "pts": "he does not follow pleasures of the senses because, through the destruction of attachment, he is without attachment.'", "bodhi-esque": "Because he has become free from lust, he does not enjoy sensual pleasures, from the destruction of lust."}]}, {"id": "10", "label": "Tañce, bhikkhave, bhikkhuṁ pare evaṁ puccheyyuṁ:", "rows": [{"key": "mn47:10.1", "pali": "Tañce, bhikkhave, bhikkhuṁ\npare evaṁ puccheyyuṁ:", "bodhi": "“Now, bhikkhus, if others should ask that bhikkhu thus:", "sujato-corrected": "If others should ask that mendicant,", "pts": "If, monks, others should question this monk thus:", "bodhi-esque": "If, bhikkhus, others should ask that bhikkhu thus:"}, {"key": "mn47:10.2", "pali": "‘ke panāyasmato ākārā, ke anv·ayā, yenāyasmā evaṁ vadesi—", "bodhi": "‘What are the venerable one’s reasons and what is his evidence whereby he says:", "sujato-corrected": "‘But what reason and evidence does the venerable have for saying this?’", "pts": "'What are the venerable one's facts, what his evidence by reason of which the venerable one speaks thus:", "bodhi-esque": "‘What are the marks and what are the indications by which the venerable one speaks thus—"}, {"key": "mn47:10.3", "pali": "a·bhayū·parato ayam·āyasmā, nāya·māyasmā bhayū·parato;", "bodhi": "“That venerable one is restrained without fear, not restrained by fear,", "sujato-corrected": "", "pts": "'This venerable one refrains out of fearlessness, this venerable one refrains not out of fear;", "bodhi-esque": "this venerable one has overcome fear, this venerable one has not overcome fear;"}, {"key": "mn47:10.4", "pali": "vīta·rāgattā kāme na sevati khayā rāgassā’ti.", "bodhi": "and he avoids indulging in sensual pleasures because he is without lust through the destruction of lust”?’—", "sujato-corrected": "", "pts": "he does not follow pleasures of the senses because, through the destruction of attachment, he is without attachment'?'", "bodhi-esque": "because he has become free from lust, he does not enjoy sensual pleasures, from the destruction of lust.’"}, {"key": "mn47:10.5", "pali": "Sammā by·ākara·māno, bhikkhave, bhikkhu evaṁ by·ākareyya:", "bodhi": "answering rightly, that bhikkhu would answer thus:", "sujato-corrected": "Answering rightly, the mendicant should say,", "pts": "Monks, a monk answering properly would answer thus:", "bodhi-esque": "When answering rightly, bhikkhus, a bhikkhu should answer thus:"}, {"key": "mn47:10.6", "pali": "‘tathā hi pana ayam·āyasmā saṅghe vā vi·haranto eko vā vi·haranto, ye\nca tattha sugatā ye ca tattha duggatā,\nye ca tattha gaṇamanusāsanti,\nye ca idhekacce āmisesu sandissanti,\nye ca idhekacce āmisena an·upalittā, nāya·māyasmā taṁ tena avajānāti.", "bodhi": "‘Whether that venerable one dwells in the Sangha or alone,\nwhile some there are well behaved and some are ill behaved and some there teach a group,\nwhile some here are seen concerned about material things and some are unsullied by material things,", "sujato-corrected": "‘Because, whether that venerable is staying in a community or alone,\nsome people there are in a good state or a sorry state,\nsome instruct a group, and some are seen among pleasures of the flesh while others remain unsullied.\nYet that venerable doesn’t look down on them for that.", "pts": "'This venerable one, whether staying in an Order or staying alone,\nwhether those near him are progressing well, whether they are progressing badly, whether they lead a group,\nwhether they are engaged with any material things here or whether they are unstained by any material things here –\nthis venerable one does not despise them because of this.", "bodhi-esque": "‘For this venerable one, whether dwelling in the Saṅgha or dwelling alone,\nthose who are fortunate there and those who are unfortunate there, those who instruct the group,\nsome who are seen in material gifts,\nand some who are unsmeared by material gifts—this venerable one does not disparage them because of that."}, {"key": "mn47:10.7", "pali": "Sammukhā kho pana metaṁ bhagavato sutaṁ sammukhā paṭi·g·gahitaṁ—", "bodhi": "still that venerable one does not despise anyone because of that.\nAnd I have heard and learned this from the Blessed One’s own lips:", "sujato-corrected": "Also, I have heard and learned this in the presence of the Buddha:", "pts": "This have I heard face to face with the Lord, this have I learnt face to face with him:", "bodhi-esque": "But I have heard this in the presence of the Blessed One, received it in his presence—"}, {"key": "mn47:10.8", "pali": "abhayūparatohamasmi, nāhamasmi bhayū·parato, vīta·rāgattā kāme\nna sevāmi khayā rāgassā’ti.", "bodhi": "“I am restrained without fear, not restrained by fear,\nand I avoid indulging in sensual pleasures because I am without lust through the destruction of lust.”’", "sujato-corrected": "“I am securely stilled, not insecurely stilled.\nThe reason I don’t indulge in sensual pleasures is that I’m free of greed because greed has ended.”’", "pts": "'I am restrained out of fearlessness, I am not restrained out of fear;\nwithout attachment because of the destruction of attachment, I do not follow pleasures of the senses.'", "bodhi-esque": "“I am one who has overcome fear, I am not one who has overcome fear;\nbecause of the destruction of lust, I do not enjoy sensual pleasures, from the destruction of lust.”’"}]}, {"id": "11", "label": "Tatra, bhikkhave, tathā·gatova uttariṁ paṭi·pucchitabbo:", "rows": [{"key": "mn47:11.1", "pali": "Tatra, bhikkhave, tathā·gatova uttariṁ paṭi·pucchitabbo:", "bodhi": "“The Tathāgata, bhikkhus, should be questioned further about that thus:", "sujato-corrected": "Next, they should ask the Realized One himself about this,", "pts": "Monks, the Tathāgata should himself be further questioned hereon:", "bodhi-esque": "There, bhikkhus, the Tathāgata himself should be further asked:"}, {"key": "mn47:11.2", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "‘Are there found in the Tathāgata or not any defiled states cognizable through the eye or through the ear?’", "sujato-corrected": "‘Can anything corrupt be seen or heard in the Realized One or not?’", "pts": "'Do those impure states cognisable through the eye and through the ear exist in the Tathāgata or not?'", "bodhi-esque": "‘Those states that are defiled, cognizable by the eye and ear—do they exist in the Tathāgata or not?’"}, {"key": "mn47:11.3", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "The Tathāgata would answer thus:", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:", "bodhi-esque": "When answering, bhikkhus, the Tathāgata would answer thus:"}, {"key": "mn47:11.4", "pali": "‘ye saṅkiliṭṭhā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No defiled states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "‘Nothing corrupt can be seen or heard in the Realized One.’", "pts": "'Those impure states cognisable through the eye and through the ear do not exist in a Tathāgata.'", "bodhi-esque": "‘Those states that are defiled, cognizable by the eye and ear—they do not exist in the Tathāgata.’"}]}, {"id": "12", "label": "‘Ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti vā te…", "rows": [{"key": "mn47:12.1", "pali": "‘Ye vīti·missā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "“If asked,\n‘Are there found in the Tathāgata or not any mixed states cognizable\nthrough the eye or through the ear?’ the Tathāgata would answer thus:", "sujato-corrected": "‘Can anything mixed be seen or heard in the Realized One or not?’", "pts": "'Do those mixed states cognisable through the eye and through the ear exist in a Tathāgata or not?'", "bodhi-esque": "‘Those states that are mixed, cognizable by the eye and ear—do they exist in the Tathāgata or not?’"}, {"key": "mn47:12.2", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:", "bodhi-esque": "When answering, bhikkhus, the Tathāgata would answer thus:"}, {"key": "mn47:12.3", "pali": "‘ye vīti·missā cakkhu·sota·viññeyyā dhammā, na te tathā·gatassa saṁvijjantī’ti.", "bodhi": "‘No mixed states cognizable through the eye or through the ear are found in the Tathāgata.’", "sujato-corrected": "‘Nothing mixed can be seen or heard in the Realized One.’", "pts": "'Those mixed states cognisable through the eye and through the ear do not exist in a Tathāgata.'", "bodhi-esque": "‘Those dhammas that are mixed, cognizable by eye and ear, are not present in the Tathāgata.’"}]}, {"id": "13", "label": "‘Ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti vā te…", "rows": [{"key": "mn47:13.1", "pali": "‘Ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti\nvā te tathā·gatassa no vā’ti?", "bodhi": "13 . ʺIf asked,\n‘Are there found in the Tathāgata or not cleansed states cognizable\nthrough the eye or through the ear?’ the Tathāgata would answer thus:", "sujato-corrected": "‘Can anything clean be seen or heard in the Realized One or not?’", "pts": "'Do those absolutely pure states cognisable through the eye and through the ear exist in a Tathāgata or not?'", "bodhi-esque": "‘Those dhammas that are pure, cognizable by eye and ear, do they exist for the Tathāgata or not?’"}, {"key": "mn47:13.2", "pali": "By·ākara·māno, bhikkhave, tathā·gato evaṁ by·ākareyya:", "bodhi": "", "sujato-corrected": "The Realized One would answer,", "pts": "Monks, in answering, a Tathāgata would answer thus:", "bodhi-esque": "When answering, bhikkhus, the Tathāgata would answer thus:"}, {"key": "mn47:13.3", "pali": "‘ye vodātā cakkhu·sota·viññeyyā dhammā, saṁvijjanti te tathā·gatassa;", "bodhi": "‘Cleansed states cognizable through the eye or through the ear are found in the Tathāgata.", "sujato-corrected": "‘Clean things can be seen and heard in the Realized One.", "pts": "'Those absolutely pure states cognisable through the eye and through the ear exist in a Tathāgata.", "bodhi-esque": "‘Those dhammas that are pure, cognizable by eye and ear, exist for the Tathāgata;"}, {"key": "mn47:13.4", "pali": "etaṁ pathohamasmi, etaṁ\ngocaro, no ca tena tammayo’ti.", "bodhi": "They are my pathway and my domain, yet I do not identify with them.’", "sujato-corrected": "I am the scope and the range of that, but I am not determined by that.’", "pts": "This is my path, this is my pasture and no one is like (me) in this.'", "bodhi-esque": "this is my resort, this is my range, yet I am not identified with it.’"}]}, {"id": "14", "label": "Evaṁ·vādiṁ kho, bhikkhave, satthāraṁ arahati sāvako upasaṅkamituṁ…", "rows": [{"key": "mn47:14.1", "pali": "Evaṁ·vādiṁ kho, bhikkhave, satthāraṁ arahati\nsāvako upasaṅkamituṁ dhamma·s·savanāya.", "bodhi": "“Bhikkhus, a disciple should approach the Teacher who speaks thus in order to hear the Dhamma.", "sujato-corrected": "A disciple ought to approach a teacher who has such a doctrine in order to listen to the teaching.", "pts": "Monks, a disciple should draw near a teacher who speaks like this so as to hear Dhamma.", "bodhi-esque": "A teacher who speaks thus, bhikkhus, a disciple deserves to approach for the sake of hearing the Dhamma."}, {"key": "mn47:14.2", "pali": "Tassa satthā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ.", "bodhi": "The Teacher teaches him the Dhamma with its higher and higher levels,\nwith its more and more sublime levels, with its dark and bright counterparts.", "sujato-corrected": "The teacher explains Dhamma with its higher and higher stages,\nwith its better and better stages, with its dark and bright sides.", "pts": "From further to further, from excellence to excellence, the Teacher teaches him Dhamma,\nwhat is dark and what is bright, with their counterparts.", "bodhi-esque": "To him the teacher teaches the Dhamma step by step,\nsuperior and more superior, with its counterpart of the dark and the bright."}, {"key": "mn47:14.3", "pali": "Yathā yathā kho, bhikkhave,\nbhikkhuno satthā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ tathā tathā\nso tasmiṁ dhamme abhi·ñ·ñāya idhekaccaṁ dhammaṁ dhammesu niṭṭhaṁ gacchati,\nsatthari pasīdati:", "bodhi": "As the Teacher teaches the Dhamma to a bhikkhu in this way,\nthrough direct knowledge of a certain teaching here in that Dhamma,\nthe bhikkhu comes to a conclusion about the teachings.\nHe places confidence in the Teacher thus:", "sujato-corrected": "When they directly know a certain principle of those teachings,\nin accordance with how they were taught, the mendicant comes to a conclusion about the teachings.\nThey have confidence in the teacher:", "pts": "As, monks, the Teacher gradually teaches Dhamma to the monk, from further to further, from excellence to excellence,\nwhat is dark and what is bright with their counterparts,\nso does he gradually by his superknowledge of point after point of Dhamma come to fulfilment in Dhamma.\nHe has confidence in the Teacher, that:", "bodhi-esque": "In whatever way, bhikkhus, the teacher teaches the Dhamma to a bhikkhu step by step,\nsuperior and more superior, with its counterpart of the dark and the bright,\nin that way, by directly knowing that Dhamma,\nhe comes to a conclusion about some one Dhamma among the Dhammas, and he gains confidence in the teacher:"}, {"key": "mn47:14.4", "pali": "‘sammā·sambuddho bhagavā, svākkhāto bhagavatā dhammo, suppaṭipanno saṅgho’ti.", "bodhi": "‘The Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,\nthe Sangha is practising the good way.’", "sujato-corrected": "‘The Blessed One is a fully awakened Buddha!\nThe teaching is well explained!\nThe Saṅgha is practicing well!’", "pts": "'The Lord is a fully Self-awakened One, well taught is Dhamma by the Lord, the Order fares along well.'", "bodhi-esque": "‘The Blessed One is perfectly enlightened,\nthe Dhamma is well proclaimed by the Blessed One, the Saṅgha is properly practicing.’"}]}, {"id": "15", "label": "Tañce, bhikkhave, bhikkhuṁ pare evaṁ puccheyyuṁ:", "rows": [{"key": "mn47:15.1", "pali": "Tañce, bhikkhave, bhikkhuṁ\npare evaṁ puccheyyuṁ:", "bodhi": "“Now if others should ask that bhikkhu thus:", "sujato-corrected": "If others should ask that mendicant,", "pts": "Monks, if others should ask that monk:", "bodhi-esque": "If, bhikkhus, others should ask that bhikkhu thus:"}, {"key": "mn47:15.2", "pali": "‘ke panāyasmato ākārā, ke anv·ayā, yenāyasmā evaṁ vadesi—", "bodhi": "‘What are the venerable one’s reasons and what is his evidence whereby he says,\n“The Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,", "sujato-corrected": "‘But what reason and evidence does the venerable have for saying this?’", "pts": "'But what are the venerable one's facts, what the evidence by reason of which he speaks thus:", "bodhi-esque": "‘What are the venerable one’s reasons, what are the inferential signs, by which the venerable one speaks thus—"}, {"key": "mn47:15.3", "pali": "sammā·sambuddho bhagavā, svākkhāto bhagavatā dhammo, suppaṭipanno saṅgho’ti?", "bodhi": "", "sujato-corrected": "", "pts": "'The Lord is a fully Self-awakened one, well taught is Dhamma by the Lord, the Order fares along well?'", "bodhi-esque": "“The Blessed One is perfectly enlightened,\nthe Dhamma is well proclaimed by the Blessed One, the Saṅgha is properly practicing”?’"}, {"key": "mn47:15.4", "pali": "Sammā by·ākara·māno, bhikkhave, bhikkhu evaṁ by·ākareyya:", "bodhi": "the Sangha is practising the good way”?’—answering rightly, that bhikkhu would answer thus:", "sujato-corrected": "Answering rightly, the mendicant should say,", "pts": "that monk, monks, answering rightly would answer thus:", "bodhi-esque": "Answering rightly, bhikkhus, a bhikkhu would answer thus:"}, {"key": "mn47:15.5", "pali": "‘idhāhaṁ, āvuso, yena bhagavā tenupasaṅkamiṁ\ndhamma·s·savanāya.", "bodhi": "‘Here, friends, I approached the Blessed One in order to hear the Dhamma.", "sujato-corrected": "‘Reverends, I approached the Buddha to listen to the teaching.", "pts": "'I, your reverences, drew near the Lord so as to hear Dhamma.", "bodhi-esque": "‘Here, friends, I approached the Blessed One for the sake of hearing the Dhamma."}, {"key": "mn47:15.6", "pali": "Tassa me bhagavā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ.", "bodhi": "The Blessed One taught me the Dhamma with its higher and higher levels,\nwith its more and more sublime levels, with its dark and bright counterparts.", "sujato-corrected": "He explained Dhamma with its higher and higher stages,\nwith its better and better stages, with its dark and bright sides.", "pts": "The Lord taught me Dhamma from further to further, from excellence to excellence,\nwhat is dark and what is bright with their counterparts.", "bodhi-esque": "The Blessed One taught me the Dhamma step by step,\nsuperior and more superior, with its counterpart of the dark and the bright.’"}, {"key": "mn47:15.7", "pali": "Yathā yathā me, āvuso,\nbhagavā dhammaṁ deseti\nuttar·uttariṁ paṇīta·paṇītaṁ kaṇha·sukka·sappaṭibhāgaṁ tathā tathāhaṁ\ntasmiṁ dhamme abhi·ñ·ñāya idhekaccaṁ dhammaṁ dhammesu niṭṭhamagamaṁ, satthari pasīdiṁ—", "bodhi": "As the Blessed One taught the Dhamma to me in this way,\nthrough direct knowledge of a certain teaching here in that Dhamma, I came to a conclusion about the teachings.\nI placed confidence in the Teacher thus:", "sujato-corrected": "When I directly knew a certain principle of those teachings,\nin accordance with how I was taught, I came to a conclusion about the teachings.\nI had confidence in the Teacher:", "pts": "As the Lord gradually taught me Dhamma from further to further,\nfrom excellence to excellence, what is dark and what is bright with their counterparts,\nso did I gradually by my superknowledge of point after point in Dhamma come to fulfilment in Dhamma.\nI have confidence in the Teacher, that:", "bodhi-esque": "In whatever way the Blessed One teaches the Dhamma to me, friend,\nwith its progressively higher and more sublime levels, with its black and white counterpart,\nin just that way, having directly known that Dhamma,\nI came to a conclusion about a certain doctrine among the doctrines, and I gained confidence in the Teacher—"}, {"key": "mn47:15.8", "pali": "sammā·sambuddho bhagavā, svākkhāto bhagavatā, dhammo, suppaṭipanno saṅgho’ti.", "bodhi": "ʺThe Blessed One is fully enlightened, the Dhamma is well proclaimed by the Blessed One,\nthe Sangha is Dhamma is well proclaimed by the Blessed One, the Sangha is practising the good way.”’", "sujato-corrected": "“The Blessed One is a fully awakened Buddha!\nThe teaching is well explained!\nThe Saṅgha is practicing well!”’", "pts": "'The Lord is a fully Self-awakened One, well taught is Dhamma by the Lord, the Order fares along well.'", "bodhi-esque": "'The Blessed One is perfectly enlightened,\nthe Dhamma is well expounded by the Blessed One, the Saṅgha is practising well.'"}]}, {"id": "16", "label": "Yassa kassaci, bhikkhave, imehi ākārehi imehi padehi…", "rows": [{"key": "mn47:16.1", "pali": "Yassa kassaci, bhikkhave,\nimehi ākārehi imehi padehi imehi by·añjanehi tathā·gate saddhā niviṭṭhā hoti\nmūla·jātā patiṭṭhitā,\nayaṁ vuccati, bhikkhave, ākāravatī saddhā dassana·mūlikā;", "bodhi": "“Bhikkhus, when anyone’s faith has been planted, rooted, and established in the Tathāgata through these reasons,\nterms, and phrases, his faith is said to be supported by reasons, rooted in vision,", "sujato-corrected": "When someone’s faith is settled, rooted, and planted in the Realized One in this manner,\nwith these words and phrases, it’s said to be grounded faith that’s based on evidence.", "pts": "\"Monks, in anyone in whom faith in the Teacher is established, rooted, supported by these methods,\nby these sentences, by these words, that faith is called reasoned, based on vision, strong;", "bodhi-esque": "For anyone, bhikkhus, in whom faith in the Tathāgata has been settled by these modes, these phrases,\nthese expressions, rooted and established, this is called, bhikkhus, faith that is based on grounds, rooted in vision;"}, {"key": "mn47:16.2", "pali": "daḷhā asaṁhāriyā samaṇena vā brāhmaṇena vā devena vā mārena vā brahmunā vā kenaci vā lokasmiṁ.", "bodhi": "firm;\nit is invincible by any recluse or brahmin or god or Māra or Brahmā or by anyone in the world.", "sujato-corrected": "It is strong, and cannot be shifted by any ascetic or brahmin or god or Māra or divinity or by anyone in the world.", "pts": "it is indestructible by a recluse or brahman or deva or Māra or a Brahmā or by anyone in the world.", "bodhi-esque": "It is firm, not to be removed by any ascetic or brahmin or deva or Māra or Brahmā or anyone in the world."}, {"key": "mn47:16.3", "pali": "Evaṁ kho, bhikkhave, tathā·gate dhamma·samannesanā hoti.", "bodhi": "That is how, bhikkhus, there is an investigation of the Tathāgata in accordance with the Dhamma,", "sujato-corrected": "That is how there is legitimate scrutiny of the Realized One,", "pts": "Thus, monks, does there come to be study of the Tathāgata's Dhamma,", "bodhi-esque": "Thus, bhikkhus, there is an examination of the Dhamma in the Tathāgata."}, {"key": "mn47:16.4", "pali": "Evañca pana tathā·gato dhammatā·susam·anniṭṭho hotī”ti.", "bodhi": "and that is how the Tathāgata is well investigated in accordance with the Dhamma.”", "sujato-corrected": "and that is how the Realized One is legitimately well-scrutinized.”", "pts": "and thus does the Tathāgata come to be well studied in the proper manner.\"", "bodhi-esque": "And in this way the Tathāgata is well scrutinized in accordance with the Dhamma."}, {"key": "mn47:16.5", "pali": "Idam·avoca bhagavā.", "bodhi": "That is what the Blessed One said.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord.", "bodhi-esque": "This is what the Blessed One said."}, {"key": "mn47:16.6", "pali": "Atta·manā te bhikkhū\nbhagavato bhāsitaṁ abhi·nandunti.", "bodhi": "The bhikkhus were satisfied and delighted in the Blessed One’s words.", "sujato-corrected": "Satisfied, the mendicants approved what the Buddha said.", "pts": "Delighted, these monks rejoiced in what the Lord had said.", "bodhi-esque": "Those bhikkhus were delighted and rejoiced in the Blessed One's statement."}, {"key": "mn47:16.7", "pali": "Vīmaṁsaka·suttaṁ niṭṭhitaṁ sa·t·tamaṁ.", "bodhi": "", "sujato-corrected": "", "pts": "", "bodhi-esque": "The Inquisitiveness Sutta is finished, the seventh."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "bodhi", "label": "Bodhi", "dot": "#a86ac8", "light": {"bg": "#f5eef8", "text": "#1e0d2b"}, "dark": {"bg": "#1a1220", "text": "#d0a8d8"}, "italic": false, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "bodhi", "label": "Bodhi", "dot": "#a86ac8", "light": {"bg": "#f5eef8", "text": "#1e0d2b"}, "dark": {"bg": "#1a1220", "text": "#d0a8d8"}, "italic": false, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "bodhi", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "bodhi", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

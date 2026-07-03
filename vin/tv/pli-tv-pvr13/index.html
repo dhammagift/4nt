@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "pli-tv-pvr13/0", "label": "Pari·vāra", "rows": [{"key": "pli-tv-pvr13:0.1", "pali": "Pari·vāra", "brahmali": "The Compendium"}, {"key": "pli-tv-pvr13:0.2", "pali": "13.\nCodanā·kaṇḍa", "brahmali": "Accusations and the process of investigation"}, {"key": "pli-tv-pvr13:0.3", "pali": "1.\nAnu·vijjaka·anu·yoga", "brahmali": "1.\nInvestigation"}]}, {"id": "pli-tv-pvr13/1", "label": "Anu·vijja·kena codako pucchitabbo—", "rows": [{"key": "pli-tv-pvr13:1.1", "pali": "Anu·vijja·kena codako pucchitabbo—", "brahmali": "The investigator should ask the accuser:"}, {"key": "pli-tv-pvr13:1.2", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ncodesi, kimhi naṁ codesi,\nsīla·vipattiyā vā codesi,\nācāra·vipattiyā vā codesi,\ndiṭṭhi·vipattiyā vā codesī”ti?", "brahmali": "“Do you accuse this monk of failure in morality, conduct, or view?”"}, {"key": "pli-tv-pvr13:1.3", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.4", "pali": "“sīla·vipattiyā vā codemi,\nācāra·vipattiyā vā codemi,\ndiṭṭhi·vipattiyā vā codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I am accusing him of failure in morality,” “I am accusing him of failure in\nconduct,” or “I am accusing him of failure in view,” he should be asked,"}, {"key": "pli-tv-pvr13:1.5", "pali": "“jānāsi panāyasmā sīla·vipattiṁ, jānāsi\nācāra·vipattiṁ, jānāsi\ndiṭṭhi·vipattin”ti?", "brahmali": "“Do you know what failure in morality is?”\n“Do you know what failure in conduct is?” or “Do you know what failure in view is?”"}, {"key": "pli-tv-pvr13:1.6", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.7", "pali": "“jānāmi kho ahaṁ, āvuso, sīla·vipattiṁ, jānāmi\nācāra·vipattiṁ, jānāmi\ndiṭṭhi·vipattin”ti, so evam·assa vacanīyo—", "brahmali": "“I do,” he should be asked what they are."}, {"key": "pli-tv-pvr13:1.8", "pali": "“katamā panāvuso, sīla·vipatti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.9", "pali": "Katamā ācāra·vipatti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.10", "pali": "Katamā diṭṭhi·vipattī”ti?", "brahmali": ""}, {"key": "pli-tv-pvr13:1.11", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.12", "pali": "“cattāri ca pārā·jikāni, terasa ca saṅgh·ādi·sesā, ayaṁ sīla·vipatti.", "brahmali": "“The four offenses entailing expulsion and the thirteen entailing suspension are failure in morality,”"}, {"key": "pli-tv-pvr13:1.13", "pali": "Thulla·c·cayaṁ, pācittiyaṁ, pāṭi·desa·nīyaṁ, dukkaṭaṁ, dubbhāsitaṁ, ayaṁ ācāra·vipatti.", "brahmali": "“The serious offenses, the offenses entailing confession, the offenses entailing acknowledgment,\nthe offenses of wrong conduct, and the offenses of wrong speech are failure in conduct,”"}, {"key": "pli-tv-pvr13:1.14", "pali": "Micchā·diṭṭhi, anta·g·gāhikā diṭṭhi, ayaṁ diṭṭhi·vipattī”ti, so evam·assa vacanīyo—", "brahmali": "“Wrong views and extreme views are failure in view,” he should be asked,"}, {"key": "pli-tv-pvr13:1.15", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ncodesi, diṭṭhena vā codesi\nsutena vā codesi pari·saṅkāya vā codesī”ti?", "brahmali": "“Are you accusing this monk because of what you’ve seen, what you’ve heard, or what you suspect?”"}, {"key": "pli-tv-pvr13:1.16", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.17", "pali": "“diṭṭhena vā codemi sutena vā codemi\npari·saṅkāya vā codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I’m accusing him because of what I’ve seen,” “I’m accusing him because of what\nI’ve heard,” or “I’m accusing him because of what I suspect,” he should be asked,"}, {"key": "pli-tv-pvr13:1.18", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ndiṭṭhena codesi, kiṁ te diṭṭhaṁ kinti\nte diṭṭhaṁ, kadā te diṭṭhaṁ,\nkattha te diṭṭhaṁ pārā·jikaṁ ajjh·āpajjanto diṭṭho, saṅgh·ādi·sesaṁ ajjh·āpajjanto diṭṭho, thulla·c·cayaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve seen, what have you seen?\nHow did you see it?\nWhen did you see it?\nWhere did you see it?\nDid you see him commit an offense entailing expulsion?\nDid you see him commit an offense entailing suspension?\nDid you see him commit a serious offense?"}, {"key": "pli-tv-pvr13:1.19", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.20", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.21", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.22", "pali": "dubbhāsitaṁ ajjh·āpajjanto diṭṭho, kattha ca tvaṁ ahosi,\nkattha cāyaṁ bhikkhu ahosi,\nkiñca tvaṁ karosi, kiṁ cāyaṁ bhikkhu karotī”ti?", "brahmali": "… an offense of wrong speech?\nWhere were you?\nWhere was this monk?\nWhat were you doing?\nWhat was this monk doing?”"}, {"key": "pli-tv-pvr13:1.23", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.24", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ\ndiṭṭhena codemi, api ca sutena codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve seen, but because of what I’ve heard,” he should be asked,"}, {"key": "pli-tv-pvr13:1.25", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\nsutena codesi, kiṁ te sutaṁ, kinti te sutaṁ,\nkadā te sutaṁ, kattha\nte sutaṁ, pārā·jikaṁ ajjh·āpannoti sutaṁ, saṅgh·ādi·sesaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve heard, what have you heard?\nHow did you hear it?\nWhen did you hear it?\nWhere did you hear it?\nDid you hear that he has committed an offense entailing expulsion?\nDid you hear that he has committed an offense entailing suspension?"}, {"key": "pli-tv-pvr13:1.26", "pali": "thulla·c·cayaṁ …", "brahmali": "… a serious offense?"}, {"key": "pli-tv-pvr13:1.27", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.28", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.29", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.30", "pali": "dubbhāsitaṁ ajjh·āpannoti sutaṁ, bhikkhussa sutaṁ, bhikkhuniyā sutaṁ,\nsikkha·mānāya sutaṁ, sāmaṇerassa sutaṁ, sāmaṇeriyā sutaṁ,\nupāsakassa sutaṁ, upāsikāya sutaṁ, rājūnaṁ sutaṁ,\nrāja·mahā·mattānaṁ sutaṁ, titthiyānaṁ sutaṁ, titthiya·sāvakānaṁ sutan”ti?", "brahmali": "Did you hear that he has committed an offense of wrong speech?\nDid you hear it from a monk, a nun, a trainee nun, a novice monk,\na novice nun, a male lay follower, or a female lay follower?\nOr did you hear it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”"}, {"key": "pli-tv-pvr13:1.31", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,"}, {"key": "pli-tv-pvr13:1.32", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ\nsutena codemi, api ca pari·saṅkāya codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve heard, but because of what I suspect,” he should be asked,"}, {"key": "pli-tv-pvr13:1.33", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\npari·saṅkāya codesi,\nkiṁ pari·saṅkasi, kinti\npari·saṅkasi, kadā pari·saṅkasi,\nkattha pari·saṅkasi, pārā·jikaṁ ajjh·āpannoti pari·saṅkasi, saṅgh·ādi·sesaṁ ajjh·āpannoti pari·saṅkasi, thulla·c·cayaṁ …", "brahmali": "“Since you’re accusing this monk because of suspicion, what do you suspect?\nHow do you suspect it?\nWhen did you suspect it?\nWhere did you suspect it?\nDo you suspect that he has committed an offense entailing expulsion?\nDo you suspect that he has committed an offense entailing suspension?\nDo you suspect that he has committed a serious offense?"}, {"key": "pli-tv-pvr13:1.34", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?"}, {"key": "pli-tv-pvr13:1.35", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?"}, {"key": "pli-tv-pvr13:1.36", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?"}, {"key": "pli-tv-pvr13:1.37", "pali": "dubbhāsitaṁ ajjh·āpannoti pari·saṅkasi, bhikkhussa sutvā pari·saṅkasi, bhikkhuniyā sutvā pari·saṅkasi,\nsikkha·mānāya sutvā pari·saṅkasi, sāmaṇerassa sutvā pari·saṅkasi, sāmaṇeriyā sutvā pari·saṅkasi,\nupāsakassa sutvā pari·saṅkasi, upāsikāya sutvā pari·saṅkasi, rājūnaṁ sutvā pari·saṅkasi,\nrāja·mahā·mattānaṁ sutvā pari·saṅkasi, titthiyānaṁ sutvā pari·saṅkasi, titthiya·sāvakānaṁ sutvā pari·saṅkasī”ti?", "brahmali": "Do you suspect that he has committed an offense of wrong speech?\nDo you suspect it after hearing about it from a monk, a nun, a trainee nun,\na novice monk, a novice nun, a male lay follower, or a female lay follower?\nOr do you suspect it after hearing about it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”"}]}, {"id": "pli-tv-pvr13/2", "label": "Diṭṭhaṁ diṭṭhena sameti,", "rows": [{"key": "pli-tv-pvr13:2.1", "pali": "Diṭṭhaṁ diṭṭhena sameti,", "brahmali": "If what he saw agrees with what he says he saw,"}, {"key": "pli-tv-pvr13:2.2", "pali": "diṭṭhena saṁsandate diṭṭhaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:2.3", "pali": "Diṭṭhaṁ paṭicca na upeti,", "brahmali": "But what was seen is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:2.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:2.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:2.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/3", "label": "Sutaṁ sutena sameti,", "rows": [{"key": "pli-tv-pvr13:3.1", "pali": "Sutaṁ sutena sameti,", "brahmali": "If what he heard agrees with what he says he heard,"}, {"key": "pli-tv-pvr13:3.2", "pali": "sutena saṁsandate sutaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:3.3", "pali": "Sutaṁ paṭicca na upeti,", "brahmali": "But what was heard is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:3.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:3.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:3.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/4", "label": "Mutaṁ mutena sameti,", "rows": [{"key": "pli-tv-pvr13:4.1", "pali": "Mutaṁ mutena sameti,", "brahmali": "If what he sensed agrees with what he says he sensed,"}, {"key": "pli-tv-pvr13:4.2", "pali": "mutena saṁsandate mutaṁ;", "brahmali": "If they correspond with each other,"}, {"key": "pli-tv-pvr13:4.3", "pali": "Mutaṁ paṭicca na upeti,", "brahmali": "But what was sensed is not adequate to prove the accusation,"}, {"key": "pli-tv-pvr13:4.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity"}, {"key": "pli-tv-pvr13:4.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,"}, {"key": "pli-tv-pvr13:4.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him."}]}, {"id": "pli-tv-pvr13/5", "label": "Codanāya ko ādi, kiṁ majjhe, kiṁ pari·yosānaṁ?", "rows": [{"key": "pli-tv-pvr13:5.1", "pali": "Codanāya ko ādi, kiṁ majjhe, kiṁ pari·yosānaṁ?", "brahmali": "What is the beginning, the middle, and the end of an accusation?"}, {"key": "pli-tv-pvr13:5.2", "pali": "Codanāya okāsa·kammaṁ ādi, kiriyā majjhe, samatho pari·yosānaṁ.", "brahmali": "Getting permission for the accusation is the beginning, doing it is the middle, settling it is the end."}, {"key": "pli-tv-pvr13:5.3", "pali": "Codanāya kati mūlāni, kati vatthūni, kati bhūmiyo, katih·ākārehi codeti?", "brahmali": "How many roots does accusing have, how many bases, and how many grounds?\nAnd in how many ways does one accuse?"}, {"key": "pli-tv-pvr13:5.4", "pali": "Codanāya dve mūlāni, tīṇi vatthūni, pañca bhūmiyo, dvīh·ākārehi codeti.", "brahmali": "It has two roots, three bases, and five grounds.\nAnd one accuses in two ways."}, {"key": "pli-tv-pvr13:5.5", "pali": "Codanāya katamāni dve mūlāni?", "brahmali": "What are the two roots?"}, {"key": "pli-tv-pvr13:5.6", "pali": "Samūlikā vā a·mūlikā vā—", "brahmali": "With a root and without a root."}, {"key": "pli-tv-pvr13:5.7", "pali": "codanāya imāni dve mūlāni.", "brahmali": ""}, {"key": "pli-tv-pvr13:5.8", "pali": "Codanāya katamāni tīṇi vatthūni?", "brahmali": "What are the three bases?"}, {"key": "pli-tv-pvr13:5.9", "pali": "Diṭṭhena sutena pari·saṅkāya—", "brahmali": "The seen, the heard, and the suspected."}, {"key": "pli-tv-pvr13:5.10", "pali": "codanāya imāni tīṇi vatthūni.", "brahmali": ""}, {"key": "pli-tv-pvr13:5.11", "pali": "Codanāya katamā pañca bhūmiyo?", "brahmali": "What are the five grounds?"}, {"key": "pli-tv-pvr13:5.12", "pali": "Kālena vakkhāmi no a·kālena, bhūtena vakkhāmi\nno a·bhūtena, saṇhena vakkhāmi no pharusena,\nattha·saṁhitena vakkhāmi\nno an·attha·saṁhitena, mettā·citto vakkhāmi no dosa·ntaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”"}, {"key": "pli-tv-pvr13:5.13", "pali": "codanāya imā pañca bhūmiyo.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/6", "label": "Katamehi dvīh·ākārehi codeti?", "rows": [{"key": "pli-tv-pvr13:6.1", "pali": "Katamehi dvīh·ākārehi codeti?", "brahmali": "What are the two ways of accusing?"}, {"key": "pli-tv-pvr13:6.2", "pali": "Kāyena vā codeti vācāya vā codeti—", "brahmali": "One accuses by body or by speech."}, {"key": "pli-tv-pvr13:6.3", "pali": "imehi dvīh·ākārehi codeti.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/7", "label": "2. Codak·ādi·paṭi·patti", "rows": [{"key": "pli-tv-pvr13:7.0", "pali": "2.\nCodak·ādi·paṭi·patti", "brahmali": "2.\nThe proceeding of an accuser, etc."}, {"key": "pli-tv-pvr13:7.1", "pali": "Codakena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the accuser proceed?"}, {"key": "pli-tv-pvr13:7.2", "pali": "Cuditakena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the accused proceed?"}, {"key": "pli-tv-pvr13:7.3", "pali": "Saṅghena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the Sangha proceed?"}, {"key": "pli-tv-pvr13:7.4", "pali": "Anu·vijja·kena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the investigator proceed?"}, {"key": "pli-tv-pvr13:7.5", "pali": "Codakena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the accuser proceed?”"}, {"key": "pli-tv-pvr13:7.6", "pali": "Codakena pañca·su dhammesu patiṭṭhāya paro code·tabbo.", "brahmali": "The accuser should set up five qualities before accusing another:"}, {"key": "pli-tv-pvr13:7.7", "pali": "Kālena vakkhāmi no a·kālena, bhūtena vakkhāmi\nno a·bhūtena, saṇhena vakkhāmi no pharusena,\nattha·saṁhitena vakkhāmi\nno an·attha·saṁhitena, mettā·citto vakkhāmi no dosa·ntaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”"}, {"key": "pli-tv-pvr13:7.8", "pali": "codakena evaṁ paṭi·pajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.9", "pali": "Cuditakena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the accused proceed?”"}, {"key": "pli-tv-pvr13:7.10", "pali": "Cuditakena dvīsu dhammesu paṭi·pajjitabbaṁ.", "brahmali": "The accused should set up two qualities:"}, {"key": "pli-tv-pvr13:7.11", "pali": "Sacce ca a·kuppe ca—", "brahmali": "truth and composure."}, {"key": "pli-tv-pvr13:7.12", "pali": "cuditakena evaṁ paṭi·pajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.13", "pali": "Saṅghena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the Sangha proceed?”"}, {"key": "pli-tv-pvr13:7.14", "pali": "Saṅghena otiṇṇā·notiṇṇaṁ jānitabbaṁ.", "brahmali": "The Sangha should know what has been brought before it and what has not."}, {"key": "pli-tv-pvr13:7.15", "pali": "Saṅghena evaṁ paṭi·pajjitabbaṁ.", "brahmali": ""}, {"key": "pli-tv-pvr13:7.16", "pali": "Anu·vijja·kena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the investigator proceed?”"}, {"key": "pli-tv-pvr13:7.17", "pali": "Anu·vijja·kena yena dhammena yena vinayena yena satthu·sāsanena taṁ\nadhi·karaṇaṁ vūpasammati\ntathā taṁ adhi·karaṇaṁ vūpa·same·tabbaṁ.", "brahmali": "The investigator resolves that legal issue in accordance with the Teaching,\nthe Monastic Law, and the Teacher’s instruction."}, {"key": "pli-tv-pvr13:7.18", "pali": "Anu·vijja·kena evaṁ paṭi·pajjitabbaṁ.", "brahmali": ""}]}, {"id": "pli-tv-pvr13/8", "label": "Uposatho kimatth·āya,", "rows": [{"key": "pli-tv-pvr13:8.1", "pali": "Uposatho kimatth·āya,", "brahmali": "What is the purpose of the observance-day ceremony?"}, {"key": "pli-tv-pvr13:8.2", "pali": "Pavā·raṇā kissa kāraṇā;", "brahmali": "Why is there an invitation ceremony?"}, {"key": "pli-tv-pvr13:8.3", "pali": "Pari·vāso kimatth·āya,", "brahmali": "What is the purpose of probation?"}, {"key": "pli-tv-pvr13:8.4", "pali": "Mūlāya·paṭi·kassanā kissa kāraṇā;", "brahmali": "Why is there a sending back to the beginning?"}, {"key": "pli-tv-pvr13:8.5", "pali": "Mānattaṁ kimatth·āya,", "brahmali": "What is the purpose of the trial period?"}, {"key": "pli-tv-pvr13:8.6", "pali": "Abbhānaṁ kissa kāraṇā.", "brahmali": "Why is there rehabilitation?"}]}, {"id": "pli-tv-pvr13/9", "label": "Uposatho sāmagga·t·thāya,", "rows": [{"key": "pli-tv-pvr13:9.1", "pali": "Uposatho sāmagga·t·thāya,", "brahmali": "The purpose of the observance-day ceremony is unity."}, {"key": "pli-tv-pvr13:9.2", "pali": "Visuddh·atthāya pavā·raṇā;", "brahmali": "The purpose of the invitation ceremony is purity."}, {"key": "pli-tv-pvr13:9.3", "pali": "Pari·vāso mānatt·atthāya,", "brahmali": "The purpose of probation is the trial period."}, {"key": "pli-tv-pvr13:9.4", "pali": "Mūlāya·paṭi·kassanā niggah·atthāya;", "brahmali": "The purpose of sending back to the beginning is restraint."}, {"key": "pli-tv-pvr13:9.5", "pali": "Mānattaṁ abbhān·atthāya,", "brahmali": "The purpose of the trial period is rehabilitation."}, {"key": "pli-tv-pvr13:9.6", "pali": "Visuddh·atthāya abbhānaṁ.", "brahmali": "The purpose of rehabilitation is purity."}]}, {"id": "pli-tv-pvr13/10", "label": "Chandā dosā bhayā mohā,", "rows": [{"key": "pli-tv-pvr13:10.1", "pali": "Chandā dosā bhayā mohā,", "brahmali": "If, because of desire, ill will, fear, or confusion,"}, {"key": "pli-tv-pvr13:10.2", "pali": "there ca pari·bhāsati;", "brahmali": "One reviles senior monks,"}, {"key": "pli-tv-pvr13:10.3", "pali": "Kāyassa bhedā duppañño,", "brahmali": "Then, when the body breaks up, that foolish person,"}, {"key": "pli-tv-pvr13:10.4", "pali": "khato upahat·indriyo;", "brahmali": "Damaged, with impaired faculties,"}, {"key": "pli-tv-pvr13:10.5", "pali": "Nirayaṁ gacchati dummedho,", "brahmali": "Being stupid, goes to hell,"}, {"key": "pli-tv-pvr13:10.6", "pali": "na ca sikkhāya gāravo.", "brahmali": "Without respect for the training."}]}, {"id": "pli-tv-pvr13/11", "label": "Na ca āmisaṁ nissāya,", "rows": [{"key": "pli-tv-pvr13:11.1", "pali": "Na ca āmisaṁ nissāya,", "brahmali": "But not depending on worldly gain,"}, {"key": "pli-tv-pvr13:11.2", "pali": "na ca nissāya puggalaṁ;", "brahmali": "Not depending on individuals,"}, {"key": "pli-tv-pvr13:11.3", "pali": "Ubho ete vivajjetvā,", "brahmali": "Giving up both of these,"}, {"key": "pli-tv-pvr13:11.4", "pali": "yathā·dhammo tathā kare.", "brahmali": "One should act according to the Teaching."}]}, {"id": "pli-tv-pvr13/12", "label": "3. Codakassa·atta·jhāpana", "rows": [{"key": "pli-tv-pvr13:12.0", "pali": "3.\nCodakassa·atta·jhāpana", "brahmali": "3.\nThe accuser burning himself"}, {"key": "pli-tv-pvr13:12.1", "pali": "Kodhano upanāhī ca,", "brahmali": "“Angry and resentful,"}, {"key": "pli-tv-pvr13:12.2", "pali": "Caṇḍo ca pari·bhāsako;", "brahmali": "And fierce, reviling,"}, {"key": "pli-tv-pvr13:12.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:12.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/13", "label": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "rows": [{"key": "pli-tv-pvr13:13.1", "pali": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "brahmali": "Whispering in the ear, looking for flaws,"}, {"key": "pli-tv-pvr13:13.2", "pali": "Vītiharati kummaggaṁ paṭi·sevati;", "brahmali": "Vindictive, following the wrong path,"}, {"key": "pli-tv-pvr13:13.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:13.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/14", "label": "A·kālena codeti a·bhūtena,", "rows": [{"key": "pli-tv-pvr13:14.1", "pali": "A·kālena codeti a·bhūtena,", "brahmali": "Accusing at the wrong time, untruthfully,"}, {"key": "pli-tv-pvr13:14.2", "pali": "Pharusena an·attha·saṁhitena;", "brahmali": "Harshly, without benefit,"}, {"key": "pli-tv-pvr13:14.3", "pali": "Dosa·ntaro codeti no mettā·citto,", "brahmali": "With a mind of ill will, not a mind of good will,"}, {"key": "pli-tv-pvr13:14.4", "pali": "An·āpattiyā āpattīti ropeti;", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:14.5", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/15", "label": "Dhammā·dhammaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:15.1", "pali": "Dhammā·dhammaṁ na jānāti,", "brahmali": "Not knowing the Teaching and what is contrary to it,"}, {"key": "pli-tv-pvr13:15.2", "pali": "Dhammā·dhammassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:15.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:15.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/16", "label": "Vi·nayā·vi·nayaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:16.1", "pali": "Vi·nayā·vi·nayaṁ na jānāti,", "brahmali": "Not knowing the Monastic Law and what is contrary to it,"}, {"key": "pli-tv-pvr13:16.2", "pali": "Vi·nayā·vinayassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:16.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:16.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/17", "label": "Bhāsitā·bhāsitaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:17.1", "pali": "Bhāsitā·bhāsitaṁ na jānāti,", "brahmali": "Not knowing what was spoken and what was not,"}, {"key": "pli-tv-pvr13:17.2", "pali": "Bhāsitā·bhāsitassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:17.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:17.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/18", "label": "Āciṇṇā·nāciṇṇaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:18.1", "pali": "Āciṇṇā·nāciṇṇaṁ na jānāti,", "brahmali": "Not knowing what was practiced and what was not,"}, {"key": "pli-tv-pvr13:18.2", "pali": "Āciṇṇā·nāciṇṇassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:18.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:18.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/19", "label": "Paññattā·paññattaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:19.1", "pali": "Paññattā·paññattaṁ na jānāti,", "brahmali": "Not knowing what was laid down and what was not,"}, {"key": "pli-tv-pvr13:19.2", "pali": "Paññattā·paññattassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:19.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:19.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/20", "label": "Āpattā·nāpattiṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:20.1", "pali": "Āpattā·nāpattiṁ na jānāti,", "brahmali": "Not knowing the offenses and the non-offenses,"}, {"key": "pli-tv-pvr13:20.2", "pali": "Āpattā·nāpattiyā a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:20.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:20.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/21", "label": "Lahuka·garukaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:21.1", "pali": "Lahuka·garukaṁ na jānāti,", "brahmali": "Not knowing light and heavy offenses,"}, {"key": "pli-tv-pvr13:21.2", "pali": "Lahuka·garukassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:21.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:21.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/22", "label": "Sāva·sesā·nava·sesaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:22.1", "pali": "Sāva·sesā·nava·sesaṁ na jānāti,", "brahmali": "Not knowing curable and incurable offenses,"}, {"key": "pli-tv-pvr13:22.2", "pali": "Sāva·sesā·nava·sesassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:22.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:22.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/23", "label": "Duṭṭhullā·duṭṭhullaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:23.1", "pali": "Duṭṭhullā·duṭṭhullaṁ na jānāti,", "brahmali": "Not knowing grave and minor offenses,"}, {"key": "pli-tv-pvr13:23.2", "pali": "Duṭṭhullā·duṭṭhullassa a·kovido;", "brahmali": "Ignorant about both,"}, {"key": "pli-tv-pvr13:23.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:23.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/24", "label": "Pubbā·paraṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:24.1", "pali": "Pubbā·paraṁ na jānāti,", "brahmali": "Not knowing the right order,"}, {"key": "pli-tv-pvr13:24.2", "pali": "Pubbā·parassa a·kovido;", "brahmali": "Ignorant about it,"}, {"key": "pli-tv-pvr13:24.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:24.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself."}]}, {"id": "pli-tv-pvr13/25", "label": "Anusandhi·vacana·pathaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:25.1", "pali": "Anusandhi·vacana·pathaṁ na jānāti,", "brahmali": "Not knowing the sequence of statements,"}, {"key": "pli-tv-pvr13:25.2", "pali": "Anusandhi·vacana·pathassa a·kovido;", "brahmali": "Ignorant about it,"}, {"key": "pli-tv-pvr13:25.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—"}, {"key": "pli-tv-pvr13:25.4", "pali": "Tādiso codako jhāpeti attānanti.", "brahmali": "Such an accuser burns himself.”"}]}, {"id": "pli-tv-pvr13/26", "label": "Codanā·kaṇḍaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr13:26.1", "pali": "Codanā·kaṇḍaṁ niṭṭhitaṁ.", "brahmali": "Accusations and the process of investigation are finished."}]}, {"id": "pli-tv-pvr13/27", "label": "Tass·uddānaṁ", "rows": [{"key": "pli-tv-pvr13:27.1", "pali": "Tass·uddānaṁ", "brahmali": "This is the summary:"}]}, {"id": "pli-tv-pvr13/28", "label": "Codanā anuvijjā ca,", "rows": [{"key": "pli-tv-pvr13:28.1", "pali": "Codanā anuvijjā ca,", "brahmali": "“Accusing, and investigating,"}, {"key": "pli-tv-pvr13:28.2", "pali": "ādi mūlen·uposatho;", "brahmali": "Beginning, at the root, observance day,"}, {"key": "pli-tv-pvr13:28.3", "pali": "Gati codana·kaṇḍamhi,", "brahmali": "Destiny—in accusations and the process of investigation,"}, {"key": "pli-tv-pvr13:28.4", "pali": "sāsanaṁ patiṭṭhā·payanti.", "brahmali": "They firmly establish Buddhism.”"}]}];
+const TREE=[{"id": "pli-tv-pvr13/0", "label": "Pari·vāra", "rows": [{"key": "pli-tv-pvr13:0.1", "pali": "Pari·vāra", "brahmali": "The Compendium", "bodhi-esque": "Parivāra"}, {"key": "pli-tv-pvr13:0.2", "pali": "13.\nCodanā·kaṇḍa", "brahmali": "Accusations and the process of investigation", "bodhi-esque": "13.\nSection on Accusations"}, {"key": "pli-tv-pvr13:0.3", "pali": "1.\nAnu·vijjaka·anu·yoga", "brahmali": "1.\nInvestigation", "bodhi-esque": "1.\nThe Inquiry of the Inspector"}]}, {"id": "pli-tv-pvr13/1", "label": "Anu·vijja·kena codako pucchitabbo—", "rows": [{"key": "pli-tv-pvr13:1.1", "pali": "Anu·vijja·kena codako pucchitabbo—", "brahmali": "The investigator should ask the accuser:", "bodhi-esque": "The accuser is to be questioned by the inspector:"}, {"key": "pli-tv-pvr13:1.2", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ncodesi, kimhi naṁ codesi,\nsīla·vipattiyā vā codesi,\nācāra·vipattiyā vā codesi,\ndiṭṭhi·vipattiyā vā codesī”ti?", "brahmali": "“Do you accuse this monk of failure in morality, conduct, or view?”", "bodhi-esque": "“For what, friend, do you accuse this bhikkhu?\nIn what respect do you accuse him?\nDo you accuse him of a defect in virtuous behavior, or a defect in conduct, or a defect in view?”"}, {"key": "pli-tv-pvr13:1.3", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should say thus:"}, {"key": "pli-tv-pvr13:1.4", "pali": "“sīla·vipattiyā vā codemi,\nācāra·vipattiyā vā codemi,\ndiṭṭhi·vipattiyā vā codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I am accusing him of failure in morality,” “I am accusing him of failure in\nconduct,” or “I am accusing him of failure in view,” he should be asked,", "bodhi-esque": "“I accuse him of a defect in virtuous behavior, or of a defect in conduct,\nor of a defect in view,” he should be told thus:"}, {"key": "pli-tv-pvr13:1.5", "pali": "“jānāsi panāyasmā sīla·vipattiṁ, jānāsi\nācāra·vipattiṁ, jānāsi\ndiṭṭhi·vipattin”ti?", "brahmali": "“Do you know what failure in morality is?”\n“Do you know what failure in conduct is?” or “Do you know what failure in view is?”", "bodhi-esque": "“But, venerable sir, do you know a defect in virtuous behavior?\nDo you know a defect in conduct?\nDo you know a defect in view?”"}, {"key": "pli-tv-pvr13:1.6", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should say thus:"}, {"key": "pli-tv-pvr13:1.7", "pali": "“jānāmi kho ahaṁ, āvuso, sīla·vipattiṁ, jānāmi\nācāra·vipattiṁ, jānāmi\ndiṭṭhi·vipattin”ti, so evam·assa vacanīyo—", "brahmali": "“I do,” he should be asked what they are.", "bodhi-esque": "“I do know, friend, a defect in virtuous behavior;\nI know a defect in conduct;\nI know a defect in view,” he should be told thus:"}, {"key": "pli-tv-pvr13:1.8", "pali": "“katamā panāvuso, sīla·vipatti?", "brahmali": "", "bodhi-esque": "“But, friend, what is a defect in virtuous behavior?"}, {"key": "pli-tv-pvr13:1.9", "pali": "Katamā ācāra·vipatti?", "brahmali": "", "bodhi-esque": "What is a defect in conduct?"}, {"key": "pli-tv-pvr13:1.10", "pali": "Katamā diṭṭhi·vipattī”ti?", "brahmali": "", "bodhi-esque": "What is a defect in view?”"}, {"key": "pli-tv-pvr13:1.11", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should say thus:"}, {"key": "pli-tv-pvr13:1.12", "pali": "“cattāri ca pārā·jikāni, terasa ca saṅgh·ādi·sesā, ayaṁ sīla·vipatti.", "brahmali": "“The four offenses entailing expulsion and the thirteen entailing suspension are failure in morality,”", "bodhi-esque": "“The four defeats and the thirteen saṅghādisesa offenses:\nthis is a defect in virtuous behavior."}, {"key": "pli-tv-pvr13:1.13", "pali": "Thulla·c·cayaṁ, pācittiyaṁ, pāṭi·desa·nīyaṁ, dukkaṭaṁ, dubbhāsitaṁ, ayaṁ ācāra·vipatti.", "brahmali": "“The serious offenses, the offenses entailing confession, the offenses entailing acknowledgment,\nthe offenses of wrong conduct, and the offenses of wrong speech are failure in conduct,”", "bodhi-esque": "A grave offence, an offence entailing confession, an offence to be confessed, a wrong-doing, a wrong speech:\nthis is failure in conduct."}, {"key": "pli-tv-pvr13:1.14", "pali": "Micchā·diṭṭhi, anta·g·gāhikā diṭṭhi, ayaṁ diṭṭhi·vipattī”ti, so evam·assa vacanīyo—", "brahmali": "“Wrong views and extreme views are failure in view,” he should be asked,", "bodhi-esque": "Wrong view, view that grasps at an extreme:\nthis is failure in view.\nHe should be told thus:"}, {"key": "pli-tv-pvr13:1.15", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ncodesi, diṭṭhena vā codesi\nsutena vā codesi pari·saṅkāya vā codesī”ti?", "brahmali": "“Are you accusing this monk because of what you’ve seen, what you’ve heard, or what you suspect?”", "bodhi-esque": "“Friend, when you accuse this bhikkhu, do you accuse him by what was seen, by what was heard, or by suspicion?”"}, {"key": "pli-tv-pvr13:1.16", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should say thus:"}, {"key": "pli-tv-pvr13:1.17", "pali": "“diṭṭhena vā codemi sutena vā codemi\npari·saṅkāya vā codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I’m accusing him because of what I’ve seen,” “I’m accusing him because of what\nI’ve heard,” or “I’m accusing him because of what I suspect,” he should be asked,", "bodhi-esque": "“I accuse him by what was seen, or by what was heard, or by suspicion,” he should be told thus:"}, {"key": "pli-tv-pvr13:1.18", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\ndiṭṭhena codesi, kiṁ te diṭṭhaṁ kinti\nte diṭṭhaṁ, kadā te diṭṭhaṁ,\nkattha te diṭṭhaṁ pārā·jikaṁ ajjh·āpajjanto diṭṭho, saṅgh·ādi·sesaṁ ajjh·āpajjanto diṭṭho, thulla·c·cayaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve seen, what have you seen?\nHow did you see it?\nWhen did you see it?\nWhere did you see it?\nDid you see him commit an offense entailing expulsion?\nDid you see him commit an offense entailing suspension?\nDid you see him commit a serious offense?", "bodhi-esque": "“Friend, when you accuse this bhikkhu by what was seen, what was seen by you?\nHow was it seen by you?\nWhen was it seen by you?\nWhere was it seen by you?\nWas he seen committing a pārājika, committing a saṅghādisesa, committing a grave offence …"}, {"key": "pli-tv-pvr13:1.19", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?", "bodhi-esque": "committing an offence entailing confession …"}, {"key": "pli-tv-pvr13:1.20", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?", "bodhi-esque": "committing an offence to be confessed …"}, {"key": "pli-tv-pvr13:1.21", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?", "bodhi-esque": "committing a wrong-doing …"}, {"key": "pli-tv-pvr13:1.22", "pali": "dubbhāsitaṁ ajjh·āpajjanto diṭṭho, kattha ca tvaṁ ahosi,\nkattha cāyaṁ bhikkhu ahosi,\nkiñca tvaṁ karosi, kiṁ cāyaṁ bhikkhu karotī”ti?", "brahmali": "… an offense of wrong speech?\nWhere were you?\nWhere was this monk?\nWhat were you doing?\nWhat was this monk doing?”", "bodhi-esque": "committing a wrong speech?\nAnd where were you, and where was this bhikkhu, and what were you doing, and what was this bhikkhu doing?”"}, {"key": "pli-tv-pvr13:1.23", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should say thus:"}, {"key": "pli-tv-pvr13:1.24", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ\ndiṭṭhena codemi, api ca sutena codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve seen, but because of what I’ve heard,” he should be asked,", "bodhi-esque": "“Friend, I do not accuse this bhikkhu by what was seen, but I accuse him by what was heard,” he should be told thus:"}, {"key": "pli-tv-pvr13:1.25", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\nsutena codesi, kiṁ te sutaṁ, kinti te sutaṁ,\nkadā te sutaṁ, kattha\nte sutaṁ, pārā·jikaṁ ajjh·āpannoti sutaṁ, saṅgh·ādi·sesaṁ …", "brahmali": "“Since you’re accusing this monk because of what you’ve heard, what have you heard?\nHow did you hear it?\nWhen did you hear it?\nWhere did you hear it?\nDid you hear that he has committed an offense entailing expulsion?\nDid you hear that he has committed an offense entailing suspension?", "bodhi-esque": "“Friend, when you accuse this bhikkhu by what was heard, what was heard by you?\nHow was it heard by you?\nWhen was it heard by you?\nWhere was it heard by you?\nWas it heard that he committed a pārājika, a saṅghādisesa …"}, {"key": "pli-tv-pvr13:1.26", "pali": "thulla·c·cayaṁ …", "brahmali": "… a serious offense?", "bodhi-esque": "a grave offence …"}, {"key": "pli-tv-pvr13:1.27", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?", "bodhi-esque": "an offence entailing confession …"}, {"key": "pli-tv-pvr13:1.28", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?", "bodhi-esque": "pāṭidesanīya offence …"}, {"key": "pli-tv-pvr13:1.29", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?", "bodhi-esque": "wrongdoing …"}, {"key": "pli-tv-pvr13:1.30", "pali": "dubbhāsitaṁ ajjh·āpannoti sutaṁ, bhikkhussa sutaṁ, bhikkhuniyā sutaṁ,\nsikkha·mānāya sutaṁ, sāmaṇerassa sutaṁ, sāmaṇeriyā sutaṁ,\nupāsakassa sutaṁ, upāsikāya sutaṁ, rājūnaṁ sutaṁ,\nrāja·mahā·mattānaṁ sutaṁ, titthiyānaṁ sutaṁ, titthiya·sāvakānaṁ sutan”ti?", "brahmali": "Did you hear that he has committed an offense of wrong speech?\nDid you hear it from a monk, a nun, a trainee nun, a novice monk,\na novice nun, a male lay follower, or a female lay follower?\nOr did you hear it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”", "bodhi-esque": "Heard that he has committed a dubbhāsita offence:\nheard from a bhikkhu, heard from a bhikkhunī, heard from a female probationer,\nheard from a novice, heard from a female novice, heard from a male lay follower,\nheard from a female lay follower, heard from kings, heard from chief ministers,\nheard from wanderers, heard from disciples of wanderers?"}, {"key": "pli-tv-pvr13:1.31", "pali": "So ce evaṁ vadeyya—", "brahmali": "If he says,", "bodhi-esque": "If he should speak thus:"}, {"key": "pli-tv-pvr13:1.32", "pali": "“na kho ahaṁ, āvuso, imaṁ bhikkhuṁ\nsutena codemi, api ca pari·saṅkāya codemī”ti, so evam·assa vacanīyo—", "brahmali": "“I didn’t accuse this monk because of what I’ve heard, but because of what I suspect,” he should be asked,", "bodhi-esque": "“Indeed, friend, I do not accuse this bhikkhu on the basis of what has been heard,\nbut I accuse him on the basis of suspicion.”\nHe should be spoken to thus:"}, {"key": "pli-tv-pvr13:1.33", "pali": "“yaṁ kho tvaṁ, āvuso, imaṁ bhikkhuṁ\npari·saṅkāya codesi,\nkiṁ pari·saṅkasi, kinti\npari·saṅkasi, kadā pari·saṅkasi,\nkattha pari·saṅkasi, pārā·jikaṁ ajjh·āpannoti pari·saṅkasi, saṅgh·ādi·sesaṁ ajjh·āpannoti pari·saṅkasi, thulla·c·cayaṁ …", "brahmali": "“Since you’re accusing this monk because of suspicion, what do you suspect?\nHow do you suspect it?\nWhen did you suspect it?\nWhere did you suspect it?\nDo you suspect that he has committed an offense entailing expulsion?\nDo you suspect that he has committed an offense entailing suspension?\nDo you suspect that he has committed a serious offense?", "bodhi-esque": "“Now, friend, you accuse this bhikkhu on the basis of suspicion:\nwhat suspicion, how suspicion, when suspicion, where suspicion?\nDo you suspect that he has committed a pārājika offence?\nDo you suspect that he has committed a saṅghādisesa offence?\nDo you suspect that he has committed a thullaccaya offence? …"}, {"key": "pli-tv-pvr13:1.34", "pali": "pācittiyaṁ …", "brahmali": "… an offense entailing confession?", "bodhi-esque": "pācittiya offence …"}, {"key": "pli-tv-pvr13:1.35", "pali": "pāṭi·desa·nīyaṁ …", "brahmali": "… an offense entailing acknowledgment?", "bodhi-esque": "pāṭidesanīya offence …"}, {"key": "pli-tv-pvr13:1.36", "pali": "dukkaṭaṁ …", "brahmali": "… an offense of wrong conduct?", "bodhi-esque": "wrongdoing …"}, {"key": "pli-tv-pvr13:1.37", "pali": "dubbhāsitaṁ ajjh·āpannoti pari·saṅkasi, bhikkhussa sutvā pari·saṅkasi, bhikkhuniyā sutvā pari·saṅkasi,\nsikkha·mānāya sutvā pari·saṅkasi, sāmaṇerassa sutvā pari·saṅkasi, sāmaṇeriyā sutvā pari·saṅkasi,\nupāsakassa sutvā pari·saṅkasi, upāsikāya sutvā pari·saṅkasi, rājūnaṁ sutvā pari·saṅkasi,\nrāja·mahā·mattānaṁ sutvā pari·saṅkasi, titthiyānaṁ sutvā pari·saṅkasi, titthiya·sāvakānaṁ sutvā pari·saṅkasī”ti?", "brahmali": "Do you suspect that he has committed an offense of wrong speech?\nDo you suspect it after hearing about it from a monk, a nun, a trainee nun,\na novice monk, a novice nun, a male lay follower, or a female lay follower?\nOr do you suspect it after hearing about it from kings, a king’s officials,\nthe monastics of another religion, or the lay followers of another religion?”", "bodhi-esque": "Do you suspect that he has committed a dubbhāsita offence?\nDo you suspect after hearing from a bhikkhu?\nDo you suspect after hearing from a bhikkhunī?\nDo you suspect after hearing from a female probationer?\nDo you suspect after hearing from a novice?\nDo you suspect after hearing from a female novice?\nDo you suspect after hearing from a male lay follower?\nDo you suspect after hearing from a female lay follower?\nDo you suspect after hearing from kings?\nDo you suspect after hearing from chief ministers?\nDo you suspect after hearing from wanderers?\nDo you suspect after hearing from disciples of wanderers?"}]}, {"id": "pli-tv-pvr13/2", "label": "Diṭṭhaṁ diṭṭhena sameti,", "rows": [{"key": "pli-tv-pvr13:2.1", "pali": "Diṭṭhaṁ diṭṭhena sameti,", "brahmali": "If what he saw agrees with what he says he saw,", "bodhi-esque": "What is seen converges with what is seen,"}, {"key": "pli-tv-pvr13:2.2", "pali": "diṭṭhena saṁsandate diṭṭhaṁ;", "brahmali": "If they correspond with each other,", "bodhi-esque": "what is seen concords with what is seen;"}, {"key": "pli-tv-pvr13:2.3", "pali": "Diṭṭhaṁ paṭicca na upeti,", "brahmali": "But what was seen is not adequate to prove the accusation,", "bodhi-esque": "Does not approach based on what is seen,"}, {"key": "pli-tv-pvr13:2.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity", "bodhi-esque": "suspected of being impure;"}, {"key": "pli-tv-pvr13:2.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,", "bodhi-esque": "That person by his own admission,"}, {"key": "pli-tv-pvr13:2.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him.", "bodhi-esque": "The Uposatha should be observed by him."}]}, {"id": "pli-tv-pvr13/3", "label": "Sutaṁ sutena sameti,", "rows": [{"key": "pli-tv-pvr13:3.1", "pali": "Sutaṁ sutena sameti,", "brahmali": "If what he heard agrees with what he says he heard,", "bodhi-esque": "What is heard agrees with what is heard,"}, {"key": "pli-tv-pvr13:3.2", "pali": "sutena saṁsandate sutaṁ;", "brahmali": "If they correspond with each other,", "bodhi-esque": "what is heard conforms to what is heard;"}, {"key": "pli-tv-pvr13:3.3", "pali": "Sutaṁ paṭicca na upeti,", "brahmali": "But what was heard is not adequate to prove the accusation,", "bodhi-esque": "Because of what is heard, he does not incur it,"}, {"key": "pli-tv-pvr13:3.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity", "bodhi-esque": "the one suspected of being impure;"}, {"key": "pli-tv-pvr13:3.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,", "bodhi-esque": "That person, by confession,"}, {"key": "pli-tv-pvr13:3.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him.", "bodhi-esque": "the Uposatha should be observed by him."}]}, {"id": "pli-tv-pvr13/4", "label": "Mutaṁ mutena sameti,", "rows": [{"key": "pli-tv-pvr13:4.1", "pali": "Mutaṁ mutena sameti,", "brahmali": "If what he sensed agrees with what he says he sensed,", "bodhi-esque": "What is sensed agrees with what is sensed,"}, {"key": "pli-tv-pvr13:4.2", "pali": "mutena saṁsandate mutaṁ;", "brahmali": "If they correspond with each other,", "bodhi-esque": "what is sensed conforms to what is sensed;"}, {"key": "pli-tv-pvr13:4.3", "pali": "Mutaṁ paṭicca na upeti,", "brahmali": "But what was sensed is not adequate to prove the accusation,", "bodhi-esque": "Because of what is sensed, he does not incur it,"}, {"key": "pli-tv-pvr13:4.4", "pali": "a·suddha·pari·saṅkito;", "brahmali": "Then the one suspecting impurity", "bodhi-esque": "the one suspected of being impure;"}, {"key": "pli-tv-pvr13:4.5", "pali": "So puggalo paṭi·ñ·ñāya,", "brahmali": "Should admit it,", "bodhi-esque": "That person, by confession,"}, {"key": "pli-tv-pvr13:4.6", "pali": "kātabbo tenuposatho.", "brahmali": "And they should then do the observance-day ceremony with him.", "bodhi-esque": "the Uposatha should be observed by him."}]}, {"id": "pli-tv-pvr13/5", "label": "Codanāya ko ādi, kiṁ majjhe, kiṁ pari·yosānaṁ?", "rows": [{"key": "pli-tv-pvr13:5.1", "pali": "Codanāya ko ādi, kiṁ majjhe, kiṁ pari·yosānaṁ?", "brahmali": "What is the beginning, the middle, and the end of an accusation?", "bodhi-esque": "Of a charge, what is the beginning, what is the middle, what is the conclusion?"}, {"key": "pli-tv-pvr13:5.2", "pali": "Codanāya okāsa·kammaṁ ādi, kiriyā majjhe, samatho pari·yosānaṁ.", "brahmali": "Getting permission for the accusation is the beginning, doing it is the middle, settling it is the end.", "bodhi-esque": "Of a charge, the permission act is the beginning, the procedure is the middle, the settling is the conclusion."}, {"key": "pli-tv-pvr13:5.3", "pali": "Codanāya kati mūlāni, kati vatthūni, kati bhūmiyo, katih·ākārehi codeti?", "brahmali": "How many roots does accusing have, how many bases, and how many grounds?\nAnd in how many ways does one accuse?", "bodhi-esque": "How many roots does censure have?\nHow many grounds?\nHow many planes?\nIn how many ways does one censure?"}, {"key": "pli-tv-pvr13:5.4", "pali": "Codanāya dve mūlāni, tīṇi vatthūni, pañca bhūmiyo, dvīh·ākārehi codeti.", "brahmali": "It has two roots, three bases, and five grounds.\nAnd one accuses in two ways.", "bodhi-esque": "Censure has two roots, three grounds, five planes, and one censures in two ways."}, {"key": "pli-tv-pvr13:5.5", "pali": "Codanāya katamāni dve mūlāni?", "brahmali": "What are the two roots?", "bodhi-esque": "What are the two roots of censure?"}, {"key": "pli-tv-pvr13:5.6", "pali": "Samūlikā vā a·mūlikā vā—", "brahmali": "With a root and without a root.", "bodhi-esque": "With a basis or without a basis—"}, {"key": "pli-tv-pvr13:5.7", "pali": "codanāya imāni dve mūlāni.", "brahmali": "", "bodhi-esque": "these are the two roots of censure."}, {"key": "pli-tv-pvr13:5.8", "pali": "Codanāya katamāni tīṇi vatthūni?", "brahmali": "What are the three bases?", "bodhi-esque": "What are the three grounds of censure?"}, {"key": "pli-tv-pvr13:5.9", "pali": "Diṭṭhena sutena pari·saṅkāya—", "brahmali": "The seen, the heard, and the suspected.", "bodhi-esque": "By what is seen, by what is heard, by suspicion—"}, {"key": "pli-tv-pvr13:5.10", "pali": "codanāya imāni tīṇi vatthūni.", "brahmali": "", "bodhi-esque": "these are the three grounds of censure."}, {"key": "pli-tv-pvr13:5.11", "pali": "Codanāya katamā pañca bhūmiyo?", "brahmali": "What are the five grounds?", "bodhi-esque": "What are the five planes of censure?"}, {"key": "pli-tv-pvr13:5.12", "pali": "Kālena vakkhāmi no a·kālena, bhūtena vakkhāmi\nno a·bhūtena, saṇhena vakkhāmi no pharusena,\nattha·saṁhitena vakkhāmi\nno an·attha·saṁhitena, mettā·citto vakkhāmi no dosa·ntaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”", "bodhi-esque": "'I will speak at the right time, not at the wrong time;\nI will speak truthfully, not untruthfully;\nI will speak gently, not harshly;\nI will speak what is beneficial, not what is unbeneificial;\nI will speak with a mind of loving-kindness, not with inner hatred.'—"}, {"key": "pli-tv-pvr13:5.13", "pali": "codanāya imā pañca bhūmiyo.", "brahmali": "", "bodhi-esque": "these are the five planes of censure."}]}, {"id": "pli-tv-pvr13/6", "label": "Katamehi dvīh·ākārehi codeti?", "rows": [{"key": "pli-tv-pvr13:6.1", "pali": "Katamehi dvīh·ākārehi codeti?", "brahmali": "What are the two ways of accusing?", "bodhi-esque": "In which two ways does one censure?"}, {"key": "pli-tv-pvr13:6.2", "pali": "Kāyena vā codeti vācāya vā codeti—", "brahmali": "One accuses by body or by speech.", "bodhi-esque": "One censures either by body or by speech—"}, {"key": "pli-tv-pvr13:6.3", "pali": "imehi dvīh·ākārehi codeti.", "brahmali": "", "bodhi-esque": "one censures in these two ways."}]}, {"id": "pli-tv-pvr13/7", "label": "2. Codak·ādi·paṭi·patti", "rows": [{"key": "pli-tv-pvr13:7.0", "pali": "2.\nCodak·ādi·paṭi·patti", "brahmali": "2.\nThe proceeding of an accuser, etc.", "bodhi-esque": "2.\nThe procedure regarding the one who censures and so on"}, {"key": "pli-tv-pvr13:7.1", "pali": "Codakena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the accuser proceed?", "bodhi-esque": "How should one who reproves proceed?"}, {"key": "pli-tv-pvr13:7.2", "pali": "Cuditakena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the accused proceed?", "bodhi-esque": "How should one who is reproved proceed?"}, {"key": "pli-tv-pvr13:7.3", "pali": "Saṅghena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the Sangha proceed?", "bodhi-esque": "How should the Saṅgha proceed?"}, {"key": "pli-tv-pvr13:7.4", "pali": "Anu·vijja·kena kathaṁ paṭi·pajjitabbaṁ?", "brahmali": "How should the investigator proceed?", "bodhi-esque": "How should an investigator proceed?"}, {"key": "pli-tv-pvr13:7.5", "pali": "Codakena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the accuser proceed?”", "bodhi-esque": "How should one who reproves proceed?"}, {"key": "pli-tv-pvr13:7.6", "pali": "Codakena pañca·su dhammesu patiṭṭhāya paro code·tabbo.", "brahmali": "The accuser should set up five qualities before accusing another:", "bodhi-esque": "Having established himself in five qualities, one who reproves should reprove another."}, {"key": "pli-tv-pvr13:7.7", "pali": "Kālena vakkhāmi no a·kālena, bhūtena vakkhāmi\nno a·bhūtena, saṇhena vakkhāmi no pharusena,\nattha·saṁhitena vakkhāmi\nno an·attha·saṁhitena, mettā·citto vakkhāmi no dosa·ntaroti—", "brahmali": "“I’ll speak at an appropriate time, not at an inappropriate one;\nI’ll speak the truth, not falsehood;\nI’ll speak gently, not harshly;\nI’ll speak what’s beneficial, not what’s unbeneficial;\nI’ll speak with a mind of good will, not with ill will.”", "bodhi-esque": "‘I will speak at the proper time, not at the improper time;\nI will speak truthfully, not falsely;\nI will speak gently, not harshly;\nI will speak beneficially, not harmfully;\nI will speak with a mind of loving-kindness, not with inner hate.’"}, {"key": "pli-tv-pvr13:7.8", "pali": "codakena evaṁ paṭi·pajjitabbaṁ.", "brahmali": "", "bodhi-esque": "Thus should one who reproves proceed."}, {"key": "pli-tv-pvr13:7.9", "pali": "Cuditakena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the accused proceed?”", "bodhi-esque": "How should one who is reproved proceed?"}, {"key": "pli-tv-pvr13:7.10", "pali": "Cuditakena dvīsu dhammesu paṭi·pajjitabbaṁ.", "brahmali": "The accused should set up two qualities:", "bodhi-esque": "One who is reproved should proceed in two qualities."}, {"key": "pli-tv-pvr13:7.11", "pali": "Sacce ca a·kuppe ca—", "brahmali": "truth and composure.", "bodhi-esque": "Truth and imperturbability—"}, {"key": "pli-tv-pvr13:7.12", "pali": "cuditakena evaṁ paṭi·pajjitabbaṁ.", "brahmali": "", "bodhi-esque": "Thus should one who is reproved proceed."}, {"key": "pli-tv-pvr13:7.13", "pali": "Saṅghena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the Sangha proceed?”", "bodhi-esque": "How should the Saṅgha proceed?"}, {"key": "pli-tv-pvr13:7.14", "pali": "Saṅghena otiṇṇā·notiṇṇaṁ jānitabbaṁ.", "brahmali": "The Sangha should know what has been brought before it and what has not.", "bodhi-esque": "The Saṅgha should know what has been adjudicated and what has not been adjudicated."}, {"key": "pli-tv-pvr13:7.15", "pali": "Saṅghena evaṁ paṭi·pajjitabbaṁ.", "brahmali": "", "bodhi-esque": "Thus should the Saṅgha proceed."}, {"key": "pli-tv-pvr13:7.16", "pali": "Anu·vijja·kena kathaṁ paṭi·pajjitabbanti?", "brahmali": "“How should the investigator proceed?”", "bodhi-esque": "How should an investigator proceed?"}, {"key": "pli-tv-pvr13:7.17", "pali": "Anu·vijja·kena yena dhammena yena vinayena yena satthu·sāsanena taṁ\nadhi·karaṇaṁ vūpasammati\ntathā taṁ adhi·karaṇaṁ vūpa·same·tabbaṁ.", "brahmali": "The investigator resolves that legal issue in accordance with the Teaching,\nthe Monastic Law, and the Teacher’s instruction.", "bodhi-esque": "By an investigator, by whichever Dhamma, by whichever discipline,\nby whichever teaching of the Teacher that legal issue is settled, in that way that legal issue should be settled."}, {"key": "pli-tv-pvr13:7.18", "pali": "Anu·vijja·kena evaṁ paṭi·pajjitabbaṁ.", "brahmali": "", "bodhi-esque": "An investigator should proceed thus."}]}, {"id": "pli-tv-pvr13/8", "label": "Uposatho kimatth·āya,", "rows": [{"key": "pli-tv-pvr13:8.1", "pali": "Uposatho kimatth·āya,", "brahmali": "What is the purpose of the observance-day ceremony?", "bodhi-esque": "The Uposatha is for what purpose?"}, {"key": "pli-tv-pvr13:8.2", "pali": "Pavā·raṇā kissa kāraṇā;", "brahmali": "Why is there an invitation ceremony?", "bodhi-esque": "The Pavāraṇā is for what reason?"}, {"key": "pli-tv-pvr13:8.3", "pali": "Pari·vāso kimatth·āya,", "brahmali": "What is the purpose of probation?", "bodhi-esque": "The probation is for what purpose?"}, {"key": "pli-tv-pvr13:8.4", "pali": "Mūlāya·paṭi·kassanā kissa kāraṇā;", "brahmali": "Why is there a sending back to the beginning?", "bodhi-esque": "The sending back to the beginning is for what reason?"}, {"key": "pli-tv-pvr13:8.5", "pali": "Mānattaṁ kimatth·āya,", "brahmali": "What is the purpose of the trial period?", "bodhi-esque": "The penance is for what purpose?"}, {"key": "pli-tv-pvr13:8.6", "pali": "Abbhānaṁ kissa kāraṇā.", "brahmali": "Why is there rehabilitation?", "bodhi-esque": "The rehabilitation is for what reason?"}]}, {"id": "pli-tv-pvr13/9", "label": "Uposatho sāmagga·t·thāya,", "rows": [{"key": "pli-tv-pvr13:9.1", "pali": "Uposatho sāmagga·t·thāya,", "brahmali": "The purpose of the observance-day ceremony is unity.", "bodhi-esque": "The Uposatha is for the purpose of concord,"}, {"key": "pli-tv-pvr13:9.2", "pali": "Visuddh·atthāya pavā·raṇā;", "brahmali": "The purpose of the invitation ceremony is purity.", "bodhi-esque": "The Pavāraṇā is for the purpose of purification;"}, {"key": "pli-tv-pvr13:9.3", "pali": "Pari·vāso mānatt·atthāya,", "brahmali": "The purpose of probation is the trial period.", "bodhi-esque": "The probation is for the purpose of penance,"}, {"key": "pli-tv-pvr13:9.4", "pali": "Mūlāya·paṭi·kassanā niggah·atthāya;", "brahmali": "The purpose of sending back to the beginning is restraint.", "bodhi-esque": "The sending back to the beginning is for the purpose of reproof;"}, {"key": "pli-tv-pvr13:9.5", "pali": "Mānattaṁ abbhān·atthāya,", "brahmali": "The purpose of the trial period is rehabilitation.", "bodhi-esque": "The penance is for the purpose of rehabilitation,"}, {"key": "pli-tv-pvr13:9.6", "pali": "Visuddh·atthāya abbhānaṁ.", "brahmali": "The purpose of rehabilitation is purity.", "bodhi-esque": "The rehabilitation is for the purpose of purification."}]}, {"id": "pli-tv-pvr13/10", "label": "Chandā dosā bhayā mohā,", "rows": [{"key": "pli-tv-pvr13:10.1", "pali": "Chandā dosā bhayā mohā,", "brahmali": "If, because of desire, ill will, fear, or confusion,", "bodhi-esque": "From desire, from hatred, from fear, from delusion,"}, {"key": "pli-tv-pvr13:10.2", "pali": "there ca pari·bhāsati;", "brahmali": "One reviles senior monks,", "bodhi-esque": "and he insults the elders."}, {"key": "pli-tv-pvr13:10.3", "pali": "Kāyassa bhedā duppañño,", "brahmali": "Then, when the body breaks up, that foolish person,", "bodhi-esque": "With the breakup of the body, the unwise one,"}, {"key": "pli-tv-pvr13:10.4", "pali": "khato upahat·indriyo;", "brahmali": "Damaged, with impaired faculties,", "bodhi-esque": "ruined, his faculties destroyed,"}, {"key": "pli-tv-pvr13:10.5", "pali": "Nirayaṁ gacchati dummedho,", "brahmali": "Being stupid, goes to hell,", "bodhi-esque": "the stupid one goes to hell,"}, {"key": "pli-tv-pvr13:10.6", "pali": "na ca sikkhāya gāravo.", "brahmali": "Without respect for the training.", "bodhi-esque": "and he has no respect for the training."}]}, {"id": "pli-tv-pvr13/11", "label": "Na ca āmisaṁ nissāya,", "rows": [{"key": "pli-tv-pvr13:11.1", "pali": "Na ca āmisaṁ nissāya,", "brahmali": "But not depending on worldly gain,", "bodhi-esque": "Not relying on material gain,"}, {"key": "pli-tv-pvr13:11.2", "pali": "na ca nissāya puggalaṁ;", "brahmali": "Not depending on individuals,", "bodhi-esque": "nor relying on a person,"}, {"key": "pli-tv-pvr13:11.3", "pali": "Ubho ete vivajjetvā,", "brahmali": "Giving up both of these,", "bodhi-esque": "Having avoided both of these,"}, {"key": "pli-tv-pvr13:11.4", "pali": "yathā·dhammo tathā kare.", "brahmali": "One should act according to the Teaching.", "bodhi-esque": "one should act in accordance with the Dhamma."}]}, {"id": "pli-tv-pvr13/12", "label": "3. Codakassa·atta·jhāpana", "rows": [{"key": "pli-tv-pvr13:12.0", "pali": "3.\nCodakassa·atta·jhāpana", "brahmali": "3.\nThe accuser burning himself", "bodhi-esque": "3.\nThe self-destruction of an accuser"}, {"key": "pli-tv-pvr13:12.1", "pali": "Kodhano upanāhī ca,", "brahmali": "“Angry and resentful,", "bodhi-esque": "Angry and vengeful,"}, {"key": "pli-tv-pvr13:12.2", "pali": "Caṇḍo ca pari·bhāsako;", "brahmali": "And fierce, reviling,", "bodhi-esque": "and fierce and insulting,"}, {"key": "pli-tv-pvr13:12.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense for a non-offense,"}, {"key": "pli-tv-pvr13:12.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/13", "label": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "rows": [{"key": "pli-tv-pvr13:13.1", "pali": "Upakaṇṇakaṁ jappati jimhaṁ pekkhati,", "brahmali": "Whispering in the ear, looking for flaws,", "bodhi-esque": "He murmurs in the ear, he looks crookedly,"}, {"key": "pli-tv-pvr13:13.2", "pali": "Vītiharati kummaggaṁ paṭi·sevati;", "brahmali": "Vindictive, following the wrong path,", "bodhi-esque": "He transgresses [the right path], he resorts to a wrong course;"}, {"key": "pli-tv-pvr13:13.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imposes an offense for a non-offense,"}, {"key": "pli-tv-pvr13:13.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/14", "label": "A·kālena codeti a·bhūtena,", "rows": [{"key": "pli-tv-pvr13:14.1", "pali": "A·kālena codeti a·bhūtena,", "brahmali": "Accusing at the wrong time, untruthfully,", "bodhi-esque": "He accuses at the wrong time, with a false [charge],"}, {"key": "pli-tv-pvr13:14.2", "pali": "Pharusena an·attha·saṁhitena;", "brahmali": "Harshly, without benefit,", "bodhi-esque": "Harshly, not connected with the goal;"}, {"key": "pli-tv-pvr13:14.3", "pali": "Dosa·ntaro codeti no mettā·citto,", "brahmali": "With a mind of ill will, not a mind of good will,", "bodhi-esque": "He accuses with a mind of hatred, not with a mind of loving-kindness,"}, {"key": "pli-tv-pvr13:14.4", "pali": "An·āpattiyā āpattīti ropeti;", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imposes an offense for a non-offense;"}, {"key": "pli-tv-pvr13:14.5", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/15", "label": "Dhammā·dhammaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:15.1", "pali": "Dhammā·dhammaṁ na jānāti,", "brahmali": "Not knowing the Teaching and what is contrary to it,", "bodhi-esque": "He does not know Dhamma from non-Dhamma,"}, {"key": "pli-tv-pvr13:15.2", "pali": "Dhammā·dhammassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in Dhamma and non-Dhamma;"}, {"key": "pli-tv-pvr13:15.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imposes an offense for a non-offense,"}, {"key": "pli-tv-pvr13:15.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/16", "label": "Vi·nayā·vi·nayaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:16.1", "pali": "Vi·nayā·vi·nayaṁ na jānāti,", "brahmali": "Not knowing the Monastic Law and what is contrary to it,", "bodhi-esque": "He does not know Vinaya from non-Vinaya,"}, {"key": "pli-tv-pvr13:16.2", "pali": "Vi·nayā·vinayassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in Vinaya and non-Vinaya;"}, {"key": "pli-tv-pvr13:16.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense from a non-offense,"}, {"key": "pli-tv-pvr13:16.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/17", "label": "Bhāsitā·bhāsitaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:17.1", "pali": "Bhāsitā·bhāsitaṁ na jānāti,", "brahmali": "Not knowing what was spoken and what was not,", "bodhi-esque": "He does not know what is spoken and what is not spoken,"}, {"key": "pli-tv-pvr13:17.2", "pali": "Bhāsitā·bhāsitassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is spoken and what is not spoken;"}, {"key": "pli-tv-pvr13:17.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense from a non-offense,"}, {"key": "pli-tv-pvr13:17.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/18", "label": "Āciṇṇā·nāciṇṇaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:18.1", "pali": "Āciṇṇā·nāciṇṇaṁ na jānāti,", "brahmali": "Not knowing what was practiced and what was not,", "bodhi-esque": "He does not know what is habitual and what is not habitual,"}, {"key": "pli-tv-pvr13:18.2", "pali": "Āciṇṇā·nāciṇṇassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is habitual and what is not habitual;"}, {"key": "pli-tv-pvr13:18.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense from a non-offense,"}, {"key": "pli-tv-pvr13:18.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/19", "label": "Paññattā·paññattaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:19.1", "pali": "Paññattā·paññattaṁ na jānāti,", "brahmali": "Not knowing what was laid down and what was not,", "bodhi-esque": "He does not know what is prescribed and what is not prescribed,"}, {"key": "pli-tv-pvr13:19.2", "pali": "Paññattā·paññattassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is prescribed and what is not prescribed;"}, {"key": "pli-tv-pvr13:19.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense from a non-offense,"}, {"key": "pli-tv-pvr13:19.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/20", "label": "Āpattā·nāpattiṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:20.1", "pali": "Āpattā·nāpattiṁ na jānāti,", "brahmali": "Not knowing the offenses and the non-offenses,", "bodhi-esque": "He does not know what is offense and what is non-offense,"}, {"key": "pli-tv-pvr13:20.2", "pali": "Āpattā·nāpattiyā a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is an offense and what is not an offense;"}, {"key": "pli-tv-pvr13:20.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense where there is no offense;"}, {"key": "pli-tv-pvr13:20.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/21", "label": "Lahuka·garukaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:21.1", "pali": "Lahuka·garukaṁ na jānāti,", "brahmali": "Not knowing light and heavy offenses,", "bodhi-esque": "He does not know a light offense and a heavy offense;"}, {"key": "pli-tv-pvr13:21.2", "pali": "Lahuka·garukassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is a light offense and a heavy offense;"}, {"key": "pli-tv-pvr13:21.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense where there is no offense;"}, {"key": "pli-tv-pvr13:21.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/22", "label": "Sāva·sesā·nava·sesaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:22.1", "pali": "Sāva·sesā·nava·sesaṁ na jānāti,", "brahmali": "Not knowing curable and incurable offenses,", "bodhi-esque": "He does not know an offense with remainder and an offense without remainder;"}, {"key": "pli-tv-pvr13:22.2", "pali": "Sāva·sesā·nava·sesassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is an offense with remainder and an offense without remainder;"}, {"key": "pli-tv-pvr13:22.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense where there is no offense;"}, {"key": "pli-tv-pvr13:22.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/23", "label": "Duṭṭhullā·duṭṭhullaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:23.1", "pali": "Duṭṭhullā·duṭṭhullaṁ na jānāti,", "brahmali": "Not knowing grave and minor offenses,", "bodhi-esque": "He does not know a grave offense and a non-grave offense;"}, {"key": "pli-tv-pvr13:23.2", "pali": "Duṭṭhullā·duṭṭhullassa a·kovido;", "brahmali": "Ignorant about both,", "bodhi-esque": "He is unskilled in what is a grave offense and a non-grave offense;"}, {"key": "pli-tv-pvr13:23.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imputes an offense where there is no offense;"}, {"key": "pli-tv-pvr13:23.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/24", "label": "Pubbā·paraṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:24.1", "pali": "Pubbā·paraṁ na jānāti,", "brahmali": "Not knowing the right order,", "bodhi-esque": "He does not know what is earlier and later,"}, {"key": "pli-tv-pvr13:24.2", "pali": "Pubbā·parassa a·kovido;", "brahmali": "Ignorant about it,", "bodhi-esque": "unskilled in what is earlier and later;"}, {"key": "pli-tv-pvr13:24.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imposes an offense for what is not an offense,"}, {"key": "pli-tv-pvr13:24.4", "pali": "Tādiso codako jhāpeti attānaṁ.", "brahmali": "Such an accuser burns himself.", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/25", "label": "Anusandhi·vacana·pathaṁ na jānāti,", "rows": [{"key": "pli-tv-pvr13:25.1", "pali": "Anusandhi·vacana·pathaṁ na jānāti,", "brahmali": "Not knowing the sequence of statements,", "bodhi-esque": "He does not know the method of connection and expression,"}, {"key": "pli-tv-pvr13:25.2", "pali": "Anusandhi·vacana·pathassa a·kovido;", "brahmali": "Ignorant about it,", "bodhi-esque": "unskilled in the method of connection and expression;"}, {"key": "pli-tv-pvr13:25.3", "pali": "An·āpattiyā āpattīti ropeti,", "brahmali": "He charges a non-offender with an offense—", "bodhi-esque": "He imposes an offense for what is not an offense,"}, {"key": "pli-tv-pvr13:25.4", "pali": "Tādiso codako jhāpeti attānanti.", "brahmali": "Such an accuser burns himself.”", "bodhi-esque": "Such an accuser destroys himself."}]}, {"id": "pli-tv-pvr13/26", "label": "Codanā·kaṇḍaṁ niṭṭhitaṁ.", "rows": [{"key": "pli-tv-pvr13:26.1", "pali": "Codanā·kaṇḍaṁ niṭṭhitaṁ.", "brahmali": "Accusations and the process of investigation are finished.", "bodhi-esque": "The Chapter on Accusation is finished."}]}, {"id": "pli-tv-pvr13/27", "label": "Tass·uddānaṁ", "rows": [{"key": "pli-tv-pvr13:27.1", "pali": "Tass·uddānaṁ", "brahmali": "This is the summary:", "bodhi-esque": "Its summary:"}]}, {"id": "pli-tv-pvr13/28", "label": "Codanā anuvijjā ca,", "rows": [{"key": "pli-tv-pvr13:28.1", "pali": "Codanā anuvijjā ca,", "brahmali": "“Accusing, and investigating,", "bodhi-esque": "Accusation and investigation,"}, {"key": "pli-tv-pvr13:28.2", "pali": "ādi mūlen·uposatho;", "brahmali": "Beginning, at the root, observance day,", "bodhi-esque": "the beginning, the root, the uposatha;"}, {"key": "pli-tv-pvr13:28.3", "pali": "Gati codana·kaṇḍamhi,", "brahmali": "Destiny—in accusations and the process of investigation,", "bodhi-esque": "The course in the Chapter on Accusation,"}, {"key": "pli-tv-pvr13:28.4", "pali": "sāsanaṁ patiṭṭhā·payanti.", "brahmali": "They firmly establish Buddhism.”", "bodhi-esque": "they establish the teaching."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "vin";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "Vin";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

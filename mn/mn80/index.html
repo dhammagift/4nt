@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 80", "rows": [{"key": "mn80:0.1", "pali": "Majjhima Nikāya 80", "sujato-corrected": "Middle Discourses 80", "pts": ""}, {"key": "mn80:0.2", "pali": "Vekhanasa·sutta", "sujato-corrected": "With Vekhanasa", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn80:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn80:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapinḍika's monastery."}]}, {"id": "2", "label": "Atha kho vekhanaso pari·b·bājako yena bhagavā tenupasaṅkami;…", "rows": [{"key": "mn80:2.1", "pali": "Atha kho vekhanaso pari·b·bājako yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavatā saddhiṁ sammodi.", "sujato-corrected": "Then the wanderer Vekhanasa went up to the Buddha, and exchanged greetings with him.", "pts": "Then the wanderer Vekhanassa[] approached the Lord;\nhaving approached, he greeted the Lord;"}, {"key": "mn80:2.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ aṭṭhāsi.", "sujato-corrected": "When the greetings and polite conversation were over, he stood to one side,", "pts": "and having conversed in a friendly and courteous way, he stood at a respectful distance."}, {"key": "mn80:2.3", "pali": "Ekam·antaṁ ṭhito kho vekhanaso pari·b·bājako bhagavato sa·ntike udānaṁ udānesi:", "sujato-corrected": "and expressed this heartfelt sentiment:", "pts": "As he was standing at a respectful distance, the wanderer Vekhanassa uttered a solemn utterance in the Lord's presence:"}, {"key": "mn80:2.4", "pali": "“ayaṁ paramo vaṇṇo, ayaṁ paramo vaṇṇo”ti.", "sujato-corrected": "“This is the ultimate splendor, this is the ultimate splendor.”", "pts": "\"This is the highest lustre, this is the highest lustre.\""}, {"key": "mn80:2.5", "pali": "“Kiṁ pana tvaṁ, kaccāna, evaṁ vadesi:", "sujato-corrected": "“But Kaccāna, why do you say:", "pts": "\"But why do you, Kaccāna,[] speak thus:"}, {"key": "mn80:2.6", "pali": "‘ayaṁ paramo vaṇṇo, ayaṁ paramo vaṇṇo’ti?", "sujato-corrected": "‘This is the ultimate splendor, this is the ultimate splendor.’", "pts": "'This is the highest lustre, this is the highest lustre?'"}, {"key": "mn80:2.7", "pali": "Katamo, kaccāna, so paramo vaṇṇo”ti?", "sujato-corrected": "What is that ultimate splendor?”", "pts": "Which is this highest lustre?\""}, {"key": "mn80:2.8", "pali": "“Yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo”ti.", "sujato-corrected": "“Worthy Gotama, the ultimate splendor is the splendor compared to which no other splendor is finer.”", "pts": "\"Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.\""}, {"key": "mn80:2.9", "pali": "“Katamo pana so, kaccāna, vaṇṇo yasmā vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthī”ti?", "sujato-corrected": "“But what is that ultimate splendor compared to which no other splendor is finer?”", "pts": "\"But which, Kaccāna, is this lustre than which there is no other lustre superior or more excellent?\""}, {"key": "mn80:2.10", "pali": "“Yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo”ti.", "sujato-corrected": "“Worthy Gotama, the ultimate splendor is the splendor compared to which no other splendor is finer.”", "pts": "\"Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.\""}]}, {"id": "3", "label": "“Dīghāpi kho te esā, kaccāna, phareyya:", "rows": [{"key": "mn80:3.1", "pali": "“Dīghāpi kho te esā,\nkaccāna, phareyya:", "sujato-corrected": "“Kaccāna, you could draw this out for a long time.", "pts": "\"You would be long in expanding this, Kaccāna.\nYou say:"}, {"key": "mn80:3.2", "pali": "‘yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo’ti vadesi,\ntañca vaṇṇaṁ na paññapesi.", "sujato-corrected": "You say,\n‘The ultimate splendor is the splendor compared to which no other splendor is finer.’\nBut you don’t describe that splendor.", "pts": "'Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.'\nBut you do not point to this lustre."}, {"key": "mn80:3.3", "pali": "Seyyathāpi, kaccāna, puriso evaṁ vadeyya:", "sujato-corrected": "Suppose a man was to say,", "pts": "Kaccāna, it is as though a man should say:"}, {"key": "mn80:3.4", "pali": "‘ahaṁ yā imasmiṁ jana·pade jana·pada·kalyāṇī, taṁ icchāmi taṁ kāmemī’ti.", "sujato-corrected": "‘Whoever the finest lady in the land is, it is her that I want, her I desire!’", "pts": "'Whoever is the belle of this countryside, I want her, I desire her.'[]"}, {"key": "mn80:3.5", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "Another man might say to him:"}, {"key": "mn80:3.6", "pali": "‘ambho purisa, yaṁ tvaṁ jana·pada·kalyāṇiṁ icchasi kāmesi,\njānāsi taṁ jana·pada·kalyāṇiṁ—khattiyī vā brāhmaṇī vā vessī vā suddī vā’ti?", "sujato-corrected": "‘My friend, that finest lady in the land who you desire—do you know whether she’s an aristocrat,\na brahmin, a peasant, or a menial?’", "pts": "'My good man, do you know whether this belle of the countryside whom you\nwant and desire is a noble maiden or a brahmin or a merchant or a worker?'"}, {"key": "mn80:3.7", "pali": "Iti puṭṭho ‘no’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘No.’", "pts": "Asked this, he would say:\n'No.'"}, {"key": "mn80:3.8", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "The other might say to him:"}, {"key": "mn80:3.9", "pali": "‘ambho purisa, yaṁ tvaṁ jana·pada·kalyāṇiṁ icchasi\nkāmesi, jānāsi taṁ jana·pada·kalyāṇiṁ evaṁ·nāmā evaṅgottāti vāti …pe…\ndīghā vā rassā vā majjhimā vā kāḷī vā sāmā vā maṅgura·c·chavī vāti\n… amukasmiṁ gāme vā nigame vā nagare vā’ti?", "sujato-corrected": "‘My friend, that finest lady in the land who you desire—do you know her name or clan?\nWhether she’s tall or short or medium?\nWhether her skin is black, brown, or dingy?\nWhat village, town, or city she comes from?’", "pts": "'My good man, do you know the name or the clan of this belle of the countryside whom you want and desire?'\nAsked this, he would say:\n'No.'\nThe other might say to him:\n'My good man, do you know whether she is tall or short or of medium height, or dark or brown or sallow;\nor what village or market town or what town she belongs to?'"}, {"key": "mn80:3.10", "pali": "Iti puṭṭho ‘no’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘No.’", "pts": "Asked this, he might say:\n'No.'"}, {"key": "mn80:3.11", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "The other might speak to him thus:"}, {"key": "mn80:3.12", "pali": "‘ambho purisa, yaṁ tvaṁ na jānāsi\nna passasi, taṁ tvaṁ icchasi kāmesī’ti?", "sujato-corrected": "‘My friend, do you desire someone who you’ve never even known or seen?’", "pts": "'My good man, do you want and desire her whom you know not, see not?'"}, {"key": "mn80:3.13", "pali": "Iti puṭṭho ‘āmā’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘Yes.’", "pts": "Asked this, he might say:\n'Yes.'"}, {"key": "mn80:3.14", "pali": "Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "What do you think, Kaccāna?", "pts": "What do you think about this, Kaccāna?"}, {"key": "mn80:3.15", "pali": "nanu evaṁ sante tassa purisassa a·p·pāṭi·hīra·kataṁ bhāsitaṁ sampajjatī”ti?", "sujato-corrected": "This being so, doesn’t that man’s statement turn out to have no demonstrable basis?”", "pts": "This being so, surely that man's irresponsible talk does not prosper him?\""}, {"key": "mn80:3.16", "pali": "“Addhā kho, bho gotama, evaṁ sante\ntassa purisassa a·p·pāṭi·hīra·kataṁ bhāsitaṁ sampajjatī”ti.", "sujato-corrected": "“Clearly that’s the case, worthy Gotama.”", "pts": "\"Certainly, revered sir, this being so, that man's irresponsible talk does not prosper him.\""}, {"key": "mn80:3.17", "pali": "“Evameva kho tvaṁ, kaccāna,\n‘yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo’ti vadesi;\ntañca vaṇṇaṁ na paññapesī”ti.", "sujato-corrected": "“In the same way, you say,\n‘The ultimate splendor is the splendor compared to which no other splendor is finer.’\nBut you don’t describe that splendor.”", "pts": "\"But even so do you, Kaccāna, say:\n'Revered sir, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.'\nBut you do not point to this lustre.\""}]}, {"id": "4", "label": "“Seyyathāpi, bho gotama, maṇi veḷuriyo subho jātimā…", "rows": [{"key": "mn80:4.1", "pali": "“Seyyathāpi, bho gotama,\nmaṇi veḷuriyo subho jātimā aṭṭhaṁso su·pari·kamma·kato paṇḍu·kambale nikkhitto bhāsate\nca tapate ca virocati ca,\nevaṁ vaṇṇo attā hoti\na·rogo paraṁ maraṇā”ti.", "sujato-corrected": "“Mister Gotama, suppose there was a beryl gem that was naturally lustrous, eight-faceted, well-worked.\nWhen placed on a cream rug it would shine and glow and radiate.\nSuch is the splendor of the self that is free of disease after death.”", "pts": "\"Revered sir, as an emerald jewel, of lovely water, well cut into eight facets,\nif placed on a pale piece of cloth shines and gleams and glows - of such a lustre is the hale self after dying.\""}]}, {"id": "5", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:5.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:5.2", "pali": "yo vā maṇi veḷuriyo subho jātimā aṭṭhaṁso su·pari·kamma·kato paṇḍu·kambale nikkhitto bhāsate\nca tapate ca virocati ca,\nyo vā ratt·andha·kāra·timisāya kimi khajjo·panako imesaṁ ubhinnaṁ\nvaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nsuch a beryl gem, or a firefly in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthat emerald jewel, of lovely water, cut into eight facets that,\nif placed on a pale piece of cloth shines and gleams and glows;\nor some glow-worm or fire-fly in the dense darkness of the night?\""}, {"key": "mn80:5.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya kimi khajjo·panako,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“A firefly in the dark of night.”", "pts": "\"Why, revered sir, of these two lustres,\nthe surpassing and more excellent is the glow-worm or fire-fly in the dense darkness of the night.\""}]}, {"id": "6", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:6.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:6.2", "pali": "yo vā ratt·andha·kāra·timisāya kimi khajjo·panako, yo vā ratt·andha·kāra·timisāya tela·p·padīpo,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\na firefly in the dark of night, or an oil lamp in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe glow-worm or fire-fly in the dense darkness of the night or an oil-lamp in the dense darkness of the night?\""}, {"key": "mn80:6.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya tela·p·padīpo,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“An oil lamp in the dark of night.”", "pts": "\"Why, revered sir, the oil-lamp.\""}]}, {"id": "7", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:7.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:7.2", "pali": "yo vā ratt·andha·kāra·timisāya tela·p·padīpo, yo vā ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nan oil lamp in the dark of night, or a great mass of fire in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe oil-lamp in the dense darkness of the night or a great blaze of fire in the dense darkness of the night?\""}, {"key": "mn80:7.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“A great mass of fire in the dark of night.”", "pts": "\"Why, revered sir, the great blaze of fire in the dense darkness of the night.\""}]}, {"id": "8", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:8.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:8.2", "pali": "yo vā ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nyā vā rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\na great mass of fire in the dark of night, or the Morning Star in the clear and cloudless heavens at the crack of dawn?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe great blaze of fire in the dense darkness of the night or the morning star in a clear cloudless sky towards dawn?\""}, {"key": "mn80:8.3", "pali": "“Yvāyaṁ, bho gotama, rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The Morning Star in the clear and cloudless heavens at the crack of dawn.”", "pts": "\"Why, revered sir, the morning star in a clear cloudless sky towards\ndawn is the surpassing and more excellent of these two lustres.\""}]}, {"id": "9", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:9.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:9.2", "pali": "yā vā rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nyo vā tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nthe Morning Star in the clear and cloudless heavens at the crack of dawn,\nor the full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe morning star in a clear cloudless sky towards dawn or the moon at its\nzenith in a clear cloudless sky at midnight on an Observance day, a fifteenth?\""}, {"key": "mn80:9.3", "pali": "“Yvāyaṁ, bho gotama, tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath.”", "pts": "\"Why, revered sir, on an Observance day, a fifteenth, the moon at its zenith in a clear cloudless sky at midnight.\""}]}, {"id": "10", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:10.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?"}, {"key": "mn80:10.2", "pali": "yo vā tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nyo vā vassānaṁ pacchime māse sarada·samaye viddhe vigata·valāhake deve abhido\nmajjhanhika·samayaṁ sūriyo,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nthe full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath,\nor the sun at midday in the clear and cloudless heavens in the last month of the rainy season, in autumn?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe moon at its zenith in a clear cloudless sky at midnight on an Observance day, a fifteenth,\nor the sun at its zenith in a clear cloudless sky at noonday in the last month of the rains in the autumn?\""}, {"key": "mn80:10.3", "pali": "“Yvāyaṁ, bho gotama,\nvassānaṁ pacchime māse sarada·samaye viddhe vigata·valāhake deve abhido\nmajjhanhika·samayaṁ\nsūriyo—ayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The sun at midday in the clear and cloudless heavens in the last month of the rainy season, in autumn.”", "pts": "\"Why, revered sir, the sun at its zenith in a clear cloudless sky at noonday in the last\nmonth of the rains in the autumn is of these two lustres the surpassing and more excellent.\""}]}, {"id": "11", "label": "“Ato kho te, kaccāna, bahū hi bahutarā…", "rows": [{"key": "mn80:11.1", "pali": "“Ato kho te, kaccāna, bahū hi bahutarā devā ye\nimesaṁ candima·sūriyānaṁ ābhā nānubhonti, tyāhaṁ pajānāmi.", "sujato-corrected": "“Beyond this, Kaccāna, I know very many gods on whom the luminosity of the sun and moon makes no impression.", "pts": "\"Greater than these are those many devas, Kaccāna,\nwho do not share in the brilliance of these moons and suns - that I comprehend."}, {"key": "mn80:11.2", "pali": "Atha ca panāhaṁ na vadāmi:", "sujato-corrected": "Nevertheless, I do not say:", "pts": "But then I do not say:"}, {"key": "mn80:11.3", "pali": "‘yasmā vaṇṇā añño vaṇṇo uttaritaro ca paṇīta·taro ca natthī’ti.", "sujato-corrected": "‘The splendor compared to which no other splendor is finer.’", "pts": "'There is no other lustre superior to or more excellent than this lustre.'"}, {"key": "mn80:11.4", "pali": "Atha ca pana tvaṁ, kaccāna,\n‘yvāyaṁ vaṇṇo kiminā khajjo·pana·kena nihīnataro ca pati·kiṭṭha·taro ca so paramo vaṇṇo’ti vadesi;\ntañca vaṇṇaṁ na paññapesi.", "sujato-corrected": "But of the splendor inferior to a firefly you say,\n‘This is the ultimate splendor.’\nAnd you don’t describe that splendor.", "pts": "But you, Kaccāna, although this lustre of a glow-worm or a fire-fly is feebler and poorer, say it is the highest lustre.\nAnd you do not point to that lustre."}]}, {"id": "12", "label": "Pañca kho ime, kaccāna, kāma·guṇā.", "rows": [{"key": "mn80:12.1", "pali": "Pañca kho ime, kaccāna, kāma·guṇā.", "sujato-corrected": "Kaccāna, there are these five kinds of sensual stimulation.", "pts": "These five, Kaccāna, are the strands of sense-pleasures.[]"}, {"key": "mn80:12.2", "pali": "Katame pañca?", "sujato-corrected": "What five?", "pts": "Which five?"}, {"key": "mn80:12.3", "pali": "Cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā,", "sujato-corrected": "Sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Material shapes cognisable by the eye, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn80:12.4", "pali": "sota·viññeyyā saddā …pe…", "sujato-corrected": "Sounds known by the ear …", "pts": "Sounds cognisable by the ear, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn80:12.5", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "Smells known by the nose …", "pts": "Smells cognisable by the nose, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn80:12.6", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "Tastes known by the tongue …", "pts": "Tastes cognisable by the tongue, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn80:12.7", "pali": "kāya·viññeyyā phoṭṭhabbā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā—", "sujato-corrected": "Touches known by the body, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Touches cognisable by the body, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring."}, {"key": "mn80:12.8", "pali": "ime kho, kaccāna, pañca kāma·guṇā.", "sujato-corrected": "These are the five kinds of sensual stimulation.", "pts": "These, Kaccana, are the five strands of sense-pleasures."}]}, {"id": "13", "label": "Yaṁ kho, kaccāna, ime pañca kāma·guṇe paṭicca…", "rows": [{"key": "mn80:13.1", "pali": "Yaṁ kho, kaccāna, ime pañca kāma·guṇe paṭicca uppajjati\nsukhaṁ somanassaṁ idaṁ vuccati kāma·sukhaṁ.", "sujato-corrected": "The pleasure and happiness that arises from these five kinds of sensual stimulation is called sensual pleasure.", "pts": "Whatever happiness, Kaccāna, whatever pleasure arises in consequence of these five strands of sense-pleasure,\nthis is called happiness in sense-pleasures."}, {"key": "mn80:13.2", "pali": "Iti kāmehi kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ tattha agga·makkhā·yatī”ti.", "sujato-corrected": "‘From the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.’”", "pts": "Thus, because of sense-pleasures there is happiness in sense-pleasures;\nfrom happiness in sense-pleasures the topmost happiness in sense-pleasures[] is there accounted topmost.\""}]}, {"id": "14", "label": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "rows": [{"key": "mn80:14.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "sujato-corrected": "When he said this, Vekhanasa said to the Buddha,", "pts": "When this had been said, the wanderer Vekhanassa spoke thus to the Lord:"}, {"key": "mn80:14.2", "pali": "“acchar·iyaṁ, bho gotama, abbhutaṁ, bho gotama.", "sujato-corrected": "“It’s incredible, worthy Gotama, it’s amazing!", "pts": "\"It is wonderful, good Gotama, it is marvellous, good Gotama."}, {"key": "mn80:14.3", "pali": "Yāva subhāsitañcidaṁ bhotā gotamena:", "sujato-corrected": "How well said this was by the worthy Gotama!", "pts": "So far this is well spoken by the good Gotama:"}, {"key": "mn80:14.4", "pali": "‘kāmehi kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ tattha agga·makkhā·yatī’ti.", "sujato-corrected": "‘From the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.’", "pts": "'Because of sense-pleasures there is happiness in sense-pleasures;\nfrom happiness in sense-pleasures the topmost happiness in sense-pleasures is there accounted topmost.'\""}, {"key": "mn80:14.5", "pali": "‘Kāmehi, bho gotama, kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ, tattha agga·makkhā·yatī’”ti", "sujato-corrected": "Worthy Gotama, from the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.”", "pts": ""}, {"key": "mn80:14.6", "pali": "“dujjānaṁ kho etaṁ, kaccāna, tayā añña·diṭṭhikena añña·khantikena añña·ruci·kena aññatra·yogena aññatr·ācariyakena—", "sujato-corrected": "“Kaccāna, since you have a different view, creed, and belief, then,\nunless you dedicate yourself to practice with the guidance of tradition, it’s hard for you to understand", "pts": "\"Hard is this for you to understand, Kaccāna - sense-pleasures, or the happiness in sense-pleasures,\nor the topmost happiness in sense-pleasures - you who are of another view, another allegiance,\nanother objective, of a different observance and under a different teacher.[]"}, {"key": "mn80:14.7", "pali": "kāmā vā kāma·sukhaṁ vā kāmagga·sukhaṁ vā.", "sujato-corrected": "the senses, sensual pleasure, and the pleasure that surmounts the sensual.", "pts": ""}, {"key": "mn80:14.8", "pali": "Ye kho te, kaccāna, bhikkhū\narahanto khīṇ·āsavā vusitavanto kata·karaṇīyā ohita·bhārā\nanuppatta·sadatthā pari·k·khīṇa·bhava·saṁyojanā sammadaññā·vimuttā te kho etaṁ jāneyyuṁ—", "sujato-corrected": "There are mendicants who are perfected, who have ended the defilements,\ncompleted the spiritual journey, done what had to be done,\nlaid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence, and are rightly freed through enlightenment.\nThey can understand", "pts": "But those monks, Kaccāna, who are perfected ones, the cankers destroyed,\nwho have lived the life, done what was to be done, shed the burden,\nwho have attained their own goal, the fetters of becoming utterly destroyed,\nand who are freed by perfect profound knowledge - these would know:"}, {"key": "mn80:14.9", "pali": "kāmā vā kāma·sukhaṁ vā kāmagga·sukhaṁ vā”ti.", "sujato-corrected": "the senses, sensual pleasure, and the pleasure that surmounts the sensual.”", "pts": "sense-pleasures, or the happiness in sense-pleasures, or the topmost happiness in sense-pleasures.\""}]}, {"id": "15", "label": "Evaṁ vutte, vekhanaso pari·b·bājako kupito an·atta·mano bhagavantaṁ·yeva…", "rows": [{"key": "mn80:15.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako kupito an·atta·mano bhagavantaṁ·yeva\nkhuṁsento bhagavantaṁ·yeva vambhento bhagavantaṁ·yeva vada·māno:", "sujato-corrected": "When he said this, Vekhanasa became angry and upset.\nHe even attacked and badmouthed the Buddha himself, saying,", "pts": "When this had been said, the wanderer Vekhanassa, angry and displeased,\nscorning even the Lord, despising even him, saying[] even of him:"}, {"key": "mn80:15.2", "pali": "“samaṇo gotamo pāpito bhavissatī”ti bhagavantaṁ etadavoca:", "sujato-corrected": "“The ascetic Gotama will be worsted!”\nHe said to the Buddha,", "pts": "\"The recluse Gotama shall be disgraced,\" spoke thus to the Lord:"}, {"key": "mn80:15.3", "pali": "“evameva panidh·ekacce samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ, a·passantā apara·ntaṁ atha ca pana", "sujato-corrected": "“This is exactly what happens with some ascetics and brahmins.\nNot knowing the first beginning or seeing the final end, they nevertheless claim:", "pts": "\"But it is just that there are here some recluses and brahmans who,\nnot knowing the past, not seeing the future, yet claim:"}, {"key": "mn80:15.4", "pali": "‘khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyāti—pajānāmā’ti—paṭi·jānanti.", "sujato-corrected": "‘We understand:\n“Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.”’", "pts": "'Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.'"}, {"key": "mn80:15.5", "pali": "Tesam·idaṁ bhāsitaṁ hassakaṁ·yeva sampajjati,\nnāma·kaṁyeva sampajjati,\nrittakaṁ·yeva sampajjati,\ntuccha·kaṁyeva sampajjatī”ti.", "sujato-corrected": "Their statement turns out to be a joke—mere words, vacuous and hollow.”", "pts": "This speech of theirs proves merely ridiculous, worthless, empty, void.\"[]"}]}, {"id": "16", "label": "“Ye kho te, kaccāna, samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ,…", "rows": [{"key": "mn80:16.1", "pali": "“Ye kho te, kaccāna, samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ, a·passantā apara·ntaṁ,", "sujato-corrected": "“Kaccāna, there are some ascetics and brahmins who,\nnot knowing the first beginning or seeing the final end, nevertheless claim:", "pts": "\"This censure is only just, Kaccāna, for those recluses and brahmans who,\nnot knowing the past, not seeing the future, yet claim:"}, {"key": "mn80:16.2", "pali": "‘khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyāti—pajānāmā’ti—paṭi·jānanti;", "sujato-corrected": "‘We understand:\n“Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.”’", "pts": "'Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.'"}, {"key": "mn80:16.3", "pali": "tesaṁ soyeva saha·dhammiko niggaho hoti.", "sujato-corrected": "There is a legitimate refutation of them.", "pts": ""}, {"key": "mn80:16.4", "pali": "Api ca, kaccāna, tiṭṭhatu\npubbanto, tiṭṭhatu aparanto.", "sujato-corrected": "Nevertheless, Kaccāna, leave aside the first beginning and the final end.", "pts": "But, Kaccāna, let be the past, let be the future.[]"}, {"key": "mn80:16.5", "pali": "Etu viññū puriso a·saṭho a·māyāvī uju·jātiko, aham·anusāsāmi ahaṁ dhammaṁ desemi.", "sujato-corrected": "Let a sensible person come—neither devious nor deceitful, a person of integrity.\nI teach and instruct them.", "pts": "Let there come an intelligent man, guileless, honest, straight, and who says:\n'I instruct, I teach Dhamma.[]"}, {"key": "mn80:16.6", "pali": "Yathā·nusiṭṭhaṁ tathā paṭi·pajja·māno nacirasseva sāma·ñ·ñeva ñassati sāmaṁ dakkhiti—", "sujato-corrected": "Practicing as instructed they will soon know and see for themselves,", "pts": "Faring along as instructed it will not be long before (some man) of himself will know, of himself will see.'"}, {"key": "mn80:16.7", "pali": "evaṁ kira sammā bandhanā vippa·mokkho hoti,\nyadidaṁ a·vijjā bandhanā.", "sujato-corrected": "‘So this is how to be rightly released from the bond, that is, the bond of ignorance.’", "pts": "Even so, indeed, is deliverance from the direst bond - that is from the bond of ignorance."}, {"key": "mn80:16.8", "pali": "Seyyathāpi, kaccāna, daharo kumāro mando uttāna·seyyako kaṇṭha·pañca·mehi bandhanehi baddho assa sutta·bandhanehi;", "sujato-corrected": "Suppose there was a little baby bound with swaddling up to the neck.", "pts": "Kaccāna, it is like a young baby boy lying on his back and bound around his neck with a fivefold swaddling,\nit might be with swaddlings of thread."}, {"key": "mn80:16.9", "pali": "tassa vuddhimanv·āya indr·iyānaṁ pari·pākamanv·āya tāni bandhanāni mucceyyuṁ;", "sujato-corrected": "As they grow up and their senses mature, they’re accordingly released from those bonds.", "pts": "As he grows up and develops his faculties he would be released from those swaddlings,"}, {"key": "mn80:16.10", "pali": "so mokkhomhīti kho jāneyya no ca bandhanaṁ.", "sujato-corrected": "They’d know ‘I’m released,’ and there would be no more bonds.", "pts": "and in the absence of swaddlings he would know:\n'I am released.'"}, {"key": "mn80:16.11", "pali": "Evameva kho, kaccāna, etu\nviññū puriso a·saṭho a·māyāvī uju·jātiko, aham·anusāsāmi, ahaṁ dhammaṁ desemi;", "sujato-corrected": "In the same way, let a sensible person come—neither devious nor deceitful, a person of integrity.\nI teach and instruct them.", "pts": "Even so, Kaccāna, let there come intelligent man, guileless, honest, straight, and who says:\n'I instruct, I teach Dhamma."}, {"key": "mn80:16.12", "pali": "yathā·nusiṭṭhaṁ tathā paṭi·pajja·māno nacirasseva sāma·ñ·ñeva ñassati, sāmaṁ dakkhiti:", "sujato-corrected": "Practicing as instructed they will soon know and see for themselves,", "pts": "Faring along as instructed it will not be long before (some man) of himself will know, of himself will see.'"}, {"key": "mn80:16.13", "pali": "‘evaṁ kira sammā bandhanā vippa·mokkho hoti,\nyadidaṁ a·vijjā bandhanā’”ti.", "sujato-corrected": "‘So this is how to be rightly released from the bond, that is, the bond of ignorance.’”", "pts": "Even so, indeed, is deliverance from the direst bond - that is from the bond of ignorance.\""}]}, {"id": "17", "label": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "rows": [{"key": "mn80:17.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "sujato-corrected": "When he said this, Vekhanasa said to the Buddha,", "pts": "When this had been said, the wanderer Vekhanassa spoke thus to the Lord:"}, {"key": "mn80:17.2", "pali": "“abhi·k·kantaṁ, bho gotama …pe…", "sujato-corrected": "“Excellent, worthy Gotama! …", "pts": "\"It is excellent, good Gotama, excellent, good Gotama.\nRevered sir, it is as if one might set upright what had been upset,\nor might disclose what was covered, or show the way to one who had gone astray,\nor bring an oil-lamp into the darkness so that those with vision might see material shapes —\neven so in many a figure has Dhamma been made clear by the Lord."}, {"key": "mn80:17.3", "pali": "upāsakaṁ maṁ bhavaṁ gotamo dhāretu\najjatagge pāṇupetaṁ saraṇaṁ gatan”ti.", "sujato-corrected": "From this day forth, may the worthy Gotama remember me as a lay follower who has gone for refuge for life.”", "pts": "I, revered sir, am going to the Lord for refuge and to Dhamma and to the Order of monks.\nMay the Lord accept me as a lay follower going for refuge from this day forth for as long as life lasts.\""}, {"key": "mn80:17.4", "pali": "Vekhanasa·suttaṁ niṭṭhitaṁ dasamaṁ.", "sujato-corrected": "", "pts": "Discourse to Vekhanassa:\nThe Tenth"}, {"key": "mn80:17.5", "pali": "Pari·b·bājaka·vaggo niṭṭhito tatiyo.", "sujato-corrected": "", "pts": "Division on Wanderers:\nThe Third"}]}, {"id": "18", "label": "Tass·uddānaṁ", "rows": [{"key": "mn80:18.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "pts": ""}, {"key": "mn80:18.1", "pali": "Puṇḍarī aggi·saha kathi·nāmo,", "sujato-corrected": "", "pts": ""}, {"key": "mn80:18.2", "pali": "Dīgha·nakho puna bhāradvāja·gotto;", "sujato-corrected": "", "pts": ""}, {"key": "mn80:18.3", "pali": "Sandaka·udāyi·muṇḍika·putto,", "sujato-corrected": "", "pts": ""}, {"key": "mn80:18.4", "pali": "Maṇiko tathā·kaccāno vara·vaggo.", "sujato-corrected": "", "pts": ""}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 80", "rows": [{"key": "mn80:0.1", "pali": "Majjhima Nikāya 80", "sujato-corrected": "Middle Discourses 80", "pts": "", "bodhi-esque": "Majjhima Nikāya 80"}, {"key": "mn80:0.2", "pali": "Vekhanasa·sutta", "sujato-corrected": "With Vekhanasa", "pts": "", "bodhi-esque": "Vekhanasa Sutta"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn80:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:", "bodhi-esque": "Thus have I heard—"}, {"key": "mn80:1.2", "pali": "ekaṁ samayaṁ bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "sujato-corrected": "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "pts": "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapinḍika's monastery.", "bodhi-esque": "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s park."}]}, {"id": "2", "label": "Atha kho vekhanaso pari·b·bājako yena bhagavā tenupasaṅkami;…", "rows": [{"key": "mn80:2.1", "pali": "Atha kho vekhanaso pari·b·bājako yena bhagavā tenupasaṅkami;\nupasaṅkamitvā bhagavatā saddhiṁ sammodi.", "sujato-corrected": "Then the wanderer Vekhanasa went up to the Buddha, and exchanged greetings with him.", "pts": "Then the wanderer Vekhanassa[] approached the Lord;\nhaving approached, he greeted the Lord;", "bodhi-esque": "Then the wanderer Vekhanasa approached the Blessed One;\nhaving approached, he exchanged greetings with the Blessed One."}, {"key": "mn80:2.2", "pali": "Sammodanīyaṁ kathaṁ sā·raṇīyaṁ vīti·sāretvā ekam·antaṁ aṭṭhāsi.", "sujato-corrected": "When the greetings and polite conversation were over, he stood to one side,", "pts": "and having conversed in a friendly and courteous way, he stood at a respectful distance.", "bodhi-esque": "Having exchanged courteous and cordial talk, he stood to one side."}, {"key": "mn80:2.3", "pali": "Ekam·antaṁ ṭhito kho vekhanaso pari·b·bājako bhagavato sa·ntike udānaṁ udānesi:", "sujato-corrected": "and expressed this heartfelt sentiment:", "pts": "As he was standing at a respectful distance, the wanderer Vekhanassa uttered a solemn utterance in the Lord's presence:", "bodhi-esque": "Standing to one side, the wanderer Vekhanasa uttered this exclamation in the presence of the Blessed One:"}, {"key": "mn80:2.4", "pali": "“ayaṁ paramo vaṇṇo, ayaṁ paramo vaṇṇo”ti.", "sujato-corrected": "“This is the ultimate splendor, this is the ultimate splendor.”", "pts": "\"This is the highest lustre, this is the highest lustre.\"", "bodhi-esque": "“This is the supreme beauty, this is the supreme beauty.”"}, {"key": "mn80:2.5", "pali": "“Kiṁ pana tvaṁ, kaccāna, evaṁ vadesi:", "sujato-corrected": "“But Kaccāna, why do you say:", "pts": "\"But why do you, Kaccāna,[] speak thus:", "bodhi-esque": "“But what is this, Kaccāna, that you say:"}, {"key": "mn80:2.6", "pali": "‘ayaṁ paramo vaṇṇo, ayaṁ paramo vaṇṇo’ti?", "sujato-corrected": "‘This is the ultimate splendor, this is the ultimate splendor.’", "pts": "'This is the highest lustre, this is the highest lustre?'", "bodhi-esque": "‘This is the supreme beauty, this is the supreme beauty’?"}, {"key": "mn80:2.7", "pali": "Katamo, kaccāna, so paramo vaṇṇo”ti?", "sujato-corrected": "What is that ultimate splendor?”", "pts": "Which is this highest lustre?\"", "bodhi-esque": "What, Kaccāna, is that supreme beauty?”"}, {"key": "mn80:2.8", "pali": "“Yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo”ti.", "sujato-corrected": "“Worthy Gotama, the ultimate splendor is the splendor compared to which no other splendor is finer.”", "pts": "\"Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.\"", "bodhi-esque": "“In which, Master Gotama, there is no other beauty higher or more sublime than that beauty—that is the supreme beauty.”"}, {"key": "mn80:2.9", "pali": "“Katamo pana so, kaccāna, vaṇṇo yasmā vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthī”ti?", "sujato-corrected": "“But what is that ultimate splendor compared to which no other splendor is finer?”", "pts": "\"But which, Kaccāna, is this lustre than which there is no other lustre superior or more excellent?\"", "bodhi-esque": "“But what, Kaccāna, is that beauty from which there is no other beauty higher or more sublime?”"}, {"key": "mn80:2.10", "pali": "“Yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo”ti.", "sujato-corrected": "“Worthy Gotama, the ultimate splendor is the splendor compared to which no other splendor is finer.”", "pts": "\"Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.\"", "bodhi-esque": "“In which, Master Gotama, there is no other beauty higher or more sublime than that beauty—that is the supreme beauty.”"}]}, {"id": "3", "label": "“Dīghāpi kho te esā, kaccāna, phareyya:", "rows": [{"key": "mn80:3.1", "pali": "“Dīghāpi kho te esā,\nkaccāna, phareyya:", "sujato-corrected": "“Kaccāna, you could draw this out for a long time.", "pts": "\"You would be long in expanding this, Kaccāna.\nYou say:", "bodhi-esque": "“This exposition of yours, Kaccāna, is indeed lengthy."}, {"key": "mn80:3.2", "pali": "‘yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo’ti vadesi,\ntañca vaṇṇaṁ na paññapesi.", "sujato-corrected": "You say,\n‘The ultimate splendor is the splendor compared to which no other splendor is finer.’\nBut you don’t describe that splendor.", "pts": "'Good Gotama, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.'\nBut you do not point to this lustre.", "bodhi-esque": "‘Since, Master Gotama, you say that there is no other color that is superior or more excellent than color,\nand that that is the supreme color, yet you do not describe that color.’"}, {"key": "mn80:3.3", "pali": "Seyyathāpi, kaccāna, puriso evaṁ vadeyya:", "sujato-corrected": "Suppose a man was to say,", "pts": "Kaccāna, it is as though a man should say:", "bodhi-esque": "Suppose, Kaccāna, a man were to say thus:"}, {"key": "mn80:3.4", "pali": "‘ahaṁ yā imasmiṁ jana·pade jana·pada·kalyāṇī, taṁ icchāmi taṁ kāmemī’ti.", "sujato-corrected": "‘Whoever the finest lady in the land is, it is her that I want, her I desire!’", "pts": "'Whoever is the belle of this countryside, I want her, I desire her.'[]", "bodhi-esque": "‘I desire, I long for whichever is the most beautiful woman in this country.’"}, {"key": "mn80:3.5", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "Another man might say to him:", "bodhi-esque": "They would say to him thus:"}, {"key": "mn80:3.6", "pali": "‘ambho purisa, yaṁ tvaṁ jana·pada·kalyāṇiṁ icchasi kāmesi,\njānāsi taṁ jana·pada·kalyāṇiṁ—khattiyī vā brāhmaṇī vā vessī vā suddī vā’ti?", "sujato-corrected": "‘My friend, that finest lady in the land who you desire—do you know whether she’s an aristocrat,\na brahmin, a peasant, or a menial?’", "pts": "'My good man, do you know whether this belle of the countryside whom you\nwant and desire is a noble maiden or a brahmin or a merchant or a worker?'", "bodhi-esque": "‘Good man, that most beautiful woman of the country whom you desire and long for,\ndo you know whether she is a noble lady, a brahmin lady, a merchant lady, or a worker lady?’"}, {"key": "mn80:3.7", "pali": "Iti puṭṭho ‘no’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘No.’", "pts": "Asked this, he would say:\n'No.'", "bodhi-esque": "Being asked thus, he would say:\n‘No.’"}, {"key": "mn80:3.8", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "The other might say to him:", "bodhi-esque": "They would say to him thus:"}, {"key": "mn80:3.9", "pali": "‘ambho purisa, yaṁ tvaṁ jana·pada·kalyāṇiṁ icchasi\nkāmesi, jānāsi taṁ jana·pada·kalyāṇiṁ evaṁ·nāmā evaṅgottāti vāti …pe…\ndīghā vā rassā vā majjhimā vā kāḷī vā sāmā vā maṅgura·c·chavī vāti\n… amukasmiṁ gāme vā nigame vā nagare vā’ti?", "sujato-corrected": "‘My friend, that finest lady in the land who you desire—do you know her name or clan?\nWhether she’s tall or short or medium?\nWhether her skin is black, brown, or dingy?\nWhat village, town, or city she comes from?’", "pts": "'My good man, do you know the name or the clan of this belle of the countryside whom you want and desire?'\nAsked this, he would say:\n'No.'\nThe other might say to him:\n'My good man, do you know whether she is tall or short or of medium height, or dark or brown or sallow;\nor what village or market town or what town she belongs to?'", "bodhi-esque": "‘Good man, that most beautiful woman of the country whom you desire and long for,\ndo you know whether she is of such a name and such a clan …\nwhether she is tall or short or medium, dark or fair or of ruddy complexion …\nor whether she lives in such a village or town or city?’"}, {"key": "mn80:3.10", "pali": "Iti puṭṭho ‘no’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘No.’", "pts": "Asked this, he might say:\n'No.'", "bodhi-esque": "Being asked thus, he would say:\n‘No.’"}, {"key": "mn80:3.11", "pali": "Tamenaṁ evaṁ vadeyyuṁ:", "sujato-corrected": "They’d say to him,", "pts": "The other might speak to him thus:", "bodhi-esque": "They would say to him thus:"}, {"key": "mn80:3.12", "pali": "‘ambho purisa, yaṁ tvaṁ na jānāsi\nna passasi, taṁ tvaṁ icchasi kāmesī’ti?", "sujato-corrected": "‘My friend, do you desire someone who you’ve never even known or seen?’", "pts": "'My good man, do you want and desire her whom you know not, see not?'", "bodhi-esque": "‘Good man, do you desire and long for that which you do not know and do not see?’"}, {"key": "mn80:3.13", "pali": "Iti puṭṭho ‘āmā’ti vadeyya.", "sujato-corrected": "Asked this, he’d say,\n‘Yes.’", "pts": "Asked this, he might say:\n'Yes.'", "bodhi-esque": "Being asked thus, he would say:\n‘Yes.’"}, {"key": "mn80:3.14", "pali": "Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "What do you think, Kaccāna?", "pts": "What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna,"}, {"key": "mn80:3.15", "pali": "nanu evaṁ sante tassa purisassa a·p·pāṭi·hīra·kataṁ bhāsitaṁ sampajjatī”ti?", "sujato-corrected": "This being so, doesn’t that man’s statement turn out to have no demonstrable basis?”", "pts": "This being so, surely that man's irresponsible talk does not prosper him?\"", "bodhi-esque": "when this is so, does that man’s speech not turn out to be incoherent?”"}, {"key": "mn80:3.16", "pali": "“Addhā kho, bho gotama, evaṁ sante\ntassa purisassa a·p·pāṭi·hīra·kataṁ bhāsitaṁ sampajjatī”ti.", "sujato-corrected": "“Clearly that’s the case, worthy Gotama.”", "pts": "\"Certainly, revered sir, this being so, that man's irresponsible talk does not prosper him.\"", "bodhi-esque": "“Surely, Master Gotama, when this is so, that man’s speech turns out to be incoherent.”"}, {"key": "mn80:3.17", "pali": "“Evameva kho tvaṁ, kaccāna,\n‘yasmā, bho gotama, vaṇṇā añño vaṇṇo uttaritaro vā paṇīta·taro vā natthi\nso paramo vaṇṇo’ti vadesi;\ntañca vaṇṇaṁ na paññapesī”ti.", "sujato-corrected": "“In the same way, you say,\n‘The ultimate splendor is the splendor compared to which no other splendor is finer.’\nBut you don’t describe that splendor.”", "pts": "\"But even so do you, Kaccāna, say:\n'Revered sir, there is no other lustre superior to or more excellent than this lustre, it is the highest lustre.'\nBut you do not point to this lustre.\"", "bodhi-esque": "Just so, Kaccāna, you say:\n'Since, Master Gotama, there is no other color superior or more excellent than color,\nthat is the supreme color,' but you do not define that color."}]}, {"id": "4", "label": "“Seyyathāpi, bho gotama, maṇi veḷuriyo subho jātimā…", "rows": [{"key": "mn80:4.1", "pali": "“Seyyathāpi, bho gotama,\nmaṇi veḷuriyo subho jātimā aṭṭhaṁso su·pari·kamma·kato paṇḍu·kambale nikkhitto bhāsate\nca tapate ca virocati ca,\nevaṁ vaṇṇo attā hoti\na·rogo paraṁ maraṇā”ti.", "sujato-corrected": "“Mister Gotama, suppose there was a beryl gem that was naturally lustrous, eight-faceted, well-worked.\nWhen placed on a cream rug it would shine and glow and radiate.\nSuch is the splendor of the self that is free of disease after death.”", "pts": "\"Revered sir, as an emerald jewel, of lovely water, well cut into eight facets,\nif placed on a pale piece of cloth shines and gleams and glows - of such a lustre is the hale self after dying.\"", "bodhi-esque": "Just as, Master Gotama, a beryl gem, beautiful, of pure birth, eight-faceted, well-wrought,\nplaced on a red blanket, shines and glows and radiates, so is the self of such color, healthy, after death."}]}, {"id": "5", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:5.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:5.2", "pali": "yo vā maṇi veḷuriyo subho jātimā aṭṭhaṁso su·pari·kamma·kato paṇḍu·kambale nikkhitto bhāsate\nca tapate ca virocati ca,\nyo vā ratt·andha·kāra·timisāya kimi khajjo·panako imesaṁ ubhinnaṁ\nvaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nsuch a beryl gem, or a firefly in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthat emerald jewel, of lovely water, cut into eight facets that,\nif placed on a pale piece of cloth shines and gleams and glows;\nor some glow-worm or fire-fly in the dense darkness of the night?\"", "bodhi-esque": "Which of these two colors is more attractive and more excellent:\nthe beryl gem, beautiful, of pure birth, eight-faceted, well-wrought, placed on a red blanket,\nthat shines and glows and radiates, or a firefly in the darkness of the night?"}, {"key": "mn80:5.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya kimi khajjo·panako,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“A firefly in the dark of night.”", "pts": "\"Why, revered sir, of these two lustres,\nthe surpassing and more excellent is the glow-worm or fire-fly in the dense darkness of the night.\"", "bodhi-esque": "This firefly in the darkness of the night, Master Gotama, is the more attractive and more excellent of these two colors."}]}, {"id": "6", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:6.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:6.2", "pali": "yo vā ratt·andha·kāra·timisāya kimi khajjo·panako, yo vā ratt·andha·kāra·timisāya tela·p·padīpo,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\na firefly in the dark of night, or an oil lamp in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe glow-worm or fire-fly in the dense darkness of the night or an oil-lamp in the dense darkness of the night?\"", "bodhi-esque": "Which of these two colors is more attractive and more excellent:\na firefly in the darkness of the night, or an oil lamp in the darkness of the night?"}, {"key": "mn80:6.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya tela·p·padīpo,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“An oil lamp in the dark of night.”", "pts": "\"Why, revered sir, the oil-lamp.\"", "bodhi-esque": "This oil lamp in the darkness of the night, Master Gotama,\nis the more attractive and more excellent of these two colors."}]}, {"id": "7", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:7.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:7.2", "pali": "yo vā ratt·andha·kāra·timisāya tela·p·padīpo, yo vā ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nan oil lamp in the dark of night, or a great mass of fire in the dark of night?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe oil-lamp in the dense darkness of the night or a great blaze of fire in the dense darkness of the night?\"", "bodhi-esque": "Which of these two colors is more attractive and more excellent:\nan oil lamp in the darkness of the night, or a great mass of fire in the darkness of the night?"}, {"key": "mn80:7.3", "pali": "“Yvāyaṁ, bho gotama, ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“A great mass of fire in the dark of night.”", "pts": "\"Why, revered sir, the great blaze of fire in the dense darkness of the night.\"", "bodhi-esque": "This great mass of fire in the darkness of the night, Master Gotama,\nis the more attractive and more excellent of these two colors."}]}, {"id": "8", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:8.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:8.2", "pali": "yo vā ratt·andha·kāra·timisāya mahā·aggi·k·khandho,\nyā vā rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\na great mass of fire in the dark of night, or the Morning Star in the clear and cloudless heavens at the crack of dawn?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe great blaze of fire in the dense darkness of the night or the morning star in a clear cloudless sky towards dawn?\"", "bodhi-esque": "Which of these two colors is more attractive and more excellent:\na great mass of fire in the darkness of the night, or the morning star at dawn in a clear sky without clouds?"}, {"key": "mn80:8.3", "pali": "“Yvāyaṁ, bho gotama, rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The Morning Star in the clear and cloudless heavens at the crack of dawn.”", "pts": "\"Why, revered sir, the morning star in a clear cloudless sky towards\ndawn is the surpassing and more excellent of these two lustres.\"", "bodhi-esque": "This morning star at dawn in a clear sky without clouds, Master Gotama,\nis the more attractive and more excellent of these two colors."}]}, {"id": "9", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:9.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:9.2", "pali": "yā vā rattiyā pacc·ūsa·samayaṁ viddhe vigata·valāhake deve osadhi·tārakā,\nyo vā tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nthe Morning Star in the clear and cloudless heavens at the crack of dawn,\nor the full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe morning star in a clear cloudless sky towards dawn or the moon at its\nzenith in a clear cloudless sky at midnight on an Observance day, a fifteenth?\"", "bodhi-esque": "Either the morning star at dawn in a clear and cloudless sky,\nor the full moon at midnight on the fifteenth-day uposatha in a clear and cloudless sky —\nof these two lights, which is more brilliant and sublime?"}, {"key": "mn80:9.3", "pali": "“Yvāyaṁ, bho gotama, tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath.”", "pts": "\"Why, revered sir, on an Observance day, a fifteenth, the moon at its zenith in a clear cloudless sky at midnight.\"", "bodhi-esque": "Master Gotama, the full moon at midnight on the fifteenth-day uposatha in a clear and cloudless sky —\nthis is the more brilliant and sublime of these two lights."}]}, {"id": "10", "label": "“Taṁ kiṁ maññasi, kaccāna,", "rows": [{"key": "mn80:10.1", "pali": "“Taṁ kiṁ maññasi, kaccāna,", "sujato-corrected": "“What do you think, Kaccāna?", "pts": "\"What do you think about this, Kaccāna?", "bodhi-esque": "What do you think, Kaccāna?"}, {"key": "mn80:10.2", "pali": "yo vā tadah·uposathe panna·rase viddhe vigata·valāhake deve abhido\naḍḍha·ratta·samayaṁ cando,\nyo vā vassānaṁ pacchime māse sarada·samaye viddhe vigata·valāhake deve abhido\nmajjhanhika·samayaṁ sūriyo,\nimesaṁ ubhinnaṁ vaṇṇānaṁ katamo vaṇṇo abhi·k·kantataro ca paṇīta·taro cā”ti?", "sujato-corrected": "Which of these two has a finer splendor:\nthe full moon at midnight in the clear and cloudless heavens on the fifteenth day sabbath,\nor the sun at midday in the clear and cloudless heavens in the last month of the rainy season, in autumn?”", "pts": "Of these two lustres, which is the surpassing and more excellent:\nthe moon at its zenith in a clear cloudless sky at midnight on an Observance day, a fifteenth,\nor the sun at its zenith in a clear cloudless sky at noonday in the last month of the rains in the autumn?\"", "bodhi-esque": "Either the full moon at midnight on the fifteenth-day uposatha in a clear and cloudless sky,\nor the sun at midday in the last month of the rainy season in autumn in a clear and cloudless sky —\nof these two lights, which is more brilliant and sublime?"}, {"key": "mn80:10.3", "pali": "“Yvāyaṁ, bho gotama,\nvassānaṁ pacchime māse sarada·samaye viddhe vigata·valāhake deve abhido\nmajjhanhika·samayaṁ\nsūriyo—ayaṁ imesaṁ ubhinnaṁ vaṇṇānaṁ abhi·k·kantataro ca paṇīta·taro cā”ti.", "sujato-corrected": "“The sun at midday in the clear and cloudless heavens in the last month of the rainy season, in autumn.”", "pts": "\"Why, revered sir, the sun at its zenith in a clear cloudless sky at noonday in the last\nmonth of the rains in the autumn is of these two lustres the surpassing and more excellent.\"", "bodhi-esque": "Master Gotama, the sun at midday in the last month of the rainy season in autumn in a clear and cloudless sky —\nthis is the more brilliant and sublime of these two lights."}]}, {"id": "11", "label": "“Ato kho te, kaccāna, bahū hi bahutarā…", "rows": [{"key": "mn80:11.1", "pali": "“Ato kho te, kaccāna, bahū hi bahutarā devā ye\nimesaṁ candima·sūriyānaṁ ābhā nānubhonti, tyāhaṁ pajānāmi.", "sujato-corrected": "“Beyond this, Kaccāna, I know very many gods on whom the luminosity of the sun and moon makes no impression.", "pts": "\"Greater than these are those many devas, Kaccāna,\nwho do not share in the brilliance of these moons and suns - that I comprehend.", "bodhi-esque": "Beyond that, Kaccāna, there are many more devas who do not experience the radiance of the moon and sun;\nI understand them."}, {"key": "mn80:11.2", "pali": "Atha ca panāhaṁ na vadāmi:", "sujato-corrected": "Nevertheless, I do not say:", "pts": "But then I do not say:", "bodhi-esque": "Yet I do not say:"}, {"key": "mn80:11.3", "pali": "‘yasmā vaṇṇā añño vaṇṇo uttaritaro ca paṇīta·taro ca natthī’ti.", "sujato-corrected": "‘The splendor compared to which no other splendor is finer.’", "pts": "'There is no other lustre superior to or more excellent than this lustre.'", "bodhi-esque": "'That there is no other light more excellent and sublime than that.'"}, {"key": "mn80:11.4", "pali": "Atha ca pana tvaṁ, kaccāna,\n‘yvāyaṁ vaṇṇo kiminā khajjo·pana·kena nihīnataro ca pati·kiṭṭha·taro ca so paramo vaṇṇo’ti vadesi;\ntañca vaṇṇaṁ na paññapesi.", "sujato-corrected": "But of the splendor inferior to a firefly you say,\n‘This is the ultimate splendor.’\nAnd you don’t describe that splendor.", "pts": "But you, Kaccāna, although this lustre of a glow-worm or a fire-fly is feebler and poorer, say it is the highest lustre.\nAnd you do not point to that lustre.", "bodhi-esque": "But still, Kaccāna, you say:\n'This light is inferior and base, being produced by a mere oil lamp,' and yet you do not assign that light its place."}]}, {"id": "12", "label": "Pañca kho ime, kaccāna, kāma·guṇā.", "rows": [{"key": "mn80:12.1", "pali": "Pañca kho ime, kaccāna, kāma·guṇā.", "sujato-corrected": "Kaccāna, there are these five kinds of sensual stimulation.", "pts": "These five, Kaccāna, are the strands of sense-pleasures.[]", "bodhi-esque": "There are these five objects of sensual pleasure, Kaccāna."}, {"key": "mn80:12.2", "pali": "Katame pañca?", "sujato-corrected": "What five?", "pts": "Which five?", "bodhi-esque": "Which five?"}, {"key": "mn80:12.3", "pali": "Cakkhu·viññeyyā rūpā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā,", "sujato-corrected": "Sights known by the eye, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Material shapes cognisable by the eye, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Forms cognizable by the eye, which are desirable, lovely, agreeable,\npleasing, associated with sensuality, and arousing passion."}, {"key": "mn80:12.4", "pali": "sota·viññeyyā saddā …pe…", "sujato-corrected": "Sounds known by the ear …", "pts": "Sounds cognisable by the ear, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Sounds cognizable by the ear …"}, {"key": "mn80:12.5", "pali": "ghāna·viññeyyā gandhā …", "sujato-corrected": "Smells known by the nose …", "pts": "Smells cognisable by the nose, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Odors cognizable by the nose …"}, {"key": "mn80:12.6", "pali": "jivhā·viññeyyā rasā …", "sujato-corrected": "Tastes known by the tongue …", "pts": "Tastes cognisable by the tongue, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Tastes cognizable by the tongue …"}, {"key": "mn80:12.7", "pali": "kāya·viññeyyā phoṭṭhabbā iṭṭhā kantā\nmanāpā piya·rūpā kāmū·pasaṁhitā rajanīyā—", "sujato-corrected": "Touches known by the body, which are likable, desirable, agreeable, pleasant, sensual, and arousing.", "pts": "Touches cognisable by the body, agreeable, pleasant, liked, enticing, connected with sensual pleasures, alluring.", "bodhi-esque": "Tactile objects cognizable by the body, agreeable, desirable,\npleasing, endearing, connected with sensuality, tantalizing—"}, {"key": "mn80:12.8", "pali": "ime kho, kaccāna, pañca kāma·guṇā.", "sujato-corrected": "These are the five kinds of sensual stimulation.", "pts": "These, Kaccana, are the five strands of sense-pleasures.", "bodhi-esque": "These, Kaccāna, are the five strands of sensual pleasure."}]}, {"id": "13", "label": "Yaṁ kho, kaccāna, ime pañca kāma·guṇe paṭicca…", "rows": [{"key": "mn80:13.1", "pali": "Yaṁ kho, kaccāna, ime pañca kāma·guṇe paṭicca uppajjati\nsukhaṁ somanassaṁ idaṁ vuccati kāma·sukhaṁ.", "sujato-corrected": "The pleasure and happiness that arises from these five kinds of sensual stimulation is called sensual pleasure.", "pts": "Whatever happiness, Kaccāna, whatever pleasure arises in consequence of these five strands of sense-pleasure,\nthis is called happiness in sense-pleasures.", "bodhi-esque": "That happiness and mental pleasure that arise dependent on these five strands of sensual pleasure,\nKaccāna, this is called sensual happiness."}, {"key": "mn80:13.2", "pali": "Iti kāmehi kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ tattha agga·makkhā·yatī”ti.", "sujato-corrected": "‘From the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.’”", "pts": "Thus, because of sense-pleasures there is happiness in sense-pleasures;\nfrom happiness in sense-pleasures the topmost happiness in sense-pleasures[] is there accounted topmost.\"", "bodhi-esque": "Thus, from sensuality comes sensual happiness, from sensual happiness comes supreme sensual happiness;\ntherein the supreme is proclaimed.”"}]}, {"id": "14", "label": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "rows": [{"key": "mn80:14.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "sujato-corrected": "When he said this, Vekhanasa said to the Buddha,", "pts": "When this had been said, the wanderer Vekhanassa spoke thus to the Lord:", "bodhi-esque": "When this was said, the wanderer Vekhanasa said to the Blessed One:"}, {"key": "mn80:14.2", "pali": "“acchar·iyaṁ, bho gotama, abbhutaṁ, bho gotama.", "sujato-corrected": "“It’s incredible, worthy Gotama, it’s amazing!", "pts": "\"It is wonderful, good Gotama, it is marvellous, good Gotama.", "bodhi-esque": "“It is wonderful, Master Gotama, it is marvellous, Master Gotama."}, {"key": "mn80:14.3", "pali": "Yāva subhāsitañcidaṁ bhotā gotamena:", "sujato-corrected": "How well said this was by the worthy Gotama!", "pts": "So far this is well spoken by the good Gotama:", "bodhi-esque": "How well this has been spoken by Master Gotama:"}, {"key": "mn80:14.4", "pali": "‘kāmehi kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ tattha agga·makkhā·yatī’ti.", "sujato-corrected": "‘From the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.’", "pts": "'Because of sense-pleasures there is happiness in sense-pleasures;\nfrom happiness in sense-pleasures the topmost happiness in sense-pleasures is there accounted topmost.'\"", "bodhi-esque": "‘From sensuality comes sensual happiness, from sensual happiness comes supreme sensual happiness;\ntherein the supreme is proclaimed.’"}, {"key": "mn80:14.5", "pali": "‘Kāmehi, bho gotama, kāma·sukhaṁ, kāma·sukhā kāmagga·sukhaṁ, tattha agga·makkhā·yatī’”ti", "sujato-corrected": "Worthy Gotama, from the senses comes sensual pleasure.\nBeyond sensual pleasure is the pleasure that surmounts the sensual, which is said to be the best of these.”", "pts": "", "bodhi-esque": "‘From sensuality, Master Gotama, sensual happiness;\nfrom sensual happiness, supreme sensual happiness;\ntherein the supreme is proclaimed.’”"}, {"key": "mn80:14.6", "pali": "“dujjānaṁ kho etaṁ, kaccāna, tayā añña·diṭṭhikena añña·khantikena añña·ruci·kena aññatra·yogena aññatr·ācariyakena—", "sujato-corrected": "“Kaccāna, since you have a different view, creed, and belief, then,\nunless you dedicate yourself to practice with the guidance of tradition, it’s hard for you to understand", "pts": "\"Hard is this for you to understand, Kaccāna - sense-pleasures, or the happiness in sense-pleasures,\nor the topmost happiness in sense-pleasures - you who are of another view, another allegiance,\nanother objective, of a different observance and under a different teacher.[]", "bodhi-esque": "“This is hard to understand, Kaccāna, by one of a different view, different tolerance,\ndifferent inclination, without dedication, without reliance on a teacher—"}, {"key": "mn80:14.7", "pali": "kāmā vā kāma·sukhaṁ vā kāmagga·sukhaṁ vā.", "sujato-corrected": "the senses, sensual pleasure, and the pleasure that surmounts the sensual.", "pts": "", "bodhi-esque": "what sensuality is, what sensual happiness is, what supreme sensual happiness is."}, {"key": "mn80:14.8", "pali": "Ye kho te, kaccāna, bhikkhū\narahanto khīṇ·āsavā vusitavanto kata·karaṇīyā ohita·bhārā\nanuppatta·sadatthā pari·k·khīṇa·bhava·saṁyojanā sammadaññā·vimuttā te kho etaṁ jāneyyuṁ—", "sujato-corrected": "There are mendicants who are perfected, who have ended the defilements,\ncompleted the spiritual journey, done what had to be done,\nlaid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence, and are rightly freed through enlightenment.\nThey can understand", "pts": "But those monks, Kaccāna, who are perfected ones, the cankers destroyed,\nwho have lived the life, done what was to be done, shed the burden,\nwho have attained their own goal, the fetters of becoming utterly destroyed,\nand who are freed by perfect profound knowledge - these would know:", "bodhi-esque": "Those bhikkhus who are arahants, whose taints are destroyed,\nwho have lived the holy life, done what had to be done, laid down the burden,\nattained their own goal, utterly destroyed the fetters of existence,\nand are completely liberated by final knowledge—they would understand this:"}, {"key": "mn80:14.9", "pali": "kāmā vā kāma·sukhaṁ vā kāmagga·sukhaṁ vā”ti.", "sujato-corrected": "the senses, sensual pleasure, and the pleasure that surmounts the sensual.”", "pts": "sense-pleasures, or the happiness in sense-pleasures, or the topmost happiness in sense-pleasures.\"", "bodhi-esque": "what sensuality is, what sensual happiness is, what supreme sensual happiness is.”"}]}, {"id": "15", "label": "Evaṁ vutte, vekhanaso pari·b·bājako kupito an·atta·mano bhagavantaṁ·yeva…", "rows": [{"key": "mn80:15.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako kupito an·atta·mano bhagavantaṁ·yeva\nkhuṁsento bhagavantaṁ·yeva vambhento bhagavantaṁ·yeva vada·māno:", "sujato-corrected": "When he said this, Vekhanasa became angry and upset.\nHe even attacked and badmouthed the Buddha himself, saying,", "pts": "When this had been said, the wanderer Vekhanassa, angry and displeased,\nscorning even the Lord, despising even him, saying[] even of him:", "bodhi-esque": "When this was said, the wanderer Vekhanasa, angry and displeased, insulting the Blessed One,\nreviling the Blessed One, speaking in criticism of the Blessed One, said:"}, {"key": "mn80:15.2", "pali": "“samaṇo gotamo pāpito bhavissatī”ti bhagavantaṁ etadavoca:", "sujato-corrected": "“The ascetic Gotama will be worsted!”\nHe said to the Buddha,", "pts": "\"The recluse Gotama shall be disgraced,\" spoke thus to the Lord:", "bodhi-esque": "“The ascetic Gotama will be defeated,” and said to the Blessed One:"}, {"key": "mn80:15.3", "pali": "“evameva panidh·ekacce samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ, a·passantā apara·ntaṁ atha ca pana", "sujato-corrected": "“This is exactly what happens with some ascetics and brahmins.\nNot knowing the first beginning or seeing the final end, they nevertheless claim:", "pts": "\"But it is just that there are here some recluses and brahmans who,\nnot knowing the past, not seeing the future, yet claim:", "bodhi-esque": "“Just so, but here some ascetics and brahmins, not knowing the past, not seeing the future, and yet"}, {"key": "mn80:15.4", "pali": "‘khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyāti—pajānāmā’ti—paṭi·jānanti.", "sujato-corrected": "‘We understand:\n“Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.”’", "pts": "'Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.'", "bodhi-esque": "‘Destroyed is birth, the holy life has been lived, what was to be done has been done,\nthere is no more for this state of being’—thus we understand’—they claim."}, {"key": "mn80:15.5", "pali": "Tesam·idaṁ bhāsitaṁ hassakaṁ·yeva sampajjati,\nnāma·kaṁyeva sampajjati,\nrittakaṁ·yeva sampajjati,\ntuccha·kaṁyeva sampajjatī”ti.", "sujato-corrected": "Their statement turns out to be a joke—mere words, vacuous and hollow.”", "pts": "This speech of theirs proves merely ridiculous, worthless, empty, void.\"[]", "bodhi-esque": "This speech of theirs turns out to be mere laughter, turns out to be mere name,\nturns out to be mere emptiness, turns out to be mere void.”"}]}, {"id": "16", "label": "“Ye kho te, kaccāna, samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ,…", "rows": [{"key": "mn80:16.1", "pali": "“Ye kho te, kaccāna, samaṇa·brāhmaṇā a·jānantā pubba·ntaṁ, a·passantā apara·ntaṁ,", "sujato-corrected": "“Kaccāna, there are some ascetics and brahmins who,\nnot knowing the first beginning or seeing the final end, nevertheless claim:", "pts": "\"This censure is only just, Kaccāna, for those recluses and brahmans who,\nnot knowing the past, not seeing the future, yet claim:", "bodhi-esque": "“Those, Kaccāna, ascetics and brahmins who, not knowing the past, not seeing the future,"}, {"key": "mn80:16.2", "pali": "‘khīṇā jāti, vusitaṁ brahma·cariyaṁ, kataṁ karaṇīyaṁ, nāparaṁ itthattāyāti—pajānāmā’ti—paṭi·jānanti;", "sujato-corrected": "‘We understand:\n“Rebirth is ended, the spiritual journey has been completed,\nwhat had to be done has been done, there is nothing further for this place.”’", "pts": "'Destroyed is birth, brought to a close the Brahma-faring,\ndone is what was to be done, there is no more of being such or so.'", "bodhi-esque": "‘Destroyed is birth, the holy life has been lived, what was to be done has been done,\nthere is no more for this state of being’—thus we understand’—they claim;"}, {"key": "mn80:16.3", "pali": "tesaṁ soyeva saha·dhammiko niggaho hoti.", "sujato-corrected": "There is a legitimate refutation of them.", "pts": "", "bodhi-esque": "there is that same legitimate rebuke of them."}, {"key": "mn80:16.4", "pali": "Api ca, kaccāna, tiṭṭhatu\npubbanto, tiṭṭhatu aparanto.", "sujato-corrected": "Nevertheless, Kaccāna, leave aside the first beginning and the final end.", "pts": "But, Kaccāna, let be the past, let be the future.[]", "bodhi-esque": "Moreover, Kaccāna, let the past stand, let the future stand."}, {"key": "mn80:16.5", "pali": "Etu viññū puriso a·saṭho a·māyāvī uju·jātiko, aham·anusāsāmi ahaṁ dhammaṁ desemi.", "sujato-corrected": "Let a sensible person come—neither devious nor deceitful, a person of integrity.\nI teach and instruct them.", "pts": "Let there come an intelligent man, guileless, honest, straight, and who says:\n'I instruct, I teach Dhamma.[]", "bodhi-esque": "Let a wise man come, not deceitful, not fraudulent, straightforward by nature;\nI instruct, I teach the Dhamma."}, {"key": "mn80:16.6", "pali": "Yathā·nusiṭṭhaṁ tathā paṭi·pajja·māno nacirasseva sāma·ñ·ñeva ñassati sāmaṁ dakkhiti—", "sujato-corrected": "Practicing as instructed they will soon know and see for themselves,", "pts": "Faring along as instructed it will not be long before (some man) of himself will know, of himself will see.'", "bodhi-esque": "Practicing as instructed, before long he himself will know, he himself will see—"}, {"key": "mn80:16.7", "pali": "evaṁ kira sammā bandhanā vippa·mokkho hoti,\nyadidaṁ a·vijjā bandhanā.", "sujato-corrected": "‘So this is how to be rightly released from the bond, that is, the bond of ignorance.’", "pts": "Even so, indeed, is deliverance from the direst bond - that is from the bond of ignorance.", "bodhi-esque": "Thus indeed there is right release from bondage, that is, from the bondage of ignorance."}, {"key": "mn80:16.8", "pali": "Seyyathāpi, kaccāna, daharo kumāro mando uttāna·seyyako kaṇṭha·pañca·mehi bandhanehi baddho assa sutta·bandhanehi;", "sujato-corrected": "Suppose there was a little baby bound with swaddling up to the neck.", "pts": "Kaccāna, it is like a young baby boy lying on his back and bound around his neck with a fivefold swaddling,\nit might be with swaddlings of thread.", "bodhi-esque": "Just as, Kaccāna, a young tender boy lying on his back might be tied with five bonds, with bonds of thread;"}, {"key": "mn80:16.9", "pali": "tassa vuddhimanv·āya indr·iyānaṁ pari·pākamanv·āya tāni bandhanāni mucceyyuṁ;", "sujato-corrected": "As they grow up and their senses mature, they’re accordingly released from those bonds.", "pts": "As he grows up and develops his faculties he would be released from those swaddlings,", "bodhi-esque": "as he grows, as his faculties mature, those bonds would be released;"}, {"key": "mn80:16.10", "pali": "so mokkhomhīti kho jāneyya no ca bandhanaṁ.", "sujato-corrected": "They’d know ‘I’m released,’ and there would be no more bonds.", "pts": "and in the absence of swaddlings he would know:\n'I am released.'", "bodhi-esque": "he would know ‘I am freed,’ but not the bondage."}, {"key": "mn80:16.11", "pali": "Evameva kho, kaccāna, etu\nviññū puriso a·saṭho a·māyāvī uju·jātiko, aham·anusāsāmi, ahaṁ dhammaṁ desemi;", "sujato-corrected": "In the same way, let a sensible person come—neither devious nor deceitful, a person of integrity.\nI teach and instruct them.", "pts": "Even so, Kaccāna, let there come intelligent man, guileless, honest, straight, and who says:\n'I instruct, I teach Dhamma.", "bodhi-esque": "Just so indeed, Kaccāna, let a wise man come, not deceitful, not fraudulent, straightforward by nature;\nI instruct, I teach the Dhamma;"}, {"key": "mn80:16.12", "pali": "yathā·nusiṭṭhaṁ tathā paṭi·pajja·māno nacirasseva sāma·ñ·ñeva ñassati, sāmaṁ dakkhiti:", "sujato-corrected": "Practicing as instructed they will soon know and see for themselves,", "pts": "Faring along as instructed it will not be long before (some man) of himself will know, of himself will see.'", "bodhi-esque": "practicing as instructed, before long he himself will know, he himself will see:"}, {"key": "mn80:16.13", "pali": "‘evaṁ kira sammā bandhanā vippa·mokkho hoti,\nyadidaṁ a·vijjā bandhanā’”ti.", "sujato-corrected": "‘So this is how to be rightly released from the bond, that is, the bond of ignorance.’”", "pts": "Even so, indeed, is deliverance from the direst bond - that is from the bond of ignorance.\"", "bodhi-esque": "'Thus indeed, there is release from bondage rightly, that is, the bondage of ignorance.'"}]}, {"id": "17", "label": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "rows": [{"key": "mn80:17.1", "pali": "Evaṁ vutte, vekhanaso pari·b·bājako bhagavantaṁ etadavoca:", "sujato-corrected": "When he said this, Vekhanasa said to the Buddha,", "pts": "When this had been said, the wanderer Vekhanassa spoke thus to the Lord:", "bodhi-esque": "When this was said, the wanderer Vekhanasa said to the Blessed One:"}, {"key": "mn80:17.2", "pali": "“abhi·k·kantaṁ, bho gotama …pe…", "sujato-corrected": "“Excellent, worthy Gotama! …", "pts": "\"It is excellent, good Gotama, excellent, good Gotama.\nRevered sir, it is as if one might set upright what had been upset,\nor might disclose what was covered, or show the way to one who had gone astray,\nor bring an oil-lamp into the darkness so that those with vision might see material shapes —\neven so in many a figure has Dhamma been made clear by the Lord.", "bodhi-esque": "“Magnificent, Master Gotama! …"}, {"key": "mn80:17.3", "pali": "upāsakaṁ maṁ bhavaṁ gotamo dhāretu\najjatagge pāṇupetaṁ saraṇaṁ gatan”ti.", "sujato-corrected": "From this day forth, may the worthy Gotama remember me as a lay follower who has gone for refuge for life.”", "pts": "I, revered sir, am going to the Lord for refuge and to Dhamma and to the Order of monks.\nMay the Lord accept me as a lay follower going for refuge from this day forth for as long as life lasts.\"", "bodhi-esque": "Let Master Gotama remember me as a lay follower who from today has gone for refuge for life.”"}, {"key": "mn80:17.4", "pali": "Vekhanasa·suttaṁ niṭṭhitaṁ dasamaṁ.", "sujato-corrected": "", "pts": "Discourse to Vekhanassa:\nThe Tenth", "bodhi-esque": "The Vekhanasa Sutta is finished, the tenth."}, {"key": "mn80:17.5", "pali": "Pari·b·bājaka·vaggo niṭṭhito tatiyo.", "sujato-corrected": "", "pts": "Division on Wanderers:\nThe Third", "bodhi-esque": "The Wanderers' Chapter is finished, the third."}]}, {"id": "18", "label": "Tass·uddānaṁ", "rows": [{"key": "mn80:18.0", "pali": "Tass·uddānaṁ", "sujato-corrected": "", "pts": "", "bodhi-esque": "Its summary:"}, {"key": "mn80:18.1", "pali": "Puṇḍarī aggi·saha kathi·nāmo,", "sujato-corrected": "", "pts": "", "bodhi-esque": "Puṇḍarī, Aggisaha, Kathināma,"}, {"key": "mn80:18.2", "pali": "Dīgha·nakho puna bhāradvāja·gotto;", "sujato-corrected": "", "pts": "", "bodhi-esque": "Dīghanakha, and then the one of the Bhāradvāja clan;"}, {"key": "mn80:18.3", "pali": "Sandaka·udāyi·muṇḍika·putto,", "sujato-corrected": "", "pts": "", "bodhi-esque": "Sandaka, Udāyī, Muṇḍika, the son,"}, {"key": "mn80:18.4", "pali": "Maṇiko tathā·kaccāno vara·vaggo.", "sujato-corrected": "", "pts": "", "bodhi-esque": "Maṇika, and Kaccāna, the excellent chapter."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "0", "label": "Majjhima Nikāya 34", "rows": [{"key": "mn34:0.1", "pali": "Majjhima Nikāya 34", "sujato-corrected": "Middle Discourses 34", "pts": ""}, {"key": "mn34:0.2", "pali": "Cūḷa·gopālaka·sutta", "sujato-corrected": "The Shorter Discourse on the Cowherd", "pts": ""}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn34:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:"}, {"key": "mn34:1.2", "pali": "ekaṁ samayaṁ bhagavā vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato-corrected": "At one time the Buddha was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river.", "pts": "At one time the Lord was staying among the Vajjis at Ukkācelā on the banks of the river Ganges."}, {"key": "mn34:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato-corrected": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:"}, {"key": "mn34:1.4", "pali": "“bhikkhavo”ti.", "sujato-corrected": "“Mendicants!”", "pts": "\"Monks.\""}, {"key": "mn34:1.5", "pali": "“Bhadante”ti te bhikkhū\nbhagavato pacc·assosuṁ.", "sujato-corrected": "“Venerable sir,” they replied.", "pts": "\"Revered one,\" these monks answered the Lord in assent."}, {"key": "mn34:1.6", "pali": "Bhagavā etadavoca:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:"}]}, {"id": "2", "label": "“Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime…", "rows": [{"key": "mn34:2.1", "pali": "“Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\na·samavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, a·samavekkhitvā pārimaṁ tīraṁ,\nati·t·theneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "“Once upon a time, mendicants, there was an unintelligent Magadhan cowherd.\nIn the last month of the rainy season, in autumn, without inspecting the near shore or the far shore,\nhe drove his cattle across a place with no ford on the Ganges river to the northern shore among the Suvidehans.", "pts": "\"Formerly, monks, an incompetent cowherd of Magadha in the last month of the rains at harvest time,\nwithout considering the hither bank of the river Ganges,\nwithout considering the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was no ford."}]}, {"id": "3", "label": "Atha kho, bhikkhave, gāvo majjhe·gaṅgāya nadiyā sote…", "rows": [{"key": "mn34:3.1", "pali": "Atha kho, bhikkhave, gāvo majjhe·gaṅgāya nadiyā sote āmaṇḍal·iyaṁ karitvā tattheva a·nayaby·a·sanaṁ āpajjiṁsu.", "sujato-corrected": "But the cattle bunched up in mid-stream and came to ruin right there.", "pts": "Then, monks, the cattle huddled together in the middle of the stream of the river Ganges,\ngot into difficulties and misfortune there."}, {"key": "mn34:3.2", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What was the cause?"}, {"key": "mn34:3.3", "pali": "Tathā hi so, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\na·samavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, a·samavekkhitvā pārimaṁ tīraṁ,\nati·t·theneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Because the unintelligent cowherd failed to inspect the shores before driving the cattle across at a place with no ford.", "pts": "It was, monks, that that incompetent cowherd of Magadha in the last month of the rains at harvest time,\nwithout considering the hither bank of the river Ganges,\nwithout considering the further bank,\ndrove the cattle across to the further bank in Suvidehā at a place where there was no ford."}, {"key": "mn34:3.4", "pali": "Evameva kho, bhikkhave, ye\nhi keci samaṇā vā brāhmaṇā vā a·kusalā imassa lokassa a·kusalā parassa lokassa,\na·kusalā māra·dheyyassa a·kusalā a·māra·dheyyassa,\na·kusalā maccu·dheyyassa a·kusalā a·maccu·dheyyassa, tesaṁ ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ a·hitāya dukkhāya.", "sujato-corrected": "In the same way, there are ascetics and brahmins who are unskilled in this world and the other world,\nunskilled in Māra’s dominion and its opposite, and unskilled in Death’s dominion and its opposite.\nIf anyone thinks they are worth listening to and trusting, it will be for their lasting harm and suffering.", "pts": "Even so, monks, any recluses or brahmans who are unskilled about this world, unskilled about the world beyond,\nunskilled about Māra's realm, unskilled about what is not Māra's realm, unskilled about Death's realm,\nunskilled about what is not Death's realm - whoever think they should\nlisten to these (recluses and brahmans) and put their faith in them,\nthat will be for a long time for their woe and anguish."}]}, {"id": "4", "label": "Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime…", "rows": [{"key": "mn34:4.1", "pali": "Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\nsamavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, samavekkhitvā pārimaṁ tīraṁ,\ntittheneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Once upon a time, mendicants, there was an intelligent Magadhan cowherd.\nIn the last month of the rainy season, in autumn, after inspecting the near shore and the far shore,\nhe drove his cattle across a ford on the Ganges river to the northern shore among the Suvidehans.", "pts": "Once upon a time, monks, a competent cowherd of Magadha in the last month of the rains at harvest time,\nhaving considered the hither bank of the river Ganges,\nhaving considered the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was a ford."}]}, {"id": "5", "label": "So paṭhamaṁ patāresi ye te usabhā gopitaro…", "rows": [{"key": "mn34:5.1", "pali": "So paṭhamaṁ patāresi\nye te usabhā gopitaro gopariṇāyakā.", "sujato-corrected": "First he drove across the bulls, the fathers and captains of the herd.", "pts": "First of all he drove across those bulls who were the sires and leaders of the herd - these,\nhaving cut across the stream of the Ganges, went safely beyond."}, {"key": "mn34:5.2", "pali": "Te tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They breasted the stream of the Ganges and safely reached the far shore.", "pts": ""}, {"key": "mn34:5.3", "pali": "Athā·pare patāresi balava·gāvo damma·gāvo.", "sujato-corrected": "Then he drove across the strong and tractable cattle.", "pts": "Then he drove across the sturdy bullocks and young steers - these,\nalso, having cut across the stream of the Ganges, went safely beyond."}, {"key": "mn34:5.4", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": ""}, {"key": "mn34:5.5", "pali": "Athā·pare patāresi vaccha·tare vaccha·tariyo.", "sujato-corrected": "Then he drove across the bullocks and heifers.", "pts": "Then he drove across the half-grown bull-calves and heifers - these too,\nhaving cut across the stream of the Ganges, went safely beyond."}, {"key": "mn34:5.6", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": ""}, {"key": "mn34:5.7", "pali": "Athā·pare patāresi vacchake kisā·balake.", "sujato-corrected": "Then he drove across the calves and weak cattle.", "pts": "Then he drove across the weaker calves - these too, having cut across the stream of the Ganges, went safely beyond."}, {"key": "mn34:5.8", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": ""}, {"key": "mn34:5.9", "pali": "Bhūta·pubbaṁ, bhikkhave, vacchako taruṇako tāva·deva jātako mātu·goravakena vuyha·māno,\nsopi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamāsi.", "sujato-corrected": "Once it happened that a baby calf had just been born.\nUrged on by its mother’s lowing, even it managed to breast the stream of the Ganges and safely reach the far shore.", "pts": "At that time there was a young new-born calf which, by following the lowing of its mother,\nalso cut across the stream of the Ganges and went safely beyond."}, {"key": "mn34:5.10", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What was the cause of this?"}, {"key": "mn34:5.11", "pali": "Tathā hi so, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\nsamavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, samavekkhitvā pārimaṁ tīraṁ,\ntittheneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Because the intelligent cowherd inspected both shores before driving the cattle across at a ford.", "pts": "It was, monks, that that cowherd of Magadha in the last month of the rains at harvest time,\nhaving considered the hither bank of the river Ganges,\nhaving considered the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was a ford."}, {"key": "mn34:5.12", "pali": "Evameva kho, bhikkhave, ye\nhi keci samaṇā vā brāhmaṇā vā kusalā imassa lokassa kusalā parassa lokassa,\nkusalā māra·dheyyassa kusalā a·māra·dheyyassa,\nkusalā maccu·dheyyassa kusalā a·maccu·dheyyassa, tesaṁ ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ hitāya sukhāya.", "sujato-corrected": "In the same way, there are ascetics and brahmins who are skilled in this world and the other world,\nskilled in Māra’s dominion and its opposite, and skilled in Death’s dominion and its opposite.\nIf anyone thinks they are worth listening to and trusting, it will be for their lasting welfare and happiness.", "pts": "Even so, monks, any recluses or brahmans who are skilled about this world, skilled about the world beyond,\nskilled about Māra's realm, skilled about what is not Māra's realm, skilled about Death's realm,\nskilled about what is not Death's realm - whoever think they should\nlisten to these (recluses and brahmans) and put their faith in them,\nthat will be for a long time for their welfare and happiness."}]}, {"id": "6", "label": "Seyyathāpi, bhikkhave, ye te usabhā gopitaro gopariṇāyakā…", "rows": [{"key": "mn34:6.1", "pali": "Seyyathāpi, bhikkhave, ye\nte usabhā gopitaro gopariṇāyakā te tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the bulls, fathers and captains of the herd, who crossed the Ganges to safety", "pts": "Monks, like unto those bulls who were the sires and leaders of the herd,\nand who, having cut across the stream of the Ganges, went safely beyond,"}, {"key": "mn34:6.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū arahanto khīṇ·āsavā vusitavanto kata·karaṇīyā ohita·bhārā\nanuppatta·sadatthā pari·k·khīṇa·bhava·saṁyojanā sammadaññā·vimuttā,\nte tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṅgatā.", "sujato-corrected": "are the mendicants who are perfected, who have ended the defilements,\ncompleted the spiritual journey, done what had to be done,\nlaid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence, and are rightly freed through enlightenment.\nHaving breasted Māra’s stream, they have safely crossed over to the far shore.", "pts": "are those monks who are perfected ones, the cankers destroyed,\nwho have lived the life, done what was to be done, laid down the burden,\nattained their own goal, the fetters of becoming being utterly destroyed,\nand who are freed by perfect profound knowledge.\nFor these, having cut across Māra's stream, have gone safely beyond."}]}, {"id": "7", "label": "Seyyathāpi te, bhikkhave, balava·gāvo damma·gāvo tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:7.1", "pali": "Seyyathāpi te, bhikkhave, balava·gāvo damma·gāvo tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the strong and tractable cattle who crossed the Ganges to safety", "pts": "Monks, like unto those sturdy bullocks and young steers who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,"}, {"key": "mn34:7.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū pañca·n·naṁ orambhāgiyānaṁ saṁyoj·an·ānaṁ pari·k·khayā\nopa·pātikā tattha pari·ni·b·bāyino an·āvatti·dhammā tasmā lokā,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of the five lower fetters, are reborn spontaneously.\nThey've attained final Nibbāna there, and are not liable to return from that world.\nThey too, having breasted Māra's stream, will safely cross over to the far shore.", "pts": "by destroying the five fetters binding to this lower world, are of spontaneous uprising,\nand being ones who attain nibbāna there, are not liable to return from that world.\nFor these also, having cut across Māra's stream, will go safely beyond."}]}, {"id": "8", "label": "Seyyathāpi te, bhikkhave, vaccha·tarā vaccha·tariyo tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:8.1", "pali": "Seyyathāpi te, bhikkhave, vaccha·tarā vaccha·tariyo tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the bullocks and heifers who crossed the Ganges to safety", "pts": "Monks, like unto those half-grown bull-calves and heifers who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,"}, {"key": "mn34:8.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū tiṇṇaṁ saṁyoj·an·ānaṁ pari·k·khayā rāga·dosa·mohānaṁ tanuttā\nsakadāgāmino saki·deva imaṁ lokaṁ āgantvā dukkhassa·ntaṁ karissanti,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of three fetters,\nand the weakening of greed, hate, and delusion, are once-returners.\nThey come back to this world once only, then make an end of suffering.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "by destroying the three fetters, by reducing attachment, aversion and confusion,\nare once-returners who, having come back again to this world once only, will make an end of anguish.\nFor these also, having cut across Māra's stream, will go safely beyond."}]}, {"id": "9", "label": "Seyyathāpi te, bhikkhave, vacchakā kisā·balakā tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:9.1", "pali": "Seyyathāpi te, bhikkhave, vacchakā kisā·balakā tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the calves and weak cattle who crossed the Ganges to safety", "pts": "Monks, like unto those weaker calves who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,"}, {"key": "mn34:9.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū tiṇṇaṁ saṁyoj·an·ānaṁ pari·k·khayā sotāpannā a·vini·pāta·dhammā niyatā sambodhi·parāyanā,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of three fetters are stream-enterers,\nnot liable to be reborn in the underworld, assured, destined for awakening.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "by destroying the three fetters, are stream-attainers, not liable for the abyss, assured, bound for awakening.\nFor these also, having cut across Māra's stream, will go safely beyond."}]}, {"id": "10", "label": "Seyyathāpi so, bhikkhave, vacchako taruṇako tāva·deva jātako…", "rows": [{"key": "mn34:10.1", "pali": "Seyyathāpi so, bhikkhave,\nvacchako taruṇako tāva·deva jātako mātu·goravakena vuyha·māno tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamāsi;", "sujato-corrected": "Just like the baby calf who had just been born, but,\nurged on by its mother’s lowing, still managed to cross the Ganges to safety", "pts": "Monks, like unto that young new-born calf which, by following the lowing of its mother,\nalso cut across the stream of the Ganges and went safely beyond,"}, {"key": "mn34:10.2", "pali": "evameva kho, bhikkhave, ye\nte bhikkhū dhammā·nusārino saddhā·nusārino,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who are followers of teachings, followers by faith.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "are those monks who are striving for Dhamma, striving for faith.\nFor these also, having cut across Māra's stream, will go safely beyond."}]}, {"id": "11", "label": "Ahaṁ kho pana, bhikkhave, kusalo imassa lokassa…", "rows": [{"key": "mn34:11.1", "pali": "Ahaṁ kho pana, bhikkhave, kusalo imassa lokassa kusalo parassa lokassa,\nkusalo māra·dheyyassa kusalo a·māra·dheyyassa, kusalo maccu·dheyyassa kusalo a·maccu·dheyyassa.\nTassa mayhaṁ, bhikkhave, ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ hitāya su·khāyā”ti.", "sujato-corrected": "Mendicants, I am skilled in this world and the other world,\nskilled in Māra’s dominion and its opposite, and skilled in Death’s dominion and its opposite.\nIf anyone thinks I am worth listening to and trusting, it will be for their lasting welfare and happiness.”", "pts": "Now I, monks, am skilled about this world, skilled about the world beyond, skilled about Māra's realm,\nskilled about what is not Māra's realm, skilled about Death's realm, skilled about what is not Death's realm.\nTo those who think they should listen to me and place faith in me, there will be welfare and happiness for a long time.\""}]}, {"id": "12", "label": "Idam·avoca bhagavā.", "rows": [{"key": "mn34:12.1", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord;"}, {"key": "mn34:12.2", "pali": "Idaṁ vatvā sugato athā·paraṁ etadavoca satthā:", "sujato-corrected": "Then the Holy One, the Teacher, went on to say:", "pts": "the Well-farer having said this, the Teacher then spoke thus:"}, {"key": "mn34:12.3", "pali": "“Ayaṁ loko paro loko,", "sujato-corrected": "“This world and the other world", "pts": "\"This world, the world beyond, are well explained by the one who knows,"}, {"key": "mn34:12.4", "pali": "jānatā suppa·kāsito;", "sujato-corrected": "have been clearly explained by one who knows;", "pts": ""}, {"key": "mn34:12.5", "pali": "Yañca mārena sampattaṁ,", "sujato-corrected": "as well as Māra’s reach,", "pts": "And what is accessible by Māra and what is not accessible by Death."}, {"key": "mn34:12.6", "pali": "a·p·pattaṁ yañca maccunā.", "sujato-corrected": "and what’s out of Death’s reach.", "pts": ""}, {"key": "mn34:12.7", "pali": "Sabbaṁ lokaṁ abhi·ñ·ñāya,", "sujato-corrected": "Directly knowing the whole world,", "pts": "By the Self-awakened One, comprehending, thoroughly knowing every world,"}, {"key": "mn34:12.8", "pali": "sambuddhena pajānatā;", "sujato-corrected": "the Buddha who understands", "pts": ""}, {"key": "mn34:12.9", "pali": "Vivaṭaṁ a·mata·dvāraṁ,", "sujato-corrected": "has opened the door to freedom from death,", "pts": "Opened is the door of the Undying for reaching security - nibbāna."}, {"key": "mn34:12.10", "pali": "khemaṁ nibbāna·pattiyā.", "sujato-corrected": "for finding the sanctuary, Nibbāna.", "pts": ""}, {"key": "mn34:12.11", "pali": "Chinnaṁ pāpimato sotaṁ,", "sujato-corrected": "The Wicked One’s stream has been cut,", "pts": "Cut across is the stream of the Evil One, shattered, destroyed;"}, {"key": "mn34:12.12", "pali": "Vi·d·dhastaṁ vi·naḷīkataṁ;", "sujato-corrected": "it’s blown away and mown down.", "pts": ""}, {"key": "mn34:12.13", "pali": "Pāmojja·bahulā hotha,", "sujato-corrected": "Be full of joy, mendicants,", "pts": "Let there be abundant rapture, monks, let security be reached.\""}, {"key": "mn34:12.14", "pali": "Khemaṁ patta·t·tha bhikkhavo”ti.", "sujato-corrected": "set your heart on sanctuary!”", "pts": ""}, {"key": "mn34:12.15", "pali": "Cūḷa·gopālaka·suttaṁ niṭṭhitaṁ catu·t·thaṁ.", "sujato-corrected": "", "pts": "Lesser Discourse on the Cowherd:\nthe Fourth"}]}];
+const TREE=[{"id": "0", "label": "Majjhima Nikāya 34", "rows": [{"key": "mn34:0.1", "pali": "Majjhima Nikāya 34", "sujato-corrected": "Middle Discourses 34", "pts": "", "bodhi-esque": "Majjhima Nikāya 34"}, {"key": "mn34:0.2", "pali": "Cūḷa·gopālaka·sutta", "sujato-corrected": "The Shorter Discourse on the Cowherd", "pts": "", "bodhi-esque": "The Shorter Discourse on the Cowherd"}]}, {"id": "1", "label": "Evaṁ me sutaṁ—", "rows": [{"key": "mn34:1.1", "pali": "Evaṁ me sutaṁ—", "sujato-corrected": "So I have heard.", "pts": "THUS have I heard:", "bodhi-esque": "Thus have I heard—"}, {"key": "mn34:1.2", "pali": "ekaṁ samayaṁ bhagavā vajjīsu viharati\nukka·celāyaṁ gaṅgāya nadiyā tīre.", "sujato-corrected": "At one time the Buddha was staying in the land of the Vajjis near Ukkacelā on the bank of the Ganges river.", "pts": "At one time the Lord was staying among the Vajjis at Ukkācelā on the banks of the river Ganges.", "bodhi-esque": "On one occasion the Blessed One was dwelling among the Vajjis at Ukkacelā on the bank of the river Ganges."}, {"key": "mn34:1.3", "pali": "Tatra kho bhagavā bhikkhū āmantesi:", "sujato-corrected": "There the Buddha addressed the mendicants,", "pts": "While he was there the Lord addressed the monks, saying:", "bodhi-esque": "There the Blessed One addressed the bhikkhus:"}, {"key": "mn34:1.4", "pali": "“bhikkhavo”ti.", "sujato-corrected": "“Mendicants!”", "pts": "\"Monks.\"", "bodhi-esque": "“Bhikkhus!”"}, {"key": "mn34:1.5", "pali": "“Bhadante”ti te bhikkhū\nbhagavato pacc·assosuṁ.", "sujato-corrected": "“Venerable sir,” they replied.", "pts": "\"Revered one,\" these monks answered the Lord in assent.", "bodhi-esque": "“Bhante!” those bhikkhus replied to the Blessed One."}, {"key": "mn34:1.6", "pali": "Bhagavā etadavoca:", "sujato-corrected": "The Buddha said this:", "pts": "The Lord spoke thus:", "bodhi-esque": "The Blessed One said this:"}]}, {"id": "2", "label": "“Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime…", "rows": [{"key": "mn34:2.1", "pali": "“Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\na·samavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, a·samavekkhitvā pārimaṁ tīraṁ,\nati·t·theneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "“Once upon a time, mendicants, there was an unintelligent Magadhan cowherd.\nIn the last month of the rainy season, in autumn, without inspecting the near shore or the far shore,\nhe drove his cattle across a place with no ford on the Ganges river to the northern shore among the Suvidehans.", "pts": "\"Formerly, monks, an incompetent cowherd of Magadha in the last month of the rains at harvest time,\nwithout considering the hither bank of the river Ganges,\nwithout considering the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was no ford.", "bodhi-esque": "“Once, bhikkhus, a Magadhan cowherd, stupid by nature, in the last month of the rainy season,\nat the time of autumn, without examining the near bank of the river Ganges,\nwithout examining the far bank, ferried the cows across at a non-ford to the northern bank in the land of the Videhans."}]}, {"id": "3", "label": "Atha kho, bhikkhave, gāvo majjhe·gaṅgāya nadiyā sote…", "rows": [{"key": "mn34:3.1", "pali": "Atha kho, bhikkhave, gāvo majjhe·gaṅgāya nadiyā sote āmaṇḍal·iyaṁ karitvā tattheva a·nayaby·a·sanaṁ āpajjiṁsu.", "sujato-corrected": "But the cattle bunched up in mid-stream and came to ruin right there.", "pts": "Then, monks, the cattle huddled together in the middle of the stream of the river Ganges,\ngot into difficulties and misfortune there.", "bodhi-esque": "Then, bhikkhus, the cows, in the middle of the river Ganges,\nmaking a whirlpool in the current, encountered ruin and disaster right there."}, {"key": "mn34:3.2", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What was the cause?", "bodhi-esque": "For what reason?"}, {"key": "mn34:3.3", "pali": "Tathā hi so, bhikkhave, māgadhako gopālako duppañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\na·samavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, a·samavekkhitvā pārimaṁ tīraṁ,\nati·t·theneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Because the unintelligent cowherd failed to inspect the shores before driving the cattle across at a place with no ford.", "pts": "It was, monks, that that incompetent cowherd of Magadha in the last month of the rains at harvest time,\nwithout considering the hither bank of the river Ganges,\nwithout considering the further bank,\ndrove the cattle across to the further bank in Suvidehā at a place where there was no ford.", "bodhi-esque": "Because that Magadhan cowherd, stupid by nature, in the last month of the rainy season,\nat the time of autumn, without examining the near bank of the river Ganges,\nwithout examining the far bank, ferried the cows across at a non-ford to the northern bank in the land of the Videhans."}, {"key": "mn34:3.4", "pali": "Evameva kho, bhikkhave, ye\nhi keci samaṇā vā brāhmaṇā vā a·kusalā imassa lokassa a·kusalā parassa lokassa,\na·kusalā māra·dheyyassa a·kusalā a·māra·dheyyassa,\na·kusalā maccu·dheyyassa a·kusalā a·maccu·dheyyassa, tesaṁ ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ a·hitāya dukkhāya.", "sujato-corrected": "In the same way, there are ascetics and brahmins who are unskilled in this world and the other world,\nunskilled in Māra’s dominion and its opposite, and unskilled in Death’s dominion and its opposite.\nIf anyone thinks they are worth listening to and trusting, it will be for their lasting harm and suffering.", "pts": "Even so, monks, any recluses or brahmans who are unskilled about this world, unskilled about the world beyond,\nunskilled about Māra's realm, unskilled about what is not Māra's realm, unskilled about Death's realm,\nunskilled about what is not Death's realm - whoever think they should\nlisten to these (recluses and brahmans) and put their faith in them,\nthat will be for a long time for their woe and anguish.", "bodhi-esque": "So too, bhikkhus, whatever ascetics or brahmins who are unskilled in this world,\nunskilled in the other world, unskilled in Māra's realm, unskilled in what is not Māra's realm,\nunskilled in Death's realm, unskilled in what is not Death's realm —\nthose who think that what should be heard should be believed —\nthat will be for them for a long time for harm and suffering."}]}, {"id": "4", "label": "Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime…", "rows": [{"key": "mn34:4.1", "pali": "Bhūta·pubbaṁ, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\nsamavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, samavekkhitvā pārimaṁ tīraṁ,\ntittheneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Once upon a time, mendicants, there was an intelligent Magadhan cowherd.\nIn the last month of the rainy season, in autumn, after inspecting the near shore and the far shore,\nhe drove his cattle across a ford on the Ganges river to the northern shore among the Suvidehans.", "pts": "Once upon a time, monks, a competent cowherd of Magadha in the last month of the rains at harvest time,\nhaving considered the hither bank of the river Ganges,\nhaving considered the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was a ford.", "bodhi-esque": "Once, bhikkhus, a Magadhan cowherd, wise by nature, in the last month of the rainy season,\nat the time of autumn, having examined the near bank of the river Ganges,\nhaving examined the far bank, ferried the cows across at a ford to the northern bank in the land of the Videhans."}]}, {"id": "5", "label": "So paṭhamaṁ patāresi ye te usabhā gopitaro…", "rows": [{"key": "mn34:5.1", "pali": "So paṭhamaṁ patāresi\nye te usabhā gopitaro gopariṇāyakā.", "sujato-corrected": "First he drove across the bulls, the fathers and captains of the herd.", "pts": "First of all he drove across those bulls who were the sires and leaders of the herd - these,\nhaving cut across the stream of the Ganges, went safely beyond.", "bodhi-esque": "He first ferried across those bulls that were the leaders of the herd, the guides of the herd."}, {"key": "mn34:5.2", "pali": "Te tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They breasted the stream of the Ganges and safely reached the far shore.", "pts": "", "bodhi-esque": "They, having cut across the stream of the Ganges, safely went to the far shore."}, {"key": "mn34:5.3", "pali": "Athā·pare patāresi balava·gāvo damma·gāvo.", "sujato-corrected": "Then he drove across the strong and tractable cattle.", "pts": "Then he drove across the sturdy bullocks and young steers - these,\nalso, having cut across the stream of the Ganges, went safely beyond.", "bodhi-esque": "Then he ferried others:\nthe strong bulls and the trained bulls."}, {"key": "mn34:5.4", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": "", "bodhi-esque": "They also, having cut across the stream of the Ganges, safely went to the far shore."}, {"key": "mn34:5.5", "pali": "Athā·pare patāresi vaccha·tare vaccha·tariyo.", "sujato-corrected": "Then he drove across the bullocks and heifers.", "pts": "Then he drove across the half-grown bull-calves and heifers - these too,\nhaving cut across the stream of the Ganges, went safely beyond.", "bodhi-esque": "Then he ferried others:\nthe bullocks and the heifers."}, {"key": "mn34:5.6", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": "", "bodhi-esque": "They also, having cut across the stream of the Ganges, safely went to the far shore."}, {"key": "mn34:5.7", "pali": "Athā·pare patāresi vacchake kisā·balake.", "sujato-corrected": "Then he drove across the calves and weak cattle.", "pts": "Then he drove across the weaker calves - these too, having cut across the stream of the Ganges, went safely beyond.", "bodhi-esque": "Then he ferried others:\nthe calves, the lean and feeble ones."}, {"key": "mn34:5.8", "pali": "Tepi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu.", "sujato-corrected": "They too breasted the stream of the Ganges and safely reached the far shore.", "pts": "", "bodhi-esque": "They also, having cut across the stream of the Ganges, safely went to the far shore."}, {"key": "mn34:5.9", "pali": "Bhūta·pubbaṁ, bhikkhave, vacchako taruṇako tāva·deva jātako mātu·goravakena vuyha·māno,\nsopi tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamāsi.", "sujato-corrected": "Once it happened that a baby calf had just been born.\nUrged on by its mother’s lowing, even it managed to breast the stream of the Ganges and safely reach the far shore.", "pts": "At that time there was a young new-born calf which, by following the lowing of its mother,\nalso cut across the stream of the Ganges and went safely beyond.", "bodhi-esque": "In the past, bhikkhus, a young calf, just born, being carried along by its mother’s guidance,\neven that one, having cut across the stream of the Ganges, safely went to the far shore."}, {"key": "mn34:5.10", "pali": "Taṁ kissa hetu?", "sujato-corrected": "Why is that?", "pts": "What was the cause of this?", "bodhi-esque": "For what reason?"}, {"key": "mn34:5.11", "pali": "Tathā hi so, bhikkhave, māgadhako gopālako sappañña·jātiko, vassānaṁ pacchime māse sarada·samaye,\nsamavekkhitvā gaṅgāya nadiyā orimaṁ tīraṁ, samavekkhitvā pārimaṁ tīraṁ,\ntittheneva gāvo patāresi\nuttaraṁ tīraṁ su·videh·ānaṁ.", "sujato-corrected": "Because the intelligent cowherd inspected both shores before driving the cattle across at a ford.", "pts": "It was, monks, that that cowherd of Magadha in the last month of the rains at harvest time,\nhaving considered the hither bank of the river Ganges,\nhaving considered the further bank,\ndrove his cattle across to the further bank in Suvidehā at a place where there was a ford.", "bodhi-esque": "For that Magadhan cowherd, bhikkhus, was of wise disposition.\nIn the last month of the rains, at the autumn time, having examined the near shore of the river Ganges,\nhaving examined the far shore, he ferried the cattle across at the very ford to the far shore of the Videhans."}, {"key": "mn34:5.12", "pali": "Evameva kho, bhikkhave, ye\nhi keci samaṇā vā brāhmaṇā vā kusalā imassa lokassa kusalā parassa lokassa,\nkusalā māra·dheyyassa kusalā a·māra·dheyyassa,\nkusalā maccu·dheyyassa kusalā a·maccu·dheyyassa, tesaṁ ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ hitāya sukhāya.", "sujato-corrected": "In the same way, there are ascetics and brahmins who are skilled in this world and the other world,\nskilled in Māra’s dominion and its opposite, and skilled in Death’s dominion and its opposite.\nIf anyone thinks they are worth listening to and trusting, it will be for their lasting welfare and happiness.", "pts": "Even so, monks, any recluses or brahmans who are skilled about this world, skilled about the world beyond,\nskilled about Māra's realm, skilled about what is not Māra's realm, skilled about Death's realm,\nskilled about what is not Death's realm - whoever think they should\nlisten to these (recluses and brahmans) and put their faith in them,\nthat will be for a long time for their welfare and happiness.", "bodhi-esque": "Just so, bhikkhus, whatever ascetics or brahmins are skilled about this world,\nskilled about the other world, skilled about Māra’s domain, skilled about the non-Māra’s domain,\nskilled about death’s domain, skilled about the non-death’s domain—for them,\nwhoever will think that it should be heard and believed, that will be for their long-term welfare and happiness."}]}, {"id": "6", "label": "Seyyathāpi, bhikkhave, ye te usabhā gopitaro gopariṇāyakā…", "rows": [{"key": "mn34:6.1", "pali": "Seyyathāpi, bhikkhave, ye\nte usabhā gopitaro gopariṇāyakā te tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the bulls, fathers and captains of the herd, who crossed the Ganges to safety", "pts": "Monks, like unto those bulls who were the sires and leaders of the herd,\nand who, having cut across the stream of the Ganges, went safely beyond,", "bodhi-esque": "Just as, bhikkhus, those bull leaders, herd leaders,\nhaving cut across the stream of the Ganges, safely went to the far shore;"}, {"key": "mn34:6.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū arahanto khīṇ·āsavā vusitavanto kata·karaṇīyā ohita·bhārā\nanuppatta·sadatthā pari·k·khīṇa·bhava·saṁyojanā sammadaññā·vimuttā,\nte tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṅgatā.", "sujato-corrected": "are the mendicants who are perfected, who have ended the defilements,\ncompleted the spiritual journey, done what had to be done,\nlaid down the burden, achieved their heart’s goal,\nutterly ended the fetter of continued existence, and are rightly freed through enlightenment.\nHaving breasted Māra’s stream, they have safely crossed over to the far shore.", "pts": "are those monks who are perfected ones, the cankers destroyed,\nwho have lived the life, done what was to be done, laid down the burden,\nattained their own goal, the fetters of becoming being utterly destroyed,\nand who are freed by perfect profound knowledge.\nFor these, having cut across Māra's stream, have gone safely beyond.", "bodhi-esque": "just so, bhikkhus, those bhikkhus who are arahants, with taints destroyed,\nwho have lived the holy life, done what had to be done, laid down the burden, attained their own goal,\nwith the fetters of existence completely destroyed, completely liberated by final knowledge—they,\nhaving cut across the stream of Māra, have safely gone to the far shore."}]}, {"id": "7", "label": "Seyyathāpi te, bhikkhave, balava·gāvo damma·gāvo tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:7.1", "pali": "Seyyathāpi te, bhikkhave, balava·gāvo damma·gāvo tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the strong and tractable cattle who crossed the Ganges to safety", "pts": "Monks, like unto those sturdy bullocks and young steers who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,", "bodhi-esque": "Just as, bhikkhus, those strong bulls and trained bulls,\nhaving cut across the stream of the Ganges, safely went to the far shore;"}, {"key": "mn34:7.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū pañca·n·naṁ orambhāgiyānaṁ saṁyoj·an·ānaṁ pari·k·khayā\nopa·pātikā tattha pari·ni·b·bāyino an·āvatti·dhammā tasmā lokā,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of the five lower fetters, are reborn spontaneously.\nThey've attained final Nibbāna there, and are not liable to return from that world.\nThey too, having breasted Māra's stream, will safely cross over to the far shore.", "pts": "by destroying the five fetters binding to this lower world, are of spontaneous uprising,\nand being ones who attain nibbāna there, are not liable to return from that world.\nFor these also, having cut across Māra's stream, will go safely beyond.", "bodhi-esque": "just so, bhikkhus, those bhikkhus who,\nwith the complete destruction of the five lower fetters, are of spontaneous birth,\nthere attaining final Nibbāna, not liable to return from that world—they too,\nhaving cut across the stream of Māra, will safely go to the far shore."}]}, {"id": "8", "label": "Seyyathāpi te, bhikkhave, vaccha·tarā vaccha·tariyo tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:8.1", "pali": "Seyyathāpi te, bhikkhave, vaccha·tarā vaccha·tariyo tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the bullocks and heifers who crossed the Ganges to safety", "pts": "Monks, like unto those half-grown bull-calves and heifers who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,", "bodhi-esque": "Just as those young bulls and young cows, bhikkhus,\nhaving cut across the stream of the Ganges, crossed safely to the far shore;"}, {"key": "mn34:8.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū tiṇṇaṁ saṁyoj·an·ānaṁ pari·k·khayā rāga·dosa·mohānaṁ tanuttā\nsakadāgāmino saki·deva imaṁ lokaṁ āgantvā dukkhassa·ntaṁ karissanti,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of three fetters,\nand the weakening of greed, hate, and delusion, are once-returners.\nThey come back to this world once only, then make an end of suffering.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "by destroying the three fetters, by reducing attachment, aversion and confusion,\nare once-returners who, having come back again to this world once only, will make an end of anguish.\nFor these also, having cut across Māra's stream, will go safely beyond.", "bodhi-esque": "so too, bhikkhus, those bhikkhus who, with the utter destruction of three fetters and with the attenuation of lust,\nhatred, and delusion, are once-returners, coming back only once to this world, will make an end of suffering;\nthey too, having cut across Māra's stream, will cross safely to the far shore."}]}, {"id": "9", "label": "Seyyathāpi te, bhikkhave, vacchakā kisā·balakā tiriyaṁ gaṅgāya…", "rows": [{"key": "mn34:9.1", "pali": "Seyyathāpi te, bhikkhave, vacchakā kisā·balakā tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamaṁsu;", "sujato-corrected": "Just like the calves and weak cattle who crossed the Ganges to safety", "pts": "Monks, like unto those weaker calves who,\nhaving cut across the stream of the Ganges, went safely beyond, are those monks who,", "bodhi-esque": "Just as those calves, weak and dappled, having cut across the stream of the Ganges, crossed safely to the far shore;"}, {"key": "mn34:9.2", "pali": "evameva kho, bhikkhave,\nye te bhikkhū tiṇṇaṁ saṁyoj·an·ānaṁ pari·k·khayā sotāpannā a·vini·pāta·dhammā niyatā sambodhi·parāyanā,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who, with the ending of three fetters are stream-enterers,\nnot liable to be reborn in the underworld, assured, destined for awakening.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "by destroying the three fetters, are stream-attainers, not liable for the abyss, assured, bound for awakening.\nFor these also, having cut across Māra's stream, will go safely beyond.", "bodhi-esque": "so too, bhikkhus, those bhikkhus who, with the utter destruction of three fetters, are stream-enterers,\nno longer subject to rebirth in the lower realms, fixed in destiny, heading for enlightenment;\nthey too, having cut across Māra's stream, will cross safely to the far shore."}]}, {"id": "10", "label": "Seyyathāpi so, bhikkhave, vacchako taruṇako tāva·deva jātako…", "rows": [{"key": "mn34:10.1", "pali": "Seyyathāpi so, bhikkhave,\nvacchako taruṇako tāva·deva jātako mātu·goravakena vuyha·māno tiriyaṁ gaṅgāya sotaṁ chetvā sotthinā pāraṁ agamāsi;", "sujato-corrected": "Just like the baby calf who had just been born, but,\nurged on by its mother’s lowing, still managed to cross the Ganges to safety", "pts": "Monks, like unto that young new-born calf which, by following the lowing of its mother,\nalso cut across the stream of the Ganges and went safely beyond,", "bodhi-esque": "Just as that newborn calf, just born, being borne along by the mother's solicitude,\nhaving cut across the stream of the Ganges, crossed safely to the far shore;"}, {"key": "mn34:10.2", "pali": "evameva kho, bhikkhave, ye\nte bhikkhū dhammā·nusārino saddhā·nusārino,\ntepi tiriyaṁ mārassa sotaṁ chetvā sotthinā pāraṁ gamissanti.", "sujato-corrected": "are the mendicants who are followers of teachings, followers by faith.\nThey too, having breasted Māra’s stream, will safely cross over to the far shore.", "pts": "are those monks who are striving for Dhamma, striving for faith.\nFor these also, having cut across Māra's stream, will go safely beyond.", "bodhi-esque": "so too, bhikkhus, those bhikkhus who are Dhamma-followers and faith-followers;\nthey too, having cut across Māra's stream, will cross safely to the far shore."}]}, {"id": "11", "label": "Ahaṁ kho pana, bhikkhave, kusalo imassa lokassa…", "rows": [{"key": "mn34:11.1", "pali": "Ahaṁ kho pana, bhikkhave, kusalo imassa lokassa kusalo parassa lokassa,\nkusalo māra·dheyyassa kusalo a·māra·dheyyassa, kusalo maccu·dheyyassa kusalo a·maccu·dheyyassa.\nTassa mayhaṁ, bhikkhave, ye\nsotabbaṁ saddahā·tabbaṁ maññissanti,\ntesaṁ taṁ bhavissati\ndīgha·rattaṁ hitāya su·khāyā”ti.", "sujato-corrected": "Mendicants, I am skilled in this world and the other world,\nskilled in Māra’s dominion and its opposite, and skilled in Death’s dominion and its opposite.\nIf anyone thinks I am worth listening to and trusting, it will be for their lasting welfare and happiness.”", "pts": "Now I, monks, am skilled about this world, skilled about the world beyond, skilled about Māra's realm,\nskilled about what is not Māra's realm, skilled about Death's realm, skilled about what is not Death's realm.\nTo those who think they should listen to me and place faith in me, there will be welfare and happiness for a long time.\"", "bodhi-esque": "Now I, bhikkhus, am skilled in this world, skilled in the other world, skilled in Māra's realm,\nskilled in what is not Māra's realm, skilled in Death's realm, skilled in what is not Death's realm.\nFor me, bhikkhus, those who will think that what should be listened to should be believed,\nthat will be for them for a long time for welfare and happiness."}]}, {"id": "12", "label": "Idam·avoca bhagavā.", "rows": [{"key": "mn34:12.1", "pali": "Idam·avoca bhagavā.", "sujato-corrected": "That is what the Buddha said.", "pts": "Thus spoke the Lord;", "bodhi-esque": "This is what the Blessed One said."}, {"key": "mn34:12.2", "pali": "Idaṁ vatvā sugato athā·paraṁ etadavoca satthā:", "sujato-corrected": "Then the Holy One, the Teacher, went on to say:", "pts": "the Well-farer having said this, the Teacher then spoke thus:", "bodhi-esque": "Having said this, the Fortunate One, the Teacher, further said this:"}, {"key": "mn34:12.3", "pali": "“Ayaṁ loko paro loko,", "sujato-corrected": "“This world and the other world", "pts": "\"This world, the world beyond, are well explained by the one who knows,", "bodhi-esque": "“This world and the other world,”"}, {"key": "mn34:12.4", "pali": "jānatā suppa·kāsito;", "sujato-corrected": "have been clearly explained by one who knows;", "pts": "", "bodhi-esque": "have been well proclaimed by the one who knows;"}, {"key": "mn34:12.5", "pali": "Yañca mārena sampattaṁ,", "sujato-corrected": "as well as Māra’s reach,", "pts": "And what is accessible by Māra and what is not accessible by Death.", "bodhi-esque": "“What is reached by Māra”"}, {"key": "mn34:12.6", "pali": "a·p·pattaṁ yañca maccunā.", "sujato-corrected": "and what’s out of Death’s reach.", "pts": "", "bodhi-esque": "and what is not reached by Death."}, {"key": "mn34:12.7", "pali": "Sabbaṁ lokaṁ abhi·ñ·ñāya,", "sujato-corrected": "Directly knowing the whole world,", "pts": "By the Self-awakened One, comprehending, thoroughly knowing every world,", "bodhi-esque": "“Having directly known the entire world,”"}, {"key": "mn34:12.8", "pali": "sambuddhena pajānatā;", "sujato-corrected": "the Buddha who understands", "pts": "", "bodhi-esque": "by the Enlightened One who understands;"}, {"key": "mn34:12.9", "pali": "Vivaṭaṁ a·mata·dvāraṁ,", "sujato-corrected": "has opened the door to freedom from death,", "pts": "Opened is the door of the Undying for reaching security - nibbāna.", "bodhi-esque": "Open is the door to the Deathless,"}, {"key": "mn34:12.10", "pali": "khemaṁ nibbāna·pattiyā.", "sujato-corrected": "for finding the sanctuary, Nibbāna.", "pts": "", "bodhi-esque": "Secure for the attainment of Nibbāna."}, {"key": "mn34:12.11", "pali": "Chinnaṁ pāpimato sotaṁ,", "sujato-corrected": "The Wicked One’s stream has been cut,", "pts": "Cut across is the stream of the Evil One, shattered, destroyed;", "bodhi-esque": "The stream of the Evil One has been cut,"}, {"key": "mn34:12.12", "pali": "Vi·d·dhastaṁ vi·naḷīkataṁ;", "sujato-corrected": "it’s blown away and mown down.", "pts": "", "bodhi-esque": "Destroyed and uprooted;"}, {"key": "mn34:12.13", "pali": "Pāmojja·bahulā hotha,", "sujato-corrected": "Be full of joy, mendicants,", "pts": "Let there be abundant rapture, monks, let security be reached.\"", "bodhi-esque": "Be abundant in delight,"}, {"key": "mn34:12.14", "pali": "Khemaṁ patta·t·tha bhikkhavo”ti.", "sujato-corrected": "set your heart on sanctuary!”", "pts": "", "bodhi-esque": "You have reached security, O bhikkhus."}, {"key": "mn34:12.15", "pali": "Cūḷa·gopālaka·suttaṁ niṭṭhitaṁ catu·t·thaṁ.", "sujato-corrected": "", "pts": "Lesser Discourse on the Cowherd:\nthe Fourth", "bodhi-esque": "The Lesser Discourse on the Cowherd is finished, the fourth."}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "sujato-corrected", "label": "Sujato (Corrected)", "dot": "#c87a5d", "light": {"bg": "#f8f0ec", "text": "#2b150d"}, "dark": {"bg": "#201512", "text": "#d8b8a8"}, "italic": false, "warn": ""}, {"key": "pts", "label": "PTS I. B. Horner", "dot": "#b08948", "light": {"bg": "#f6f0e6", "text": "#2b1d0a"}, "dark": {"bg": "#1e1810", "text": "#d8c098"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "sujato-corrected", "pts"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "sujato-corrected"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "mn";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "MN";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);

@@ -142,6 +142,27 @@ header{
   color:var(--text);border-color:var(--sec-border);background:var(--sec-bg)}
 .settings-pop .icon-btn:hover{background:var(--toc-hover)}
 .settings-pop .set-help{text-decoration:none;white-space:nowrap}
+/* "Set current columns as default" dropdown (opens from the ⚙ menu, floats over it) */
+.coldef-menu{position:fixed;z-index:600;min-width:12.5rem;padding:.5rem .55rem;
+  background:var(--bg);color:var(--text);border:1px solid var(--sec-border);
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);font-family:sans-serif}
+.coldef-menu[hidden]{display:none}
+.coldef-title{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .4rem;font-weight:600}
+.coldef-opt{display:flex;align-items:center;gap:.45rem;font-size:.78rem;
+  padding:.22rem .1rem;cursor:pointer}
+.coldef-opt input{cursor:pointer;margin:0}
+.coldef-opt input:disabled,.coldef-opt input:disabled + span{opacity:.45;cursor:default}
+.coldef-status{font-size:.7rem;color:var(--muted);margin-top:.35rem;min-height:.95rem}
+.coldef-actions{display:flex;gap:.4rem;margin-top:.45rem}
+.coldef-btn{flex:1;cursor:pointer;border:1px solid var(--sec-border);background:var(--sec-bg);
+  color:var(--text);border-radius:4px;padding:.32rem;font-size:.78rem;
+  transition:background .15s,border-color .15s,color .15s}
+.coldef-btn:hover{background:var(--toc-hover)}
+.coldef-primary{border-color:var(--accent,#3a8a5f);font-weight:600}
+/* clear success flash on Save before the menu auto-dismisses */
+.coldef-btn.saved{background:#2e7d32;border-color:#2e7d32;color:#fff}
+.coldef-btn.saved:hover{background:#2e7d32}
 
 /* 🦘 quick-jump in header */
 .jump{position:relative;display:flex;align-items:center;gap:.25rem}
@@ -357,7 +378,16 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
 .sc-count{font-size:.62rem;color:var(--muted);margin-left:.4rem;font-family:sans-serif}
 
 /* ── TABLE ── */
-.rw{margin-left:.45rem;border-left:2px solid var(--line)}
+/* Each leaf section's segment table lives in its own .rw block. A big book renders
+   THOUSANDS of these small tables (e.g. Vibhaṅga ≈ 3,300), and a bare table ignores
+   `contain`/`content-visibility` — so any width change (sidebar push, column resize)
+   or scroll used to relayout EVERY table and freeze for seconds. content-visibility
+   on this BLOCK wrapper (the table's parent, where it IS honoured) bounds layout+paint
+   to the on-screen tables — the browser skips off-screen ones until scrolled near.
+   contain-intrinsic-size keeps the scrollbar stable; `auto` remembers each table's real
+   height after it's measured once. (Defers layout/paint only — not DOM construction.) */
+.rw{margin-left:.45rem;border-left:2px solid var(--line);
+  content-visibility:auto;contain-intrinsic-size:auto 5rem}
 .rt{width:100%;border-collapse:collapse;border:1px solid var(--border);
   border-top:none;margin-bottom:2px;table-layout:fixed}
 .rt tr{border-bottom:1px solid var(--border)}
@@ -390,9 +420,23 @@ body.sw-dragging #colBar,body.sw-dragging .sidebar,body.sw-dragging .toc-bar{tra
   background:var(--rtc-bg);transition:background .2s}
 td.c{padding:.56rem .7rem;vertical-align:top;line-height:1.75;overflow:hidden;
   transition:background .2s,color .2s}
+/* SC segment refs — explicit mode: the ref printed inline above each column's text. */
 .seg{display:none;font-size:.54rem;font-family:sans-serif;color:var(--key);
   margin-bottom:.12rem;letter-spacing:.04em}
-html[data-seg="on"] .seg{display:block}
+html[data-seg="explicit"] .seg{display:block}
+/* SC segment refs — subtle mode: a faint 🔗 glyph floating in the first column's RIGHT
+   gutter (l24sx pattern). td.c is overflow:hidden, so the glyph must sit INSIDE the box —
+   padding-right reserves the gutter; it never shifts or overlaps the text. Dim by default,
+   brighter on row hover, full on its own hover; flashes accent when a link is copied. */
+.seg-host{position:relative}
+.seg-link{display:none;position:absolute;top:.4rem;right:.3rem;border:none;background:none;
+  cursor:pointer;font-size:.6rem;line-height:1;padding:0;opacity:.22;filter:grayscale(.5);
+  user-select:none;transition:opacity .12s,filter .12s}
+html[data-seg="subtle"] .seg-link{display:block}
+html[data-seg="subtle"] .seg-host{padding-right:1.3em}
+tr:hover .seg-link{opacity:.55}
+.seg-link:hover{opacity:1;filter:none}
+.seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
@@ -517,9 +561,23 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
   color:var(--text,HighlightText);outline:none}
 /* ── FOOTNOTE RESIZE SASH ── horizontal handle at the TOC/footnote boundary (desktop).
    Following sibling of #fnPane so `#fnPane.min ~ #fnSash` can hide it when minimized. */
-#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:var(--fn-h);
-  height:6px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
-#fnSash:hover,#fnSash.dragging{background:var(--accent);opacity:.5}
+/* The hit area is a comfortable 14px band straddling the boundary (≈9px above the
+   line, ≈5px below it into the pane's header padding), far easier to grab than a hairline;
+   a thin 2px line, centred via ::after, is the only visible part until hover/drag. */
+#fnSash{display:none;position:fixed;left:0;width:var(--sw);bottom:calc(var(--fn-h) - 5px);
+  height:14px;z-index:260;cursor:row-resize;background:transparent;transition:background .12s}
+#fnSash:hover,#fnSash.dragging{background:var(--toc-hover)}
+#fnSash::after{content:"";position:absolute;left:0;right:0;top:8px;height:2px;
+  background:transparent;transition:background .12s}
+#fnSash:hover::after,#fnSash.dragging::after{background:var(--accent);opacity:.65}
+/* Transient hint shown when the sash is grabbed while the pane is still minimized
+   (nothing to resize yet). Inverted high-contrast bubble that works in both themes. */
+#fnHint{position:fixed;z-index:600;left:.5rem;bottom:calc(var(--fn-h) + 12px);
+  max-width:calc(var(--sw) - 1rem);background:var(--text);color:var(--bg);
+  font-family:sans-serif;font-size:.74rem;line-height:1.35;padding:.4rem .6rem;
+  border-radius:6px;border-left:3px solid var(--accent);box-shadow:0 3px 12px rgba(0,0,0,.3);
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;pointer-events:none}
+#fnHint.show{opacity:1;transform:translateY(0)}
 body.fn-dragging{user-select:none;cursor:row-resize}
 
 /* Mobile: footnotes revert to the bottom sheet; no split, no sash. */
@@ -535,7 +593,8 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 /* Desktop: the lower-left split + minimized-strip behavior. */
 @media (min-width:641px){
   #fnSash{display:block}
-  #fnPane.min ~ #fnSash{display:none}
+  /* The sash stays visible even when the pane is minimized: it's a consistent grab
+     affordance, and grabbing it then hints how to open the panel (see initFnSash). */
   #fnPane.min .fn-strip{display:block}
   #fnPane.min .fn-head > *:not(.fn-strip){display:none}
   #fnPane.min .fn-body,#fnPane.min .fn-warn{display:none}
@@ -613,8 +672,12 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <button class="icon-btn" id="themeBtn" title="Toggle dark / light mode" onclick="toggleTheme()">☾ Dark</button>
         </div>
         <div class="set-row">
-          <span class="set-lbl" title="These are SuttaCentral references (e.g. mn10:2.5).">SC segment refs</span>
-          <button class="icon-btn" id="segBtn" title="Show / hide SuttaCentral segment numbers in the text" onclick="toggleSeg()">Off</button>
+          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:&#10;• Off — hidden&#10;• Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)&#10;• Explicit — the ref printed inline">Off</button>
+        </div>
+        <div class="set-row">
+          <span class="set-lbl" title="Save the current column order and visible translators as your default layout.">Default columns</span>
+          <button class="icon-btn" id="colDefBtn" aria-haspopup="menu" title="Set the current column order and visible translators as your default" onclick="toggleColDefMenu(event)">Set ▾</button>
         </div>
         <div class="set-row">
           <span class="set-lbl">Help</span>
@@ -669,8 +732,9 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </span>
     <button id="fnAll" title="Show all footnotes (currently ON)" onclick="fnToggleAll()">all</button>
     <span class="fn-spacer"></span>
-    <!-- Sujato-only translator caveat: tooltip = short warning, click toggles the
-         full warning banner below. Shown only when the note is a Sujato note. -->
+    <!-- Sujato translator caveat: tooltip = short warning, click toggles the full
+         warning banner below. Shown for Sujato notes and sujato-corrected notes
+         (the corrected column inherits Sujato's notes and rendering). -->
     <button id="fnWarn" class="fn-warn-btn" title="☠️ Sujato's Jhāna views contradict the EBT…" hidden>☠️</button>
     <button id="fnCopy" title="Copy footnote text">📋</button>
     <button id="fnClose" title="Close footnote" onclick="closeNote()">✕</button>
@@ -680,15 +744,29 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </aside>
 <!-- Horizontal sash: TOC/footnote split (desktop only; following sibling of #fnPane). -->
 <div id="fnSash" title="Drag to resize the footnote panel"></div>
+<!-- Transient hint shown when the sash is grabbed while the pane is still minimized. -->
+<div id="fnHint" role="status" aria-live="polite"></div>
 <!-- Translator chooser: opened by clicking the minimized #fnStrip; lists translators
      with footnotes on this page (populated by buildFnMenu). -->
 <div id="fnMenu" role="menu"></div>
 
+<!-- "Set current columns as default" dropdown (opened from the ⚙ menu; floats over it). -->
+<div id="colDefMenu" class="coldef-menu" role="menu" hidden>
+  <div class="coldef-title">Set current columns as default</div>
+  <label class="coldef-opt"><input type="checkbox" id="colDefGlobal"><span>Global (all suttas)</span></label>
+  <label class="coldef-opt"><input type="checkbox" id="colDefNik"><span>This nikāya (<span id="colDefNikLbl"></span>)</span></label>
+  <div class="coldef-status" id="colDefStatus" aria-live="polite"></div>
+  <div class="coldef-actions">
+    <button class="coldef-btn" id="colDefCancel" onclick="closeColDefMenu()">Cancel</button>
+    <button class="coldef-btn coldef-primary" id="colDefSave" onclick="saveColDefault()">Save</button>
+  </div>
+</div>
+
 <script>
-const TREE=[{"id": "pli-tv-bi-vb-pd1", "label": "Sappiviññāpana — 1. The training rule on asking for ghee", "children": [{"id": "pli-tv-bi-vb-pd1/0", "label": "Thera·vāda Vi·naya", "rows": [{"key": "pli-tv-bi-vb-pd1:0.1", "pali": "Thera·vāda Vi·naya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bi-vb-pd1:0.2", "pali": "Bhikkhuni·vibhaṅga", "brahmali": "The Nuns’ Analysis"}, {"key": "pli-tv-bi-vb-pd1:0.3", "pali": "Pāṭi·desa·nīya·kaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bi-vb-pd1:0.4", "pali": "1.\nSappi·viññāpana·sikkhā·pada", "brahmali": "1.\nThe training rule on asking for ghee"}, {"key": "pli-tv-bi-vb-pd1:0.5", "pali": "Ime kho panā·y·yāyo a·ṭ·ṭha pāṭi·desa·nīyā dhammā uddesaṁ āgacchanti.", "brahmali": "Venerables, these eight rules on acknowledgment come up for recitation."}]}, {"id": "pli-tv-bi-vb-pd1/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "pli-tv-bi-vb-pd1:1.1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "brahmali": "At one time when the Buddha was staying at Sāvatthī in Anāthapiṇḍika’s Monastery,"}, {"key": "pli-tv-bi-vb-pd1:1.1.2", "pali": "Tena kho pana samayena chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjanti.", "brahmali": "the nuns from the group of six were eating ghee that they had asked for."}, {"key": "pli-tv-bi-vb-pd1:1.1.3", "pali": "Manussā ujjhāyanti khiyyanti vipācenti—", "brahmali": "People complained and criticized them,"}, {"key": "pli-tv-bi-vb-pd1:1.1.4", "pali": "“kathañhi nāma bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can nuns eat ghee that they have asked for?"}, {"key": "pli-tv-bi-vb-pd1:1.1.5", "pali": "Kassa sampannaṁ na manāpaṁ, kassa\nsāduṁ na ruccatī”ti.", "brahmali": "Who doesn’t like nice food?\nWho doesn’t prefer tasty food?”"}, {"key": "pli-tv-bi-vb-pd1:1.1.6", "pali": "Assosuṁ kho bhikkhuniyo tesaṁ manu·s·sānaṁ ujjhāyantānaṁ khiyya·ntānaṁ vi·pāce·ntānaṁ.", "brahmali": "The nuns heard the complaints of those people."}, {"key": "pli-tv-bi-vb-pd1:1.1.7", "pali": "Yā tā bhikkhuniyo appicchā …pe…\ntā ujjhāyanti khiyyanti vipācenti—", "brahmali": "The nuns of few desires complained and criticized them,"}, {"key": "pli-tv-bi-vb-pd1:1.1.8", "pali": "“kathañhi nāma chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissantī”ti …pe…", "brahmali": "“How can the nuns from the group of six eat ghee that they have asked for?” …"}, {"key": "pli-tv-bi-vb-pd1:1.1.9", "pali": "“sa·c·caṁ kira, bhikkhave, chabbaggiyā, bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjantī”ti?", "brahmali": "“Is it true, monks, that those nuns do this?”"}, {"key": "pli-tv-bi-vb-pd1:1.1.10", "pali": "“Sa·c·caṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”"}, {"key": "pli-tv-bi-vb-pd1:1.1.11", "pali": "Vigarahi buddho bhagavā …pe…", "brahmali": "The Buddha rebuked them …"}, {"key": "pli-tv-bi-vb-pd1:1.1.12", "pali": "kathañhi nāma, bhikkhave, chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can the nuns from the group of six do this?"}, {"key": "pli-tv-bi-vb-pd1:1.1.13", "pali": "Netaṁ, bhikkhave, a·p·pasannānaṁ vā pasādāya …pe…", "brahmali": "This will affect people’s confidence …” …"}, {"key": "pli-tv-bi-vb-pd1:1.1.14", "pali": "evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "“And, monks, the nuns should recite this training rule like this:"}, {"key": "pli-tv-bi-vb-pd1:1.1.15.1", "pali": "“Yā pana bhikkhunī sappiṁ\nvi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun asks for ghee and then eats it, she must acknowledge it:"}, {"key": "pli-tv-bi-vb-pd1:1.1.16", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}, {"key": "pli-tv-bi-vb-pd1:1.1.17", "pali": "Evañcidaṁ bhagavatā bhikkhunīnaṁ sikkhā·padaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the nuns."}, {"key": "pli-tv-bi-vb-pd1:1.2.1", "pali": "Tena kho pana samayena bhikkhuniyo gilānā honti.", "brahmali": "Soon afterwards a number of nuns were sick."}, {"key": "pli-tv-bi-vb-pd1:1.2.2", "pali": "Gilāna·pucchikā bhikkhuniyo gilānā bhikkhuniyo etadavocuṁ—", "brahmali": "The nuns who were looking after them asked,"}, {"key": "pli-tv-bi-vb-pd1:1.2.3", "pali": "“kacci, ayye, khamanīyaṁ, kacci yāpanīyan”ti?", "brahmali": "“I hope you’re bearing up?\nI hope you’re getting better?”"}, {"key": "pli-tv-bi-vb-pd1:1.2.4", "pali": "“Pubbe mayaṁ, ayye, sappiṁ\nvi·ñ·ñāpetvā bhuñjāma,\ntena no phāsu hoti;", "brahmali": "“Previously we ate ghee that we had asked for, and then we were comfortable."}, {"key": "pli-tv-bi-vb-pd1:1.2.5", "pali": "idāni pana ‘bhagavatā paṭi·k·khittan’ti kukkuccāyantā na viññāpema,\ntena no na phāsu hotī”ti …pe…", "brahmali": "But now that the Buddha has prohibited this, we don’t ask because we’re afraid of wrongdoing.\nAnd because of that we’re not comfortable.” …"}, {"key": "pli-tv-bi-vb-pd1:1.2.6", "pali": "bhagavato etam·atthaṁ ārocesuṁ …pe…", "brahmali": "They told the Buddha.\nSoon afterwards the Buddha had the Sangha gathered and addressed the monks:"}, {"key": "pli-tv-bi-vb-pd1:1.2.7", "pali": "anujānāmi, bhikkhave, gilānāya bhikkhuniyā sappiṁ\nvi·ñ·ñāpetvā bhuñj·ituṁ.", "brahmali": "“Monks, I allow a sick nun to eat ghee that she has asked for."}, {"key": "pli-tv-bi-vb-pd1:1.2.8", "pali": "Evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "And so, monks, the nuns should recite this training rule like this:"}, {"key": "pli-tv-bi-vb-pd1:1.2.9.1", "pali": "“Yā pana bhikkhunī a·gilānā sappiṁ\nvi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun who is not sick asks for ghee and then eats it, she must acknowledge it:"}, {"key": "pli-tv-bi-vb-pd1:1.2.10", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}]}, {"id": "pli-tv-bi-vb-pd1/2", "label": "Yā panāti", "rows": [{"key": "pli-tv-bi-vb-pd1:2.1.1", "pali": "Yā panāti", "brahmali": "A:"}, {"key": "pli-tv-bi-vb-pd1:2.1.2", "pali": "yā yādisā …pe…", "brahmali": "whoever …"}, {"key": "pli-tv-bi-vb-pd1:2.1.3", "pali": "bhikkhunīti", "brahmali": "Nun:"}, {"key": "pli-tv-bi-vb-pd1:2.1.4", "pali": "…pe… ayaṁ imasmiṁ atthe adhi·p·petā bhikkhunīti.", "brahmali": "…\nThe nun who has been given the full ordination in unanimity by both Sanghas through a legal procedure consisting of\none motion and three announcements that is irreversible and fit to stand—this sort of nun is meant in this case."}, {"key": "pli-tv-bi-vb-pd1:2.1.5", "pali": "A·gilānā nāma", "brahmali": "Who is not sick:"}, {"key": "pli-tv-bi-vb-pd1:2.1.6", "pali": "yassā vinā sappinā phāsu hoti.", "brahmali": "who is comfortable without ghee."}, {"key": "pli-tv-bi-vb-pd1:2.1.7", "pali": "Gilānā nāma", "brahmali": "Who is sick:"}, {"key": "pli-tv-bi-vb-pd1:2.1.8", "pali": "yassā vinā sappinā na phāsu hoti.", "brahmali": "who is not comfortable without ghee."}, {"key": "pli-tv-bi-vb-pd1:2.1.9", "pali": "Sappi nāma", "brahmali": "Ghee:"}, {"key": "pli-tv-bi-vb-pd1:2.1.10", "pali": "gosappi vā ajikā·sappi vā mahiṁsa·sappi vā.\nYesaṁ maṁsaṁ kappati tesaṁ sappi.", "brahmali": "ghee from cows, ghee from goats, ghee from buffaloes, or ghee from whatever animal whose meat is allowable."}, {"key": "pli-tv-bi-vb-pd1:2.1.11", "pali": "A·gilānā attano atthāya viññāpeti, payoge dukkaṭaṁ.", "brahmali": "If she is not sick and she asks for herself, then for the effort there is an act of wrong conduct."}, {"key": "pli-tv-bi-vb-pd1:2.1.12", "pali": "Paṭi·lābhena “bhuñjissāmī”ti paṭi·g·gaṇhāti, āpatti dukkaṭassa.", "brahmali": "When she receives it with the intention of eating it, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd1:2.1.13", "pali": "Ajjh·ohāre ajjh·ohāre āpatti pāṭi·desanīyassa.", "brahmali": "For every mouthful swallowed, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd1:2.2.1", "pali": "A·gilānā a·gilāna·saññā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, and she does not perceive herself as sick,\nand she eats ghee that she has asked for, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd1:2.2.2", "pali": "A·gilānā ve·matikā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she is unsure of it, and she eats ghee that she has asked for,\nshe commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd1:2.2.3", "pali": "A·gilānā gilāna·saññā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she perceives herself as sick,\nand she eats ghee that she has asked for, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd1:2.2.4", "pali": "Gilānā a·gilāna·saññā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she does not perceive herself as sick, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd1:2.2.5", "pali": "Gilānā ve·matikā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she is unsure of it, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd1:2.2.6", "pali": "Gilānā gilāna·saññā, an·āpatti.", "brahmali": "If she is sick, and she perceives herself as sick, there is no offense."}, {"key": "pli-tv-bi-vb-pd1:2.3.1", "pali": "An·āpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bi-vb-pd1:2.3.2", "pali": "gilānāya,", "brahmali": "if she is sick;"}, {"key": "pli-tv-bi-vb-pd1:2.3.3", "pali": "gilānā hutvā vi·ñ·ñāpetvā a·gilānā bhuñjati,", "brahmali": "if she asked for it when she was sick, but eats it when she is no longer sick;"}, {"key": "pli-tv-bi-vb-pd1:2.3.4", "pali": "gilānāya sesakaṁ bhuñjati,", "brahmali": "if she eats the leftovers from one who is sick;"}, {"key": "pli-tv-bi-vb-pd1:2.3.5", "pali": "ñātakānaṁ,", "brahmali": "if it is from relatives;"}, {"key": "pli-tv-bi-vb-pd1:2.3.6", "pali": "pavār·itānaṁ,", "brahmali": "if it is from those who have given an invitation;"}, {"key": "pli-tv-bi-vb-pd1:2.3.7", "pali": "a·ñ·ñassa·t·thāya,", "brahmali": "if it is for the benefit of someone else;"}, {"key": "pli-tv-bi-vb-pd1:2.3.8", "pali": "attano dhanena,", "brahmali": "if it is by means of her own property;"}, {"key": "pli-tv-bi-vb-pd1:2.3.9", "pali": "ummattikāya,", "brahmali": "if she is insane;"}, {"key": "pli-tv-bi-vb-pd1:2.3.10", "pali": "ādi·kammikā·yāti.", "brahmali": "if she is the first offender."}, {"key": "pli-tv-bi-vb-pd1:2.3.11", "pali": "Paṭhama·pāṭi·desa·nīya·sikkhā·padaṁ niṭṭhitaṁ.", "brahmali": "The first training rule on acknowledgment is finished."}]}]}, {"id": "pli-tv-bi-vb-pd2-8", "label": "Telādi — 2–8. Asking for oil … for honey … for syrup … for fish … for meat … for milk … for curd", "children": [{"id": "pli-tv-bi-vb-pd2-8/0", "label": "Thera·vāda Vi·naya", "rows": [{"key": "pli-tv-bi-vb-pd2:0.1", "pali": "Thera·vāda Vi·naya", "brahmali": "Theravāda Collection on Monastic Law"}, {"key": "pli-tv-bi-vb-pd2:0.2", "pali": "Bhikkhuni·vibhaṅga", "brahmali": "The Nuns’ Analysis"}, {"key": "pli-tv-bi-vb-pd2:0.3", "pali": "Pāṭi·desa·nīya·kaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment"}, {"key": "pli-tv-bi-vb-pd2:0.4", "pali": "2–8.\nTela-madhu-phāṇita-maccha-maṁsa-khīra-dadhi·viññāpana·sikkhā·pada", "brahmali": "2–8.\nAsking for oil … for honey … for syrup … for fish … for meat … for milk … for curd"}]}, {"id": "pli-tv-bi-vb-pd2-8/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "pli-tv-bi-vb-pd2:1.1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "brahmali": "At one time when the Buddha was staying at Sāvatthī in Anāthapiṇḍika’s Monastery,"}, {"key": "pli-tv-bi-vb-pd2:1.1.2", "pali": "Tena kho pana samayena chabbaggiyā bhikkhuniyo telaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "the nuns from the group of six were eating oil that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.3", "pali": "…pe… madhuṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating honey that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.4", "pali": "…pe… phāṇ·itaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating syrup that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.5", "pali": "…pe… macchaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating fish that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.6", "pali": "…pe… maṁsaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating meat that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.7", "pali": "…pe… khīraṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were drinking milk that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.8", "pali": "…pe… dadhiṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating curd that they had asked for."}, {"key": "pli-tv-bi-vb-pd2:1.1.9", "pali": "Manussā ujjhāyanti khiyyanti vipācenti—", "brahmali": "People complained and criticized them,"}, {"key": "pli-tv-bi-vb-pd2:1.1.10", "pali": "“kathañhi nāma bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can nuns eat curd that they have asked for?"}, {"key": "pli-tv-bi-vb-pd2:1.1.11", "pali": "Kassa sampannaṁ na manāpaṁ, kassa\nsāduṁ na ruccatī”ti.", "brahmali": "Who doesn’t like nice food?\nWho doesn’t prefer tasty food?”"}, {"key": "pli-tv-bi-vb-pd2:1.1.12", "pali": "Assosuṁ kho bhikkhuniyo tesaṁ manu·s·sānaṁ ujjhāyantānaṁ khiyya·ntānaṁ vi·pāce·ntānaṁ.", "brahmali": "The nuns heard the complaints of those people."}, {"key": "pli-tv-bi-vb-pd2:1.1.13", "pali": "Yā tā bhikkhuniyo appicchā … pe\n… tā ujjhāyanti khiyyanti vipācenti—", "brahmali": "The nuns of few desires complained and criticized them,"}, {"key": "pli-tv-bi-vb-pd2:1.1.14", "pali": "“kathañhi nāma chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissantī”ti … pe …", "brahmali": "“How can the nuns from the group of six eat curd that they have asked for?” …"}, {"key": "pli-tv-bi-vb-pd2:1.1.15", "pali": "“sa·c·caṁ kira, bhikkhave, chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjantī”ti?", "brahmali": "“Is it true, monks, that those nuns do this?”"}, {"key": "pli-tv-bi-vb-pd2:1.1.16", "pali": "“Sa·c·caṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”"}, {"key": "pli-tv-bi-vb-pd2:1.1.17", "pali": "Vigarahi buddho bhagavā … pe …", "brahmali": "The Buddha rebuked them …"}, {"key": "pli-tv-bi-vb-pd2:1.1.18", "pali": "kathañhi nāma, bhikkhave, chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can the nuns from the group of six do this?"}, {"key": "pli-tv-bi-vb-pd2:1.1.19", "pali": "Netaṁ, bhikkhave, a·p·pasannānaṁ vā pasādāya … pe …", "brahmali": "This will affect people’s confidence …” …"}, {"key": "pli-tv-bi-vb-pd2:1.1.20", "pali": "evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "“And, monks, the nuns should recite this training rule like this:"}, {"key": "pli-tv-bi-vb-pd2:1.1.21.1", "pali": "“Yā pana bhikkhunī dadhiṁ vi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun asks for curd and then eats it, she must acknowledge it:"}, {"key": "pli-tv-bi-vb-pd2:1.1.22", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}, {"key": "pli-tv-bi-vb-pd2:1.1.23", "pali": "Evañcidaṁ bhagavatā bhikkhunīnaṁ sikkhā·padaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the nuns."}, {"key": "pli-tv-bi-vb-pd2:1.2.1", "pali": "Tena kho pana samayena bhikkhuniyo gilānā honti.", "brahmali": "Soon afterwards a number of nuns were sick."}, {"key": "pli-tv-bi-vb-pd2:1.2.2", "pali": "Gilāna·pucchikā bhikkhuniyo gilānā bhikkhuniyo etadavocuṁ—", "brahmali": "The nuns who were looking after them asked,"}, {"key": "pli-tv-bi-vb-pd2:1.2.3", "pali": "“kacci, ayye, khamanīyaṁ, kacci yāpanīyan”ti?", "brahmali": "“I hope you’re bearing up?\nI hope you’re getting better?”"}, {"key": "pli-tv-bi-vb-pd2:1.2.4", "pali": "“Pubbe mayaṁ, ayye, dadhiṁ vi·ñ·ñāpetvā bhuñjimhā,\ntena no phāsu hoti;", "brahmali": "“Previously we ate curd that we had asked for, and then we were comfortable."}, {"key": "pli-tv-bi-vb-pd2:1.2.5", "pali": "idāni pana ‘bhagavatā paṭi·k·khittan’ti kukkuccāyantā na viññāpema,\ntena no na phāsu hotī”ti … pe …", "brahmali": "But now that the Buddha has prohibited this, we don’t ask because we’re afraid of wrongdoing.\nAnd because of that we’re not comfortable.” …"}, {"key": "pli-tv-bi-vb-pd2:1.2.6", "pali": "bhagavato etam·atthaṁ ārocesuṁ … pe …", "brahmali": "They told the Buddha.\nSoon afterwards the Buddha had the Sangha gathered and addressed the monks:"}, {"key": "pli-tv-bi-vb-pd2:1.2.7", "pali": "anujānāmi, bhikkhave, gilānāya bhikkhuniyā dadhiṁ vi·ñ·ñāpetvā bhuñj·ituṁ.", "brahmali": "“Monks, I allow a sick nun to eat curd that she has asked for."}, {"key": "pli-tv-bi-vb-pd2:1.2.8", "pali": "Evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "And so, monks, the nuns should recite this training rule like this:"}, {"key": "pli-tv-bi-vb-pd2:1.2.9.1", "pali": "“Yā pana bhikkhunī a·gilānā (telaṁ …pe…", "brahmali": "‘If a nun who is not sick asks for (oil …"}, {"key": "pli-tv-bi-vb-pd3:1.1.1", "pali": "madhuṁ …pe…", "brahmali": "honey …"}, {"key": "pli-tv-bi-vb-pd4:1.1.1", "pali": "phāṇ·itaṁ …pe…", "brahmali": "syrup …"}, {"key": "pli-tv-bi-vb-pd5:1.1.1", "pali": "macchaṁ …pe…", "brahmali": "fish …"}, {"key": "pli-tv-bi-vb-pd6:1.1.1", "pali": "maṁsaṁ …pe…", "brahmali": "meat …"}, {"key": "pli-tv-bi-vb-pd7:1.1.1", "pali": "khīraṁ …pe…)", "brahmali": "milk … )"}, {"key": "pli-tv-bi-vb-pd8:1.1.1", "pali": "dadhiṁ vi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "curd and then eats it, she must acknowledge it:"}, {"key": "pli-tv-bi-vb-pd8:1.1.2", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”"}]}, {"id": "pli-tv-bi-vb-pd2-8/2", "label": "Yā panāti", "rows": [{"key": "pli-tv-bi-vb-pd8:2.1.1", "pali": "Yā panāti", "brahmali": "A:"}, {"key": "pli-tv-bi-vb-pd8:2.1.2", "pali": "yā yādisā … pe …", "brahmali": "whoever …"}, {"key": "pli-tv-bi-vb-pd8:2.1.3", "pali": "bhikkhunīti", "brahmali": "Nun:"}, {"key": "pli-tv-bi-vb-pd8:2.1.4", "pali": "… pe … ayaṁ imasmiṁ atthe adhi·p·petā bhikkhunīti.", "brahmali": "…\nThe nun who has been given the full ordination in unanimity by both Sanghas through a legal procedure consisting of\none motion and three announcements that is irreversible and fit to stand—this sort of nun is meant in this case."}, {"key": "pli-tv-bi-vb-pd8:2.1.5", "pali": "A·gilānā nāma", "brahmali": "Who is not sick:"}, {"key": "pli-tv-bi-vb-pd8:2.1.6", "pali": "yassā vinā dadhinā phāsu hoti.", "brahmali": "who is comfortable without curd."}, {"key": "pli-tv-bi-vb-pd8:2.1.7", "pali": "Gilānā nāma", "brahmali": "Who is sick:"}, {"key": "pli-tv-bi-vb-pd8:2.1.8", "pali": "yassā vinā dadhinā na phāsu hoti.", "brahmali": "who is not comfortable without curd."}, {"key": "pli-tv-bi-vb-pd8:2.1.9", "pali": "Telaṁ nāma", "brahmali": "Oil:"}, {"key": "pli-tv-bi-vb-pd8:2.1.10", "pali": "tila·telaṁ sāsapa·telaṁ madhuka·telaṁ eraṇḍa·telaṁ vasā·telaṁ.", "brahmali": "sesame oil, mustard oil, honey tree oil, castor oil, oil from tallow."}, {"key": "pli-tv-bi-vb-pd8:2.1.11", "pali": "Madhu nāma", "brahmali": "Honey:"}, {"key": "pli-tv-bi-vb-pd8:2.1.12", "pali": "makkhikā·madhu.", "brahmali": "honey from bees."}, {"key": "pli-tv-bi-vb-pd8:2.1.13", "pali": "Phāṇ·itaṁ nāma", "brahmali": "Syrup:"}, {"key": "pli-tv-bi-vb-pd8:2.1.14", "pali": "ucchumhā ni·b·battaṁ.", "brahmali": "from sugarcane."}, {"key": "pli-tv-bi-vb-pd8:2.1.15", "pali": "Maccho nāma", "brahmali": "Fish:"}, {"key": "pli-tv-bi-vb-pd8:2.1.16", "pali": "odako vuccati.", "brahmali": "what lives in water is what is meant."}, {"key": "pli-tv-bi-vb-pd8:2.1.17", "pali": "Maṁsaṁ nāma", "brahmali": "Meat:"}, {"key": "pli-tv-bi-vb-pd8:2.1.18", "pali": "yesaṁ maṁsaṁ kappati tesaṁ maṁsaṁ.", "brahmali": "the meat of those animals whose meat is allowable."}, {"key": "pli-tv-bi-vb-pd8:2.1.19", "pali": "Khīraṁ nāma", "brahmali": "Milk:"}, {"key": "pli-tv-bi-vb-pd8:2.1.20", "pali": "gokhīraṁ vā ajikā·khīraṁ vā mahiṁsa·khīraṁ vā yesaṁ maṁsaṁ kappati tesaṁ khīraṁ.", "brahmali": "milk from cows, milk from goats, milk from buffaloes, or milk from whatever animal whose meat is allowable."}, {"key": "pli-tv-bi-vb-pd8:2.1.21", "pali": "Dadhi nāma", "brahmali": "Curd:"}, {"key": "pli-tv-bi-vb-pd8:2.1.22", "pali": "tesaññeva dadhi.", "brahmali": "curd from those same animals."}, {"key": "pli-tv-bi-vb-pd8:2.1.23", "pali": "A·gilānā attano atthāya viññāpeti, payoge dukkaṭaṁ.", "brahmali": "If she is not sick and she asks for herself, then for the effort there is an act of wrong conduct."}, {"key": "pli-tv-bi-vb-pd8:2.1.24", "pali": "Paṭi·lābhena “bhuñjissāmī”ti paṭi·g·gaṇhāti, āpatti dukkaṭassa.", "brahmali": "When she receives it with the intention of eating it, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd8:2.1.25", "pali": "Ajjh·ohāre ajjh·ohāre āpatti pāṭi·desanīyassa.", "brahmali": "For every mouthful swallowed, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd8:2.2.1", "pali": "A·gilānā a·gilāna·saññā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, and she does not perceive herself as sick,\nand she eats curd that she has asked for, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd8:2.2.2", "pali": "A·gilānā ve·matikā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she is unsure of it, and she eats curd that she has asked for,\nshe commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd8:2.2.3", "pali": "A·gilānā gilāna·saññā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she perceives herself as sick,\nand she eats curd that she has asked for, she commits an offense entailing acknowledgment."}, {"key": "pli-tv-bi-vb-pd8:2.2.4", "pali": "Gilānā a·gilāna·saññā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she does not perceive herself as sick, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd8:2.2.5", "pali": "Gilānā ve·matikā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she is unsure of it, she commits an offense of wrong conduct."}, {"key": "pli-tv-bi-vb-pd8:2.2.6", "pali": "Gilānā gilāna·saññā an·āpatti.", "brahmali": "If she is sick, and she perceives herself as sick, there is no offense."}, {"key": "pli-tv-bi-vb-pd8:2.3.1", "pali": "An·āpatti—", "brahmali": "There is no offense:"}, {"key": "pli-tv-bi-vb-pd8:2.3.2", "pali": "gilānāya,", "brahmali": "if she is sick;"}, {"key": "pli-tv-bi-vb-pd8:2.3.3", "pali": "gilānā hutvā vi·ñ·ñāpetvā a·gilānā bhuñjati,", "brahmali": "if she asked for it when she was sick, but eats it when she is no longer sick;"}, {"key": "pli-tv-bi-vb-pd8:2.3.4", "pali": "gilānāya sesakaṁ bhuñjati,", "brahmali": "if she eats the leftovers from one who is sick;"}, {"key": "pli-tv-bi-vb-pd8:2.3.5", "pali": "ñātakānaṁ,", "brahmali": "if it is from relatives;"}, {"key": "pli-tv-bi-vb-pd8:2.3.6", "pali": "pavār·itānaṁ,", "brahmali": "if it is from those who have given an invitation;"}, {"key": "pli-tv-bi-vb-pd8:2.3.7", "pali": "a·ñ·ñassa·t·thāya,", "brahmali": "if it is for the benefit of someone else;"}, {"key": "pli-tv-bi-vb-pd8:2.3.8", "pali": "attano dhanena,", "brahmali": "if it is by means of her own property;"}, {"key": "pli-tv-bi-vb-pd8:2.3.9", "pali": "ummattikāya,", "brahmali": "if she is insane;"}, {"key": "pli-tv-bi-vb-pd8:2.3.10", "pali": "ādi·kammikā·yāti.", "brahmali": "if she is the first offender."}, {"key": "pli-tv-bi-vb-pd8:2.3.11", "pali": "Aṭṭhama·pāṭi·desa·nīya·sikkhā·padaṁ niṭṭhitaṁ.", "brahmali": "The eighth training rule entailing acknowledgment is finished."}, {"key": "pli-tv-bi-vb-pd8:2.3.12", "pali": "Uddiṭṭhā kho, ayyāyo, a·ṭ·ṭha pāṭi·desa·nīyā dhammā.", "brahmali": "“Venerables, the eight rules on acknowledgment have been recited."}, {"key": "pli-tv-bi-vb-pd8:2.3.13", "pali": "Tatthā·y·yāyo pucchāmi—", "brahmali": "In regard to this I ask you,"}, {"key": "pli-tv-bi-vb-pd8:2.3.14", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bi-vb-pd8:2.3.15", "pali": "Dutiyampi pucchāmi—", "brahmali": "A second time I ask,"}, {"key": "pli-tv-bi-vb-pd8:2.3.16", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bi-vb-pd8:2.3.17", "pali": "Tatiyampi pucchāmi—", "brahmali": "A third time I ask,"}, {"key": "pli-tv-bi-vb-pd8:2.3.18", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’"}, {"key": "pli-tv-bi-vb-pd8:2.3.19", "pali": "Pari·suddh·etthā·y·yāyo, tasmā tuṇhī, evam·etaṁ dhārayā·mīti.", "brahmali": "You are pure in this and therefore silent.\nI will remember it thus.”"}, {"key": "pli-tv-bi-vb-pd8:2.3.20", "pali": "Bhikkhuni·vibhaṅge pāṭi·desa·nīya·kaṇḍaṁ niṭṭhitaṁ.", "brahmali": "The chapter on offenses entailing acknowledgment in the Nuns’ Analysis is finished."}]}]}];
+const TREE=[{"id": "pli-tv-bi-vb-pd1", "label": "Sappiviññāpana — 1. The training rule on asking for ghee", "children": [{"id": "pli-tv-bi-vb-pd1/0", "label": "Thera·vāda Vi·naya", "rows": [{"key": "pli-tv-bi-vb-pd1:0.1", "pali": "Thera·vāda Vi·naya", "brahmali": "Theravāda Collection on Monastic Law", "bodhi-esque": "Theravāda Vinaya"}, {"key": "pli-tv-bi-vb-pd1:0.2", "pali": "Bhikkhuni·vibhaṅga", "brahmali": "The Nuns’ Analysis", "bodhi-esque": "Bhikkhunīvibhaṅga"}, {"key": "pli-tv-bi-vb-pd1:0.3", "pali": "Pāṭi·desa·nīya·kaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment", "bodhi-esque": "Pāṭidesanīya Chapter"}, {"key": "pli-tv-bi-vb-pd1:0.4", "pali": "1.\nSappi·viññāpana·sikkhā·pada", "brahmali": "1.\nThe training rule on asking for ghee", "bodhi-esque": "1.\nTraining Rule on Requesting Ghee"}, {"key": "pli-tv-bi-vb-pd1:0.5", "pali": "Ime kho panā·y·yāyo a·ṭ·ṭha pāṭi·desa·nīyā dhammā uddesaṁ āgacchanti.", "brahmali": "Venerables, these eight rules on acknowledgment come up for recitation.", "bodhi-esque": "Now these, venerable ones, eight pāṭidesanīya rules come up for recitation."}]}, {"id": "pli-tv-bi-vb-pd1/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "pli-tv-bi-vb-pd1:1.1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "brahmali": "At one time when the Buddha was staying at Sāvatthī in Anāthapiṇḍika’s Monastery,", "bodhi-esque": "At that time the Buddha, the Blessed One, was dwelling at Sāvatthī\nin Jeta's Grove, Anāthapiṇḍika's park."}, {"key": "pli-tv-bi-vb-pd1:1.1.2", "pali": "Tena kho pana samayena chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjanti.", "brahmali": "the nuns from the group of six were eating ghee that they had asked for.", "bodhi-esque": "Now at that time the bhikkhunīs of the group of six ate after requesting ghee."}, {"key": "pli-tv-bi-vb-pd1:1.1.3", "pali": "Manussā ujjhāyanti khiyyanti vipācenti—", "brahmali": "People complained and criticized them,", "bodhi-esque": "People complained, criticized, and spread it about:"}, {"key": "pli-tv-bi-vb-pd1:1.1.4", "pali": "“kathañhi nāma bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can nuns eat ghee that they have asked for?", "bodhi-esque": "“How can bhikkhunīs eat after requesting ghee?"}, {"key": "pli-tv-bi-vb-pd1:1.1.5", "pali": "Kassa sampannaṁ na manāpaṁ, kassa\nsāduṁ na ruccatī”ti.", "brahmali": "Who doesn’t like nice food?\nWho doesn’t prefer tasty food?”", "bodhi-esque": "For whom is a delicacy not pleasing?\nFor whom is tasty not agreeable?”"}, {"key": "pli-tv-bi-vb-pd1:1.1.6", "pali": "Assosuṁ kho bhikkhuniyo tesaṁ manu·s·sānaṁ ujjhāyantānaṁ khiyya·ntānaṁ vi·pāce·ntānaṁ.", "brahmali": "The nuns heard the complaints of those people.", "bodhi-esque": "The bhikkhunīs heard those people complaining, criticizing, and spreading it about."}, {"key": "pli-tv-bi-vb-pd1:1.1.7", "pali": "Yā tā bhikkhuniyo appicchā …pe…\ntā ujjhāyanti khiyyanti vipācenti—", "brahmali": "The nuns of few desires complained and criticized them,", "bodhi-esque": "Those bhikkhunīs who were of few desires …\nthey complained, criticized, and spread it about:"}, {"key": "pli-tv-bi-vb-pd1:1.1.8", "pali": "“kathañhi nāma chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissantī”ti …pe…", "brahmali": "“How can the nuns from the group of six eat ghee that they have asked for?” …", "bodhi-esque": "“How can the bhikkhunīs of the group of six eat after requesting ghee?” …"}, {"key": "pli-tv-bi-vb-pd1:1.1.9", "pali": "“sa·c·caṁ kira, bhikkhave, chabbaggiyā, bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjantī”ti?", "brahmali": "“Is it true, monks, that those nuns do this?”", "bodhi-esque": "“Is it true, bhikkhus, that the bhikkhunīs of the group of six eat after requesting ghee?”"}, {"key": "pli-tv-bi-vb-pd1:1.1.10", "pali": "“Sa·c·caṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”", "bodhi-esque": "“True, Blessed One.”"}, {"key": "pli-tv-bi-vb-pd1:1.1.11", "pali": "Vigarahi buddho bhagavā …pe…", "brahmali": "The Buddha rebuked them …", "bodhi-esque": "The Buddha, the Blessed One, rebuked them …"}, {"key": "pli-tv-bi-vb-pd1:1.1.12", "pali": "kathañhi nāma, bhikkhave, chabbaggiyā bhikkhuniyo sappiṁ\nvi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can the nuns from the group of six do this?", "bodhi-esque": "How is it, bhikkhus, that the bhikkhunīs belonging to the Group-of-six will ask for ghee and then eat it?"}, {"key": "pli-tv-bi-vb-pd1:1.1.13", "pali": "Netaṁ, bhikkhave, a·p·pasannānaṁ vā pasādāya …pe…", "brahmali": "This will affect people’s confidence …” …", "bodhi-esque": "This, bhikkhus, is not for inspiring confidence in those who are not yet confident …"}, {"key": "pli-tv-bi-vb-pd1:1.1.14", "pali": "evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "“And, monks, the nuns should recite this training rule like this:", "bodhi-esque": "And thus, bhikkhus, should the bhikkhunīs recite this training rule:"}, {"key": "pli-tv-bi-vb-pd1:1.1.15.1", "pali": "“Yā pana bhikkhunī sappiṁ\nvi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun asks for ghee and then eats it, she must acknowledge it:", "bodhi-esque": "“Should any bhikkhunī, having asked for ghee, eat it, it should be confessed by that bhikkhunī:"}, {"key": "pli-tv-bi-vb-pd1:1.1.16", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”", "bodhi-esque": "‘Venerable, I have committed a blameworthy and unsuitable (act) that is to be confessed;\nI confess it.’”"}, {"key": "pli-tv-bi-vb-pd1:1.1.17", "pali": "Evañcidaṁ bhagavatā bhikkhunīnaṁ sikkhā·padaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the nuns.", "bodhi-esque": "Thus this training rule for bhikkhunīs was laid down by the Blessed One."}, {"key": "pli-tv-bi-vb-pd1:1.2.1", "pali": "Tena kho pana samayena bhikkhuniyo gilānā honti.", "brahmali": "Soon afterwards a number of nuns were sick.", "bodhi-esque": "Now at that time some bhikkhunīs were sick."}, {"key": "pli-tv-bi-vb-pd1:1.2.2", "pali": "Gilāna·pucchikā bhikkhuniyo gilānā bhikkhuniyo etadavocuṁ—", "brahmali": "The nuns who were looking after them asked,", "bodhi-esque": "The bhikkhunīs who were nursing the sick said to the sick bhikkhunīs:"}, {"key": "pli-tv-bi-vb-pd1:1.2.3", "pali": "“kacci, ayye, khamanīyaṁ, kacci yāpanīyan”ti?", "brahmali": "“I hope you’re bearing up?\nI hope you’re getting better?”", "bodhi-esque": "‘I hope, venerable, it is bearable;\nI hope it is manageable?’"}, {"key": "pli-tv-bi-vb-pd1:1.2.4", "pali": "“Pubbe mayaṁ, ayye, sappiṁ\nvi·ñ·ñāpetvā bhuñjāma,\ntena no phāsu hoti;", "brahmali": "“Previously we ate ghee that we had asked for, and then we were comfortable.", "bodhi-esque": "‘Formerly, venerable, we would ask for ghee and eat it, and we were comfortable by that;"}, {"key": "pli-tv-bi-vb-pd1:1.2.5", "pali": "idāni pana ‘bhagavatā paṭi·k·khittan’ti kukkuccāyantā na viññāpema,\ntena no na phāsu hotī”ti …pe…", "brahmali": "But now that the Buddha has prohibited this, we don’t ask because we’re afraid of wrongdoing.\nAnd because of that we’re not comfortable.” …", "bodhi-esque": "but now, thinking,\n“It has been prohibited by the Blessed One,” and being scrupulous,\nwe do not ask, and because of that we are not comfortable.’ …"}, {"key": "pli-tv-bi-vb-pd1:1.2.6", "pali": "bhagavato etam·atthaṁ ārocesuṁ …pe…", "brahmali": "They told the Buddha.\nSoon afterwards the Buddha had the Sangha gathered and addressed the monks:", "bodhi-esque": "They reported this matter to the Blessed One. …"}, {"key": "pli-tv-bi-vb-pd1:1.2.7", "pali": "anujānāmi, bhikkhave, gilānāya bhikkhuniyā sappiṁ\nvi·ñ·ñāpetvā bhuñj·ituṁ.", "brahmali": "“Monks, I allow a sick nun to eat ghee that she has asked for.", "bodhi-esque": "I allow, bhikkhus, a sick bhikkhunī to ask for ghee and eat it."}, {"key": "pli-tv-bi-vb-pd1:1.2.8", "pali": "Evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "And so, monks, the nuns should recite this training rule like this:", "bodhi-esque": "And thus, bhikkhus, should the bhikkhunīs recite this training rule:"}, {"key": "pli-tv-bi-vb-pd1:1.2.9.1", "pali": "“Yā pana bhikkhunī a·gilānā sappiṁ\nvi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun who is not sick asks for ghee and then eats it, she must acknowledge it:", "bodhi-esque": "“Whatever bhikkhunī, not being ill, having asked for ghee, should consume it, it is to be confessed by that bhikkhunī—"}, {"key": "pli-tv-bi-vb-pd1:1.2.10", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”", "bodhi-esque": "‘I have fallen into a blameworthy matter, venerable, unsuitable, requiring confession;\nI confess it.’”"}]}, {"id": "pli-tv-bi-vb-pd1/2", "label": "Yā panāti", "rows": [{"key": "pli-tv-bi-vb-pd1:2.1.1", "pali": "Yā panāti", "brahmali": "A:", "bodhi-esque": "“Whatever” means"}, {"key": "pli-tv-bi-vb-pd1:2.1.2", "pali": "yā yādisā …pe…", "brahmali": "whoever …", "bodhi-esque": "whatever kind …"}, {"key": "pli-tv-bi-vb-pd1:2.1.3", "pali": "bhikkhunīti", "brahmali": "Nun:", "bodhi-esque": "“bhikkhunī” means"}, {"key": "pli-tv-bi-vb-pd1:2.1.4", "pali": "…pe… ayaṁ imasmiṁ atthe adhi·p·petā bhikkhunīti.", "brahmali": "…\nThe nun who has been given the full ordination in unanimity by both Sanghas through a legal procedure consisting of\none motion and three announcements that is irreversible and fit to stand—this sort of nun is meant in this case.", "bodhi-esque": "… this is the one who is intended in this case as a bhikkhunī."}, {"key": "pli-tv-bi-vb-pd1:2.1.5", "pali": "A·gilānā nāma", "brahmali": "Who is not sick:", "bodhi-esque": "“Not being ill” means"}, {"key": "pli-tv-bi-vb-pd1:2.1.6", "pali": "yassā vinā sappinā phāsu hoti.", "brahmali": "who is comfortable without ghee.", "bodhi-esque": "one for whom, without ghee, there is comfort."}, {"key": "pli-tv-bi-vb-pd1:2.1.7", "pali": "Gilānā nāma", "brahmali": "Who is sick:", "bodhi-esque": "“Ill” means"}, {"key": "pli-tv-bi-vb-pd1:2.1.8", "pali": "yassā vinā sappinā na phāsu hoti.", "brahmali": "who is not comfortable without ghee.", "bodhi-esque": "one for whom, without ghee, there is not comfort."}, {"key": "pli-tv-bi-vb-pd1:2.1.9", "pali": "Sappi nāma", "brahmali": "Ghee:", "bodhi-esque": "“Ghee” means"}, {"key": "pli-tv-bi-vb-pd1:2.1.10", "pali": "gosappi vā ajikā·sappi vā mahiṁsa·sappi vā.\nYesaṁ maṁsaṁ kappati tesaṁ sappi.", "brahmali": "ghee from cows, ghee from goats, ghee from buffaloes, or ghee from whatever animal whose meat is allowable.", "bodhi-esque": "cow ghee, or goat ghee, or buffalo ghee.\nFor those whose meat is allowable, their ghee."}, {"key": "pli-tv-bi-vb-pd1:2.1.11", "pali": "A·gilānā attano atthāya viññāpeti, payoge dukkaṭaṁ.", "brahmali": "If she is not sick and she asks for herself, then for the effort there is an act of wrong conduct.", "bodhi-esque": "One who is not ill requests for her own benefit;\nin the effort, there is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd1:2.1.12", "pali": "Paṭi·lābhena “bhuñjissāmī”ti paṭi·g·gaṇhāti, āpatti dukkaṭassa.", "brahmali": "When she receives it with the intention of eating it, she commits an offense of wrong conduct.", "bodhi-esque": "Upon obtaining it, thinking “I will consume it,” she receives it;\nthere is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd1:2.1.13", "pali": "Ajjh·ohāre ajjh·ohāre āpatti pāṭi·desanīyassa.", "brahmali": "For every mouthful swallowed, she commits an offense entailing acknowledgment.", "bodhi-esque": "With each mouthful, there is an offense requiring confession."}, {"key": "pli-tv-bi-vb-pd1:2.2.1", "pali": "A·gilānā a·gilāna·saññā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, and she does not perceive herself as sick,\nand she eats ghee that she has asked for, she commits an offense entailing acknowledgment.", "bodhi-esque": "If a bhikkhunī who is not sick, perceiving (herself) as not sick, having asked for ghee, eats it,\n(there is) an offense of pāṭidesanīya."}, {"key": "pli-tv-bi-vb-pd1:2.2.2", "pali": "A·gilānā ve·matikā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she is unsure of it, and she eats ghee that she has asked for,\nshe commits an offense entailing acknowledgment.", "bodhi-esque": "If a bhikkhunī who is not sick,\n(being) doubtful, having asked for ghee, eats it,\n(there is) an offense of pāṭidesanīya."}, {"key": "pli-tv-bi-vb-pd1:2.2.3", "pali": "A·gilānā gilāna·saññā sappiṁ\nvi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she perceives herself as sick,\nand she eats ghee that she has asked for, she commits an offense entailing acknowledgment.", "bodhi-esque": "If a bhikkhunī who is not sick, perceiving (herself) as sick, having asked for ghee, eats it,\n(there is) an offense of pāṭidesanīya."}, {"key": "pli-tv-bi-vb-pd1:2.2.4", "pali": "Gilānā a·gilāna·saññā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she does not perceive herself as sick, she commits an offense of wrong conduct.", "bodhi-esque": "If a bhikkhunī who is sick, perceiving (herself) as not sick,\n(there is) an offense of dukkaṭa."}, {"key": "pli-tv-bi-vb-pd1:2.2.5", "pali": "Gilānā ve·matikā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she is unsure of it, she commits an offense of wrong conduct.", "bodhi-esque": "If a bhikkhunī who is sick,\n(being) doubtful,\n(there is) an offense of dukkaṭa."}, {"key": "pli-tv-bi-vb-pd1:2.2.6", "pali": "Gilānā gilāna·saññā, an·āpatti.", "brahmali": "If she is sick, and she perceives herself as sick, there is no offense.", "bodhi-esque": "If a bhikkhunī who is sick, perceiving (herself) as sick,\n(there is) no offense."}, {"key": "pli-tv-bi-vb-pd1:2.3.1", "pali": "An·āpatti—", "brahmali": "There is no offense:", "bodhi-esque": "No offense:"}, {"key": "pli-tv-bi-vb-pd1:2.3.2", "pali": "gilānāya,", "brahmali": "if she is sick;", "bodhi-esque": "if she is sick,"}, {"key": "pli-tv-bi-vb-pd1:2.3.3", "pali": "gilānā hutvā vi·ñ·ñāpetvā a·gilānā bhuñjati,", "brahmali": "if she asked for it when she was sick, but eats it when she is no longer sick;", "bodhi-esque": "if, having been sick, she asked for (ghee) and then, being not sick, eats it,"}, {"key": "pli-tv-bi-vb-pd1:2.3.4", "pali": "gilānāya sesakaṁ bhuñjati,", "brahmali": "if she eats the leftovers from one who is sick;", "bodhi-esque": "if she eats the remainder (of the ghee) from when she was sick,"}, {"key": "pli-tv-bi-vb-pd1:2.3.5", "pali": "ñātakānaṁ,", "brahmali": "if it is from relatives;", "bodhi-esque": "if (it is) from relatives,"}, {"key": "pli-tv-bi-vb-pd1:2.3.6", "pali": "pavār·itānaṁ,", "brahmali": "if it is from those who have given an invitation;", "bodhi-esque": "if (it is) from those who have invited,"}, {"key": "pli-tv-bi-vb-pd1:2.3.7", "pali": "a·ñ·ñassa·t·thāya,", "brahmali": "if it is for the benefit of someone else;", "bodhi-esque": "if (it is) for the sake of another,"}, {"key": "pli-tv-bi-vb-pd1:2.3.8", "pali": "attano dhanena,", "brahmali": "if it is by means of her own property;", "bodhi-esque": "if (it is) by her own wealth,"}, {"key": "pli-tv-bi-vb-pd1:2.3.9", "pali": "ummattikāya,", "brahmali": "if she is insane;", "bodhi-esque": "if she is insane,"}, {"key": "pli-tv-bi-vb-pd1:2.3.10", "pali": "ādi·kammikā·yāti.", "brahmali": "if she is the first offender.", "bodhi-esque": "For the beginner."}, {"key": "pli-tv-bi-vb-pd1:2.3.11", "pali": "Paṭhama·pāṭi·desa·nīya·sikkhā·padaṁ niṭṭhitaṁ.", "brahmali": "The first training rule on acknowledgment is finished.", "bodhi-esque": "The first training rule for confession is finished."}]}]}, {"id": "pli-tv-bi-vb-pd2-8", "label": "Telādi — 2–8. Asking for oil … for honey … for syrup … for fish … for meat … for milk … for curd", "children": [{"id": "pli-tv-bi-vb-pd2-8/0", "label": "Thera·vāda Vi·naya", "rows": [{"key": "pli-tv-bi-vb-pd2:0.1", "pali": "Thera·vāda Vi·naya", "brahmali": "Theravāda Collection on Monastic Law", "bodhi-esque": "Theravāda Vinaya"}, {"key": "pli-tv-bi-vb-pd2:0.2", "pali": "Bhikkhuni·vibhaṅga", "brahmali": "The Nuns’ Analysis", "bodhi-esque": "Analysis of the Bhikkhunīs"}, {"key": "pli-tv-bi-vb-pd2:0.3", "pali": "Pāṭi·desa·nīya·kaṇḍa", "brahmali": "The chapter on offenses entailing acknowledgment", "bodhi-esque": "The Section on Confession"}, {"key": "pli-tv-bi-vb-pd2:0.4", "pali": "2–8.\nTela-madhu-phāṇita-maccha-maṁsa-khīra-dadhi·viññāpana·sikkhā·pada", "brahmali": "2–8.\nAsking for oil … for honey … for syrup … for fish … for meat … for milk … for curd", "bodhi-esque": "2–8.\nThe training rule on soliciting oil, honey, molasses, fish, meat, milk, and curds."}]}, {"id": "pli-tv-bi-vb-pd2-8/1", "label": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati jeta·vane…", "rows": [{"key": "pli-tv-bi-vb-pd2:1.1.1", "pali": "Tena samayena buddho bhagavā sāvatthiyaṁ viharati\njeta·vane a·nātha·piṇḍi·kassa ārāme.", "brahmali": "At one time when the Buddha was staying at Sāvatthī in Anāthapiṇḍika’s Monastery,", "bodhi-esque": "At one time the Blessed One was dwelling at Sāvatthī in the Jeta Grove, Anāthapiṇḍika's park."}, {"key": "pli-tv-bi-vb-pd2:1.1.2", "pali": "Tena kho pana samayena chabbaggiyā bhikkhuniyo telaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "the nuns from the group of six were eating oil that they had asked for.", "bodhi-esque": "Now at that time the bhikkhunīs of the Group of Six, having solicited oil, ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.3", "pali": "…pe… madhuṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating honey that they had asked for.", "bodhi-esque": "… having solicited honey, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.4", "pali": "…pe… phāṇ·itaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating syrup that they had asked for.", "bodhi-esque": "… having solicited molasses, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.5", "pali": "…pe… macchaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating fish that they had asked for.", "bodhi-esque": "… having solicited fish, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.6", "pali": "…pe… maṁsaṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating meat that they had asked for.", "bodhi-esque": "… having solicited meat, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.7", "pali": "…pe… khīraṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were drinking milk that they had asked for.", "bodhi-esque": "… having solicited milk, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.8", "pali": "…pe… dadhiṁ vi·ñ·ñāpetvā bhuñjanti.", "brahmali": "… were eating curd that they had asked for.", "bodhi-esque": "… having solicited curds, they ate it."}, {"key": "pli-tv-bi-vb-pd2:1.1.9", "pali": "Manussā ujjhāyanti khiyyanti vipācenti—", "brahmali": "People complained and criticized them,", "bodhi-esque": "People complained, criticized, and spread it about—"}, {"key": "pli-tv-bi-vb-pd2:1.1.10", "pali": "“kathañhi nāma bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can nuns eat curd that they have asked for?", "bodhi-esque": "How is it that bhikkhunīs ask for curd and then eat it?"}, {"key": "pli-tv-bi-vb-pd2:1.1.11", "pali": "Kassa sampannaṁ na manāpaṁ, kassa\nsāduṁ na ruccatī”ti.", "brahmali": "Who doesn’t like nice food?\nWho doesn’t prefer tasty food?”", "bodhi-esque": "For whom is what is excellent not agreeable?\nFor whom is what is sweet not relished?"}, {"key": "pli-tv-bi-vb-pd2:1.1.12", "pali": "Assosuṁ kho bhikkhuniyo tesaṁ manu·s·sānaṁ ujjhāyantānaṁ khiyya·ntānaṁ vi·pāce·ntānaṁ.", "brahmali": "The nuns heard the complaints of those people.", "bodhi-esque": "The bhikkhunīs heard those people complaining, grumbling, and criticizing."}, {"key": "pli-tv-bi-vb-pd2:1.1.13", "pali": "Yā tā bhikkhuniyo appicchā … pe\n… tā ujjhāyanti khiyyanti vipācenti—", "brahmali": "The nuns of few desires complained and criticized them,", "bodhi-esque": "Those bhikkhunīs who were of few desires … they complained, grumbled, and criticized—"}, {"key": "pli-tv-bi-vb-pd2:1.1.14", "pali": "“kathañhi nāma chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissantī”ti … pe …", "brahmali": "“How can the nuns from the group of six eat curd that they have asked for?” …", "bodhi-esque": "“How can it be that the Group of Six bhikkhunīs ask for curd and then eat it?” …"}, {"key": "pli-tv-bi-vb-pd2:1.1.15", "pali": "“sa·c·caṁ kira, bhikkhave, chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjantī”ti?", "brahmali": "“Is it true, monks, that those nuns do this?”", "bodhi-esque": "“Is it true, bhikkhus, that the Group of Six bhikkhunīs ask for curd and then eat it?”"}, {"key": "pli-tv-bi-vb-pd2:1.1.16", "pali": "“Sa·c·caṁ, bhagavā”ti.", "brahmali": "“It’s true, sir.”", "bodhi-esque": "“True, Blessed One.”"}, {"key": "pli-tv-bi-vb-pd2:1.1.17", "pali": "Vigarahi buddho bhagavā … pe …", "brahmali": "The Buddha rebuked them …", "bodhi-esque": "The Blessed One, the Buddha, rebuked them …"}, {"key": "pli-tv-bi-vb-pd2:1.1.18", "pali": "kathañhi nāma, bhikkhave, chabbaggiyā bhikkhuniyo dadhiṁ vi·ñ·ñāpetvā bhuñjissanti.", "brahmali": "“How can the nuns from the group of six do this?", "bodhi-esque": "How can it be, bhikkhus, that the Group of Six bhikkhunīs ask for curd and then eat it?"}, {"key": "pli-tv-bi-vb-pd2:1.1.19", "pali": "Netaṁ, bhikkhave, a·p·pasannānaṁ vā pasādāya … pe …", "brahmali": "This will affect people’s confidence …” …", "bodhi-esque": "This, bhikkhus, is not for the inspiration of those who are not yet convinced …"}, {"key": "pli-tv-bi-vb-pd2:1.1.20", "pali": "evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "“And, monks, the nuns should recite this training rule like this:", "bodhi-esque": "And thus, bhikkhus, let the bhikkhunīs recite this training rule—"}, {"key": "pli-tv-bi-vb-pd2:1.1.21.1", "pali": "“Yā pana bhikkhunī dadhiṁ vi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "‘If a nun asks for curd and then eats it, she must acknowledge it:", "bodhi-esque": "“If any bhikkhunī should ask for curd and eat it, it should be confessed by that bhikkhunī—"}, {"key": "pli-tv-bi-vb-pd2:1.1.22", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”", "bodhi-esque": "‘Venerable, I have fallen into a blamable matter, improper, to be confessed;\nI confess it.’"}, {"key": "pli-tv-bi-vb-pd2:1.1.23", "pali": "Evañcidaṁ bhagavatā bhikkhunīnaṁ sikkhā·padaṁ paññattaṁ hoti.", "brahmali": "In this way the Buddha laid down this training rule for the nuns.", "bodhi-esque": "Thus was this training rule for bhikkhunīs laid down by the Blessed One."}, {"key": "pli-tv-bi-vb-pd2:1.2.1", "pali": "Tena kho pana samayena bhikkhuniyo gilānā honti.", "brahmali": "Soon afterwards a number of nuns were sick.", "bodhi-esque": "Now on that occasion bhikkhunīs were ill."}, {"key": "pli-tv-bi-vb-pd2:1.2.2", "pali": "Gilāna·pucchikā bhikkhuniyo gilānā bhikkhuniyo etadavocuṁ—", "brahmali": "The nuns who were looking after them asked,", "bodhi-esque": "The bhikkhunīs who were visiting the sick said to the sick bhikkhunīs:"}, {"key": "pli-tv-bi-vb-pd2:1.2.3", "pali": "“kacci, ayye, khamanīyaṁ, kacci yāpanīyan”ti?", "brahmali": "“I hope you’re bearing up?\nI hope you’re getting better?”", "bodhi-esque": "“I hope, venerable, that you are bearing up, that you are getting on?”"}, {"key": "pli-tv-bi-vb-pd2:1.2.4", "pali": "“Pubbe mayaṁ, ayye, dadhiṁ vi·ñ·ñāpetvā bhuñjimhā,\ntena no phāsu hoti;", "brahmali": "“Previously we ate curd that we had asked for, and then we were comfortable.", "bodhi-esque": "“Previously, venerable, having asked for yoghurt, we ate;\nby that it was well for us;"}, {"key": "pli-tv-bi-vb-pd2:1.2.5", "pali": "idāni pana ‘bhagavatā paṭi·k·khittan’ti kukkuccāyantā na viññāpema,\ntena no na phāsu hotī”ti … pe …", "brahmali": "But now that the Buddha has prohibited this, we don’t ask because we’re afraid of wrongdoing.\nAnd because of that we’re not comfortable.” …", "bodhi-esque": "but now, thinking,\n‘It has been prohibited by the Blessed One,’ being scrupulous, we do not ask for (it);\nby that it is not well for us.” …"}, {"key": "pli-tv-bi-vb-pd2:1.2.6", "pali": "bhagavato etam·atthaṁ ārocesuṁ … pe …", "brahmali": "They told the Buddha.\nSoon afterwards the Buddha had the Sangha gathered and addressed the monks:", "bodhi-esque": "They reported this matter to the Blessed One. …"}, {"key": "pli-tv-bi-vb-pd2:1.2.7", "pali": "anujānāmi, bhikkhave, gilānāya bhikkhuniyā dadhiṁ vi·ñ·ñāpetvā bhuñj·ituṁ.", "brahmali": "“Monks, I allow a sick nun to eat curd that she has asked for.", "bodhi-esque": "I allow, bhikkhus, a sick bhikkhunī to eat having asked for yoghurt."}, {"key": "pli-tv-bi-vb-pd2:1.2.8", "pali": "Evañca pana, bhikkhave, bhikkhuniyo imaṁ sikkhā·padaṁ uddisantu—", "brahmali": "And so, monks, the nuns should recite this training rule like this:", "bodhi-esque": "And thus, bhikkhus, the bhikkhunīs should recite this training rule:"}, {"key": "pli-tv-bi-vb-pd2:1.2.9.1", "pali": "“Yā pana bhikkhunī a·gilānā (telaṁ …pe…", "brahmali": "‘If a nun who is not sick asks for (oil …", "bodhi-esque": "“Whatever bhikkhunī who is not sick,\n(oil …"}, {"key": "pli-tv-bi-vb-pd3:1.1.1", "pali": "madhuṁ …pe…", "brahmali": "honey …", "bodhi-esque": "honey …"}, {"key": "pli-tv-bi-vb-pd4:1.1.1", "pali": "phāṇ·itaṁ …pe…", "brahmali": "syrup …", "bodhi-esque": "sugar …"}, {"key": "pli-tv-bi-vb-pd5:1.1.1", "pali": "macchaṁ …pe…", "brahmali": "fish …", "bodhi-esque": "fish …"}, {"key": "pli-tv-bi-vb-pd6:1.1.1", "pali": "maṁsaṁ …pe…", "brahmali": "meat …", "bodhi-esque": "meat …"}, {"key": "pli-tv-bi-vb-pd7:1.1.1", "pali": "khīraṁ …pe…)", "brahmali": "milk … )", "bodhi-esque": "milk …)"}, {"key": "pli-tv-bi-vb-pd8:1.1.1", "pali": "dadhiṁ vi·ñ·ñāpetvā bhuñjeyya,\npaṭi·dese·tabbaṁ tāya bhikkhuniyā—", "brahmali": "curd and then eats it, she must acknowledge it:", "bodhi-esque": "having asked for yoghurt, should eat;\nit should be confessed by that bhikkhunī:"}, {"key": "pli-tv-bi-vb-pd8:1.1.2", "pali": "‘gārayhaṁ, ayye, dhammaṁ āpajjiṁ\na·sappāyaṁ pāṭi·desa·nīyaṁ, taṁ paṭi·desemī’”ti.", "brahmali": "“I have done a blameworthy and unsuitable thing that is to be acknowledged.\nI acknowledge it.”’”", "bodhi-esque": "‘I have fallen into a blameworthy matter, venerable, which is unsuitable,\n(and) is to be confessed;\nI confess it.’”"}]}, {"id": "pli-tv-bi-vb-pd2-8/2", "label": "Yā panāti", "rows": [{"key": "pli-tv-bi-vb-pd8:2.1.1", "pali": "Yā panāti", "brahmali": "A:", "bodhi-esque": "Whatever"}, {"key": "pli-tv-bi-vb-pd8:2.1.2", "pali": "yā yādisā … pe …", "brahmali": "whoever …", "bodhi-esque": "whatever kind ..."}, {"key": "pli-tv-bi-vb-pd8:2.1.3", "pali": "bhikkhunīti", "brahmali": "Nun:", "bodhi-esque": "a bhikkhunī"}, {"key": "pli-tv-bi-vb-pd8:2.1.4", "pali": "… pe … ayaṁ imasmiṁ atthe adhi·p·petā bhikkhunīti.", "brahmali": "…\nThe nun who has been given the full ordination in unanimity by both Sanghas through a legal procedure consisting of\none motion and three announcements that is irreversible and fit to stand—this sort of nun is meant in this case.", "bodhi-esque": "... this is the bhikkhunī intended in this context."}, {"key": "pli-tv-bi-vb-pd8:2.1.5", "pali": "A·gilānā nāma", "brahmali": "Who is not sick:", "bodhi-esque": "One who is not ill is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.6", "pali": "yassā vinā dadhinā phāsu hoti.", "brahmali": "who is comfortable without curd.", "bodhi-esque": "for whom without curds it is comfortable."}, {"key": "pli-tv-bi-vb-pd8:2.1.7", "pali": "Gilānā nāma", "brahmali": "Who is sick:", "bodhi-esque": "One who is ill is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.8", "pali": "yassā vinā dadhinā na phāsu hoti.", "brahmali": "who is not comfortable without curd.", "bodhi-esque": "for whom without curds it is not comfortable."}, {"key": "pli-tv-bi-vb-pd8:2.1.9", "pali": "Telaṁ nāma", "brahmali": "Oil:", "bodhi-esque": "Oil is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.10", "pali": "tila·telaṁ sāsapa·telaṁ madhuka·telaṁ eraṇḍa·telaṁ vasā·telaṁ.", "brahmali": "sesame oil, mustard oil, honey tree oil, castor oil, oil from tallow.", "bodhi-esque": "sesame oil, mustard oil, madhuka oil, castor oil, marrow oil."}, {"key": "pli-tv-bi-vb-pd8:2.1.11", "pali": "Madhu nāma", "brahmali": "Honey:", "bodhi-esque": "Honey is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.12", "pali": "makkhikā·madhu.", "brahmali": "honey from bees.", "bodhi-esque": "bee honey."}, {"key": "pli-tv-bi-vb-pd8:2.1.13", "pali": "Phāṇ·itaṁ nāma", "brahmali": "Syrup:", "bodhi-esque": "Molasses is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.14", "pali": "ucchumhā ni·b·battaṁ.", "brahmali": "from sugarcane.", "bodhi-esque": "produced from sugarcane."}, {"key": "pli-tv-bi-vb-pd8:2.1.15", "pali": "Maccho nāma", "brahmali": "Fish:", "bodhi-esque": "Fish is called"}, {"key": "pli-tv-bi-vb-pd8:2.1.16", "pali": "odako vuccati.", "brahmali": "what lives in water is what is meant.", "bodhi-esque": "Water is what is called."}, {"key": "pli-tv-bi-vb-pd8:2.1.17", "pali": "Maṁsaṁ nāma", "brahmali": "Meat:", "bodhi-esque": "Meat means"}, {"key": "pli-tv-bi-vb-pd8:2.1.18", "pali": "yesaṁ maṁsaṁ kappati tesaṁ maṁsaṁ.", "brahmali": "the meat of those animals whose meat is allowable.", "bodhi-esque": "the meat of those whose meat is allowed."}, {"key": "pli-tv-bi-vb-pd8:2.1.19", "pali": "Khīraṁ nāma", "brahmali": "Milk:", "bodhi-esque": "Milk means"}, {"key": "pli-tv-bi-vb-pd8:2.1.20", "pali": "gokhīraṁ vā ajikā·khīraṁ vā mahiṁsa·khīraṁ vā yesaṁ maṁsaṁ kappati tesaṁ khīraṁ.", "brahmali": "milk from cows, milk from goats, milk from buffaloes, or milk from whatever animal whose meat is allowable.", "bodhi-esque": "cow's milk or goat's milk or buffalo's milk, the milk of those whose meat is allowed."}, {"key": "pli-tv-bi-vb-pd8:2.1.21", "pali": "Dadhi nāma", "brahmali": "Curd:", "bodhi-esque": "Curd means"}, {"key": "pli-tv-bi-vb-pd8:2.1.22", "pali": "tesaññeva dadhi.", "brahmali": "curd from those same animals.", "bodhi-esque": "the curd of those same ones."}, {"key": "pli-tv-bi-vb-pd8:2.1.23", "pali": "A·gilānā attano atthāya viññāpeti, payoge dukkaṭaṁ.", "brahmali": "If she is not sick and she asks for herself, then for the effort there is an act of wrong conduct.", "bodhi-esque": "When not ill, she asks for it for her own sake;\nupon the effort, there is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd8:2.1.24", "pali": "Paṭi·lābhena “bhuñjissāmī”ti paṭi·g·gaṇhāti, āpatti dukkaṭassa.", "brahmali": "When she receives it with the intention of eating it, she commits an offense of wrong conduct.", "bodhi-esque": "Upon obtaining it, thinking 'I will eat,' she receives it;\nthere is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd8:2.1.25", "pali": "Ajjh·ohāre ajjh·ohāre āpatti pāṭi·desanīyassa.", "brahmali": "For every mouthful swallowed, she commits an offense entailing acknowledgment.", "bodhi-esque": "At each mouthful, there is an offense entailing confession."}, {"key": "pli-tv-bi-vb-pd8:2.2.1", "pali": "A·gilānā a·gilāna·saññā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, and she does not perceive herself as sick,\nand she eats curd that she has asked for, she commits an offense entailing acknowledgment.", "bodhi-esque": "When not ill, perceiving oneself as not ill,\nhaving asked for curd and then eating, there is an offense entailing confession."}, {"key": "pli-tv-bi-vb-pd8:2.2.2", "pali": "A·gilānā ve·matikā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she is unsure of it, and she eats curd that she has asked for,\nshe commits an offense entailing acknowledgment.", "bodhi-esque": "When not ill, being doubtful, having asked for curd and then eating, there is an offense entailing confession."}, {"key": "pli-tv-bi-vb-pd8:2.2.3", "pali": "A·gilānā gilāna·saññā dadhiṁ vi·ñ·ñāpetvā bhuñjati,\nāpatti pāṭi·desanīyassa.", "brahmali": "If she is not sick, but she perceives herself as sick,\nand she eats curd that she has asked for, she commits an offense entailing acknowledgment.", "bodhi-esque": "When not ill, perceiving oneself as ill, having asked for curd and then eating,\nthere is an offense entailing confession."}, {"key": "pli-tv-bi-vb-pd8:2.2.4", "pali": "Gilānā a·gilāna·saññā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she does not perceive herself as sick, she commits an offense of wrong conduct.", "bodhi-esque": "When ill, perceiving oneself as not ill, there is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd8:2.2.5", "pali": "Gilānā ve·matikā, āpatti dukkaṭassa.", "brahmali": "If she is sick, but she is unsure of it, she commits an offense of wrong conduct.", "bodhi-esque": "When ill, being doubtful, there is an offense of wrong-doing."}, {"key": "pli-tv-bi-vb-pd8:2.2.6", "pali": "Gilānā gilāna·saññā an·āpatti.", "brahmali": "If she is sick, and she perceives herself as sick, there is no offense.", "bodhi-esque": "For a sick one, perceiving [her as] sick, no offence."}, {"key": "pli-tv-bi-vb-pd8:2.3.1", "pali": "An·āpatti—", "brahmali": "There is no offense:", "bodhi-esque": "No offence—"}, {"key": "pli-tv-bi-vb-pd8:2.3.2", "pali": "gilānāya,", "brahmali": "if she is sick;", "bodhi-esque": "for a sick one;"}, {"key": "pli-tv-bi-vb-pd8:2.3.3", "pali": "gilānā hutvā vi·ñ·ñāpetvā a·gilānā bhuñjati,", "brahmali": "if she asked for it when she was sick, but eats it when she is no longer sick;", "bodhi-esque": "having been sick, requested, [then] being not sick, eats;"}, {"key": "pli-tv-bi-vb-pd8:2.3.4", "pali": "gilānāya sesakaṁ bhuñjati,", "brahmali": "if she eats the leftovers from one who is sick;", "bodhi-esque": "eats the remainder of a sick one;"}, {"key": "pli-tv-bi-vb-pd8:2.3.5", "pali": "ñātakānaṁ,", "brahmali": "if it is from relatives;", "bodhi-esque": "for relatives;"}, {"key": "pli-tv-bi-vb-pd8:2.3.6", "pali": "pavār·itānaṁ,", "brahmali": "if it is from those who have given an invitation;", "bodhi-esque": "for those who have been invited;"}, {"key": "pli-tv-bi-vb-pd8:2.3.7", "pali": "a·ñ·ñassa·t·thāya,", "brahmali": "if it is for the benefit of someone else;", "bodhi-esque": "for the sake of another;"}, {"key": "pli-tv-bi-vb-pd8:2.3.8", "pali": "attano dhanena,", "brahmali": "if it is by means of her own property;", "bodhi-esque": "by means of one's own property;"}, {"key": "pli-tv-bi-vb-pd8:2.3.9", "pali": "ummattikāya,", "brahmali": "if she is insane;", "bodhi-esque": "for a mad woman;"}, {"key": "pli-tv-bi-vb-pd8:2.3.10", "pali": "ādi·kammikā·yāti.", "brahmali": "if she is the first offender.", "bodhi-esque": "for a first offender."}, {"key": "pli-tv-bi-vb-pd8:2.3.11", "pali": "Aṭṭhama·pāṭi·desa·nīya·sikkhā·padaṁ niṭṭhitaṁ.", "brahmali": "The eighth training rule entailing acknowledgment is finished.", "bodhi-esque": "The eighth training rule on acknowledgement is finished."}, {"key": "pli-tv-bi-vb-pd8:2.3.12", "pali": "Uddiṭṭhā kho, ayyāyo, a·ṭ·ṭha pāṭi·desa·nīyā dhammā.", "brahmali": "“Venerables, the eight rules on acknowledgment have been recited.", "bodhi-esque": "Recited, ladies, are the eight rules to be acknowledged."}, {"key": "pli-tv-bi-vb-pd8:2.3.13", "pali": "Tatthā·y·yāyo pucchāmi—", "brahmali": "In regard to this I ask you,", "bodhi-esque": "Concerning that, ladies, I ask:—"}, {"key": "pli-tv-bi-vb-pd8:2.3.14", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’", "bodhi-esque": "\"Are you pure herein?\""}, {"key": "pli-tv-bi-vb-pd8:2.3.15", "pali": "Dutiyampi pucchāmi—", "brahmali": "A second time I ask,", "bodhi-esque": "For the second time I ask:"}, {"key": "pli-tv-bi-vb-pd8:2.3.16", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’", "bodhi-esque": "“Are you pure in this matter?”"}, {"key": "pli-tv-bi-vb-pd8:2.3.17", "pali": "Tatiyampi pucchāmi—", "brahmali": "A third time I ask,", "bodhi-esque": "For the third time I ask:"}, {"key": "pli-tv-bi-vb-pd8:2.3.18", "pali": "“kacci·t·tha pari·suddhā”?", "brahmali": "‘Are you pure in this?’", "bodhi-esque": "“Are you pure in this matter?”"}, {"key": "pli-tv-bi-vb-pd8:2.3.19", "pali": "Pari·suddh·etthā·y·yāyo, tasmā tuṇhī, evam·etaṁ dhārayā·mīti.", "brahmali": "You are pure in this and therefore silent.\nI will remember it thus.”", "bodhi-esque": "Pure in this matter, venerable ones, therefore we are silent.\nThus I bear it in mind."}, {"key": "pli-tv-bi-vb-pd8:2.3.20", "pali": "Bhikkhuni·vibhaṅge pāṭi·desa·nīya·kaṇḍaṁ niṭṭhitaṁ.", "brahmali": "The chapter on offenses entailing acknowledgment in the Nuns’ Analysis is finished.", "bodhi-esque": "In the Analysis of Bhikkhunīs, the Pāṭidesanīya section is finished."}]}]}];
 
 // ── TRANSLATIONS ──
-const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}];
+const ALL_TRANSLATIONS = [{"key": "pali", "label": "Pāli", "dot": "#c8a860", "light": {"bg": "#f5f0e8", "text": "#2c1e0f"}, "dark": {"bg": "#221c12", "text": "#e0d0a8"}, "italic": true, "warn": ""}, {"key": "brahmali", "label": "Brahmali", "dot": "#5a9c6a", "light": {"bg": "#ecf6ef", "text": "#0d2b16"}, "dark": {"bg": "#121f16", "text": "#a8d8b8"}, "italic": false, "warn": ""}, {"key": "bodhi-esque", "label": "Bodhi-esque", "dot": "#8a6ac8", "light": {"bg": "#f0eef8", "text": "#170d2b"}, "dark": {"bg": "#151220", "text": "#b8a8d8"}, "italic": false, "warn": ""}];
 // Diff edition: {base, revised} translator keys, or null on regular pages. When set,
 // words in the revised column that differ from the base text are highlighted (.dw).
 const DIFF = null;
@@ -702,7 +780,7 @@ const SW_MIN = 150, SW_DEFAULT = 240;   // TOC sidebar width: px floor; max = 50
 const FN_MIN = 120, FN_MAXFRAC = 0.8, FN_STRIP_REM = 2.4;   // footnote region clamp + strip
 const FNFS_MIN = 0.8, FNFS_MAX = 1.8;   // footnote text-size multiplier bounds
 
-let COLS = ["pali", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
+let COLS = ["pali", "bodhi-esque", "brahmali"];   // render.py already caps the default to MAX_COLS; restore path re-caps
 let sidebarVisible = true;
 let currentTheme = 'light';
 let currentFs = 15;
@@ -711,24 +789,51 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let showSeg = false;
+let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
 
-// ── PERSISTED SETTINGS (one key, shared by every sutta page on this site) ──
-// Theme/font/sidebar are global. Column layouts are stored PER PAGE PROFILE —
-// the sorted set of translator keys this page offers — so saving settings on a
-// 2-col page (e.g. DN: pali+sujato) can never clobber the layout of a page with
-// more translators (e.g. a 5-col MN sutta).
+// ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
+// Theme/font/sidebar are global. Column layout is stored PER PAGE (keyed by the page
+// URL) so each sutta/book page remembers its OWN translators, order, and deletions on
+// reload, independently of other pages. A page you haven't customized yet inherits the
+// most recent layout for the same translator-SET (PROFILE) as a sensible default — so you
+// don't have to rebuild your preferred columns on every page — then it diverges and keeps
+// its own once you touch it. (The per-profile fallback also preserves the old guarantee
+// that a 2-col page, e.g. DN, can't clobber a 5-col page, e.g. an MN sutta.)
 const SETTINGS_KEY = 'debabel.viewer.v1';
+// Column-layout persistence is versioned independently of the settings key. Bumping
+// COLS_SCHEMA discards previously-persisted column layouts (per-page + per-profile + the
+// explicit per-nikāya / global defaults) so a fix to the column-default resolution takes
+// effect for returning visitors, WITHOUT wiping global prefs (theme/font/sidebar). See
+// loadSettings. Bumped to 3: the per-section default-columns fix (a stale per-page entry
+// could shadow a freshly-set default — e.g. a sutta stuck showing only Pāli); the bump
+// purges that stale state so the corrected behaviour applies without a manual re-save.
+const COLS_SCHEMA = 3;
 const PROFILE = ALL_TRANSLATIONS.map(t=>t.key).sort().join(',');
-let savedColsBy = {};
-function saveSettings(){
+const PAGE_KEY = location.pathname;
+const NIKAYA = "vin";              // top-level nikāya code (mn/dn/sn/an/kn/vin); '' if unknown
+const NIKAYA_LABEL = "Vin";  // display label for the "this nikāya" default scope
+let savedColsByPage = {};      // PAGE_KEY → COLS  (implicit exact per-page memory)
+let savedColsByProfile = {};   // PROFILE  → COLS  (implicit fallback for a fresh page)
+let defaultColsGlobal = null;  // explicit user-set global default (COLS array) or null
+let defaultColsByNikaya = {};  // explicit user-set per-nikāya defaults: nikāya code → COLS array
+// Write current state to localStorage WITHOUT re-stamping the implicit per-page/per-profile
+// memory — used by "set as default", which deliberately clears that memory first.
+function persist(){
   try{
-    savedColsBy[PROFILE] = COLS;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(
       {theme:currentTheme, fs:currentFs, tocScale:currentTocScale,
        sidebarW:currentSidebarW, fnSplit:fnSplit, fnScale:fnScale,
-       showSeg:showSeg, sidebar:sidebarVisible, colsBy:savedColsBy, allNotes:allMode}));
+       segMode:segMode, sidebar:sidebarVisible, allNotes:allMode,
+       colsSchema:COLS_SCHEMA,
+       colsByPage:savedColsByPage, colsByProfile:savedColsByProfile,
+       defColsGlobal:defaultColsGlobal, defColsByNikaya:defaultColsByNikaya}));
   }catch(e){/* storage unavailable — settings just don't persist */}
+}
+function saveSettings(){
+  // A normal column edit updates this page's exact memory + the per-profile fallback.
+  savedColsByPage[PAGE_KEY] = COLS;
+  savedColsByProfile[PROFILE] = COLS;
+  persist();
 }
 function loadSettings(){
   try{
@@ -740,19 +845,35 @@ function loadSettings(){
     if(typeof s.sidebarW==='number') currentSidebarW=s.sidebarW;  // clamped at apply time
     if(typeof s.fnSplit==='number') fnSplit=Math.min(FN_MAXFRAC,Math.max(0.1,s.fnSplit));
     if(typeof s.fnScale==='number') fnScale=Math.min(FNFS_MAX,Math.max(FNFS_MIN,s.fnScale));
-    if(typeof s.showSeg==='boolean') showSeg=s.showSeg;
+    if(s.segMode==='off'||s.segMode==='subtle'||s.segMode==='explicit') segMode=s.segMode;
+    else if(s.showSeg===true) segMode='explicit';   // migrate the legacy on/off boolean
     if(typeof s.sidebar==='boolean') sidebarVisible=s.sidebar;
     if(typeof s.allNotes==='boolean') allMode=s.allNotes;
-    if(s.colsBy && typeof s.colsBy==='object' && !Array.isArray(s.colsBy)){
-      savedColsBy = s.colsBy;
-      const c = savedColsBy[PROFILE];
-      // Defensive: drop unknown keys (stored blob predates a rename) AND de-dupe —
-      // an older build could persist a duplicate column (e.g. [pali,sujato,pali]),
-      // which would render a phantom extra column on 2-translator pages.
-      if(Array.isArray(c) && c.length){
-        const clean=[...new Set(c)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
-        if(clean.length) COLS=clean.slice(0,MAX_COLS);
-      }
+    // Column layouts are versioned by COLS_SCHEMA: a stale schema means the saved layouts
+    // predate the current default-order change, so discard them (the page falls back to the
+    // injected COLS default) while keeping global prefs (theme/font/sidebar) above.
+    if(s.colsSchema===COLS_SCHEMA){
+      if(s.colsByPage && typeof s.colsByPage==='object' && !Array.isArray(s.colsByPage))
+        savedColsByPage = s.colsByPage;
+      if(s.colsByProfile && typeof s.colsByProfile==='object' && !Array.isArray(s.colsByProfile))
+        savedColsByProfile = s.colsByProfile;
+      if(Array.isArray(s.defColsGlobal)) defaultColsGlobal = s.defColsGlobal;
+      if(s.defColsByNikaya && typeof s.defColsByNikaya==='object' && !Array.isArray(s.defColsByNikaya))
+        defaultColsByNikaya = s.defColsByNikaya;
+    }
+    // Resolution order for this page's columns (most specific first):
+    //   1. this page's own exact memory (a layout you tweaked on THIS page)
+    //   2. your explicit per-nikāya default (⚙ → Default columns → This nikāya)
+    //   3. your explicit global default (⚙ → Default columns → Global)
+    //   4. the implicit last-used layout for this translator-set
+    //   5. the build-time injected default (COLS)
+    // Validate against THIS page's translators + de-dupe (a stale blob could carry an
+    // unknown or duplicate column → phantom column) and cap to MAX_COLS.
+    const raw = savedColsByPage[PAGE_KEY] || defaultColsByNikaya[NIKAYA]
+             || defaultColsGlobal || savedColsByProfile[PROFILE];
+    if(Array.isArray(raw) && raw.length){
+      const clean=[...new Set(raw)].filter(k=>ALL_TRANSLATIONS.some(t=>t.key===k));
+      if(clean.length) COLS=clean.slice(0,MAX_COLS);
     }
   }catch(e){/* corrupted or unavailable — fall back to page defaults */}
 }
@@ -1013,8 +1134,10 @@ function openNote(tkey,seg){
   sg.title='Jump to where this footnote appears in the main text\n'+seg;
   sg.onclick=()=>fnJumpToLine(seg);
   title.append(tl,sg);
-  // Sujato-only translator caveat button; banner starts collapsed each open.
-  document.getElementById('fnWarn').hidden = (tkey!=='sujato');
+  // Sujato translator caveat button; banner starts collapsed each open. The caveat
+  // also applies to sujato-corrected — it inherits Sujato's notes and is a 1:1
+  // correction of his rendering, so it carries the same warning.
+  document.getElementById('fnWarn').hidden = (tkey!=='sujato' && tkey!=='sujato-corrected');
   document.getElementById('fnWarnMsg').hidden = true;
   // prev/next enabled state within this translator's ordered note list
   const segs=Object.keys(SEG_NOTES[tkey]||{}), idx=segs.indexOf(seg);
@@ -1097,18 +1220,96 @@ document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') closeNote(); });
 
 // ── SETTINGS POPOVER ──
 function toggleSettings(){
-  document.getElementById('settingsPop').classList.toggle('show');
+  const shown = document.getElementById('settingsPop').classList.toggle('show');
+  if(!shown) closeColDefMenu();   // closing the gear also dismisses its sub-menu
 }
 document.addEventListener('click', function(e){
   const pop = document.getElementById('settingsPop');
-  if(pop && pop.classList.contains('show') && !e.target.closest('.settings-wrap'))
+  // The "default columns" sub-menu floats at body level (outside .settings-wrap); clicks
+  // inside it must NOT count as "outside" and close the gear popover.
+  if(pop && pop.classList.contains('show') &&
+     !e.target.closest('.settings-wrap') && !e.target.closest('#colDefMenu'))
     pop.classList.remove('show');
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){
+    closeColDefMenu();
     const pop = document.getElementById('settingsPop');
     if(pop) pop.classList.remove('show');
   }
+});
+
+// ── COLUMN-LAYOUT DEFAULT (⚙ → Default columns) ──
+// Saves the CURRENT column order + visible translators as a reusable default, scoped to
+// all suttas (global) and/or just this nikāya, via the checkbox menu.
+let colDefTimer=null;
+function closeColDefMenu(){
+  const m=document.getElementById('colDefMenu');
+  if(m) m.hidden=true;
+  // Reset the Save button so the success flash doesn't linger into the next open.
+  const btn=document.getElementById('colDefSave');
+  if(btn){ btn.classList.remove('saved'); btn.textContent='Save'; }
+  if(colDefTimer){ clearTimeout(colDefTimer); colDefTimer=null; }
+}
+function toggleColDefMenu(e){
+  e.stopPropagation();   // don't let the opening click trip the document close handlers
+  const m=document.getElementById('colDefMenu');
+  if(!m.hidden){ closeColDefMenu(); return; }
+  document.getElementById('colDefNikLbl').textContent = NIKAYA_LABEL || 'this nikāya';
+  const nik=document.getElementById('colDefNik');
+  nik.checked=false; nik.disabled=!NIKAYA;          // no per-nikāya option when undetermined
+  document.getElementById('colDefGlobal').checked=false;
+  document.getElementById('colDefStatus').textContent='';
+  m.hidden=false;
+  // Position fixed, right-aligned under the ⚙ button.
+  const r=e.currentTarget.getBoundingClientRect();
+  m.style.top=(r.bottom+4)+'px';
+  m.style.left='auto';
+  m.style.right=Math.max(4,(window.innerWidth-r.right))+'px';
+}
+// Which nikāya a stored PAGE_KEY (pathname) belongs to — used to drop implicit per-page
+// memory within a nikāya when its default is (re)set, so the new default actually shows.
+// MUST stay in sync with render.py `_nikaya` / the injected NIKAYA: a page whose
+// pathname doesn't carry its scope code as a segment (the Abhidhamma lives under
+// /tv_ab/<book>/) would otherwise never match, and its stale per-page memory would
+// shadow a freshly-set per-section default.
+function nikayaOf(path){
+  const segs=(path||'').split('/');
+  for(const s of segs){
+    if(s==='mn'||s==='dn'||s==='sn'||s==='an'||s==='kn'||s==='vin'||s==='tv_ab') return s;
+  }
+  return '';
+}
+function saveColDefault(){
+  const g=document.getElementById('colDefGlobal').checked;
+  const n=document.getElementById('colDefNik').checked && !!NIKAYA;
+  const status=document.getElementById('colDefStatus');
+  if(!g && !n){ status.textContent='Pick a scope first.'; return; }
+  const snapshot=[...COLS];
+  if(g){
+    defaultColsGlobal=snapshot;
+    // Explicit global default supersedes ALL implicit memory so it shows everywhere.
+    savedColsByPage={}; savedColsByProfile={};
+  }
+  if(n){
+    defaultColsByNikaya[NIKAYA]=snapshot;
+    // Drop implicit per-page memory within this nikāya so the new default takes effect there.
+    Object.keys(savedColsByPage).forEach(k=>{ if(nikayaOf(k)===NIKAYA) delete savedColsByPage[k]; });
+    // Safety net: always clear THIS page's memory (the user set the default while on it, so
+    // it should follow the default) even if nikayaOf can't map its URL to the scope code.
+    delete savedColsByPage[PAGE_KEY];
+  }
+  persist();   // NOT the per-edit saver — that re-stamps the memory we just cleared
+  // Clear visual confirmation: flash the Save button green, then auto-dismiss the menu.
+  const btn=document.getElementById('colDefSave');
+  btn.classList.add('saved'); btn.textContent='✓ Saved';
+  if(colDefTimer) clearTimeout(colDefTimer);
+  colDefTimer=setTimeout(closeColDefMenu, 750);
+}
+document.addEventListener('click', function(e){
+  const m=document.getElementById('colDefMenu');
+  if(m && !m.hidden && !e.target.closest('#colDefMenu') && !e.target.closest('#colDefBtn'))
+    closeColDefMenu();
 });
 
 // ── THEME ──
@@ -1154,14 +1355,30 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS (main-content seg numbers; off by default) ──
+// ── SC SEGMENT REFS — three modes, off by default ──
+//   off      : no segment references shown
+//   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
+//              its tooltip is the full SC ref, and clicking copies a deep link.
+//   explicit : the full SC ref printed inline above each column's text.
+// CSS keys off html[data-seg="subtle"|"explicit"], so switching modes is attribute-only
+// (no re-render); the glyph + the inline block are always in the DOM.
+const SEG_LABELS = {off:'Off', subtle:'Subtle', explicit:'Explicit'};
+const SEG_NEXT = {off:'subtle', subtle:'explicit', explicit:'off'};
 function applySeg(){
-  if(showSeg) document.documentElement.setAttribute('data-seg','on');
-  else document.documentElement.removeAttribute('data-seg');
+  if(segMode==='off') document.documentElement.removeAttribute('data-seg');
+  else document.documentElement.setAttribute('data-seg', segMode);
   const b=document.getElementById('segBtn');
-  if(b) b.textContent = showSeg?'On':'Off';
+  if(b) b.textContent = SEG_LABELS[segMode] || 'Off';
 }
-function toggleSeg(){ showSeg = !showSeg; applySeg(); saveSettings(); }
+function cycleSeg(){ segMode = SEG_NEXT[segMode] || 'off'; applySeg(); saveSettings(); }
+
+// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
+// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
+function copySegLink(key, btn){
+  const url = location.href.split('#')[0] + '#tr-' + key;
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
+  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+}
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -1267,11 +1484,30 @@ function setFnSplit(clientY){
 // Horizontal sash — same deferred-commit guide as the vertical TOC-width sash: during the
 // drag only #fnSash glides via a compositor transform (no reflow); the single --fn-h
 // relayout is committed on pointer-up. Keeps the split smooth even on huge pages (snp).
+// Transient hint bubble above the sash; auto-dismisses. Used when the sash is grabbed
+// while the pane is still minimized (there's nothing to resize yet).
+function showFnHint(msg){
+  const h=document.getElementById('fnHint');
+  if(!h) return;
+  h.textContent=msg;
+  h.classList.add('show');
+  clearTimeout(showFnHint._t);
+  showFnHint._t=setTimeout(()=>{ h.classList.remove('show'); }, 2400);
+}
 function initFnSash(){
   const sash=document.getElementById('fnSash');
-  let dragging=false, pendingY=null;
+  const pane=document.getElementById('fnPane');
+  let dragging=false, pendingY=null, hintOnly=false;
   sash.addEventListener('pointerdown', e=>{
     dragging=true; pendingY=null;
+    // Pane minimized → nothing to resize yet. Keep the sash fully grabbable (it lights up
+    // and follows the pointer) but commit NO resize on release; instead hint how to open it.
+    hintOnly = pane.classList.contains('min');
+    if(hintOnly){
+      showFnHint(fnNoteTranslators().length
+        ? 'Pick a translator with footnotes to open this panel'
+        : 'No footnotes on this page');
+    }
     try{ sash.setPointerCapture(e.pointerId); }catch(_){}
     document.body.classList.add('fn-dragging');
     sash.classList.add('dragging');
@@ -1288,12 +1524,11 @@ function initFnSash(){
   function end(){
     if(!dragging) return;
     dragging=false;
-    if(pendingY!=null) setFnSplit(pendingY);
-    sash.style.transform='';
+    if(!hintOnly && pendingY!=null){ setFnSplit(pendingY); saveSettings(); }
+    sash.style.transform='';   // hintOnly: snap back (no resize committed)
     document.body.classList.remove('fn-dragging');
     sash.classList.remove('dragging');
-    pendingY=null;
-    saveSettings();
+    pendingY=null; hintOnly=false;
   }
   sash.addEventListener('pointerup', end);
   sash.addEventListener('pointercancel', end);
@@ -1372,7 +1607,7 @@ function renderColBar(){
       COLS.splice(i,0,moved);
       dragSrcIdx=null;
       saveSettings();
-      renderColBar(); renderMain();
+      withScrollAnchor(()=>{ renderColBar(); renderMain(); });
     });
 
     const inner=mk('div','bar-col-inner');
@@ -1402,7 +1637,7 @@ function renderColBar(){
     });
     sel.onchange=()=>{
       if(sel.value==='__seenotes__'){ openAllNotes(key); sel.value=key; return; }
-      COLS[i]=sel.value;saveSettings();renderColBar();renderMain();
+      COLS[i]=sel.value;saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});
     };
     sel.addEventListener('mousedown',e=>e.stopPropagation());
     inner.appendChild(sel);
@@ -1416,7 +1651,7 @@ function renderColBar(){
     const actions=mk('div','bar-col-actions');
     if(COLS.length>1){
       const rm=mk('button','bar-rm'); rm.textContent='×'; rm.title='Remove column';
-      rm.onclick=()=>{COLS.splice(i,1);saveSettings();renderColBar();renderMain();};
+      rm.onclick=()=>{COLS.splice(i,1);saveSettings();withScrollAnchor(()=>{renderColBar();renderMain();});};
       rm.addEventListener('mousedown',e=>e.stopPropagation());
       actions.appendChild(rm);
     }
@@ -1434,7 +1669,7 @@ function addCol(){
   if(!next) return;   // every translator already shown — don't duplicate a column
   COLS.push(next.key);
   saveSettings();
-  renderColBar(); renderMain();
+  withScrollAnchor(()=>{ renderColBar(); renderMain(); });
 }
 
 // ── SIDEBAR TOC (independent state: SSO) ──
@@ -1518,6 +1753,23 @@ function renderMain(){
   TREE.forEach(node=>renderNodeMain(node, main));
   fnMarkActive();   // re-highlight the open note's marker after a rebuild
 }
+// Re-render that keeps the reader's place. The column controls (swap / add / remove /
+// reorder) rebuild #main, which otherwise drops the scroll position to the top. Anchor on
+// the topmost id-bearing element currently in view, run the rebuild (segment/header ids are
+// stable — a column change doesn't alter the node tree or expansion), then nudge the scroll
+// so that same element sits back at the same screen position.
+function withScrollAnchor(fn){
+  let id=null, prevTop=0;
+  for(const el of document.querySelectorAll('#main [id]')){
+    const top=el.getBoundingClientRect().top;
+    if(top>=0){ id=el.id; prevTop=top; break; }
+  }
+  fn();
+  if(id){
+    const el=document.getElementById(id);
+    if(el) window.scrollBy(0, el.getBoundingClientRect().top - prevTop);
+  }
+}
 function renderNodeMain(node, parent){
   if(node.children){ renderGroupMain(node, parent); }
   else{ renderLeafMain(node, parent); }
@@ -1569,7 +1821,7 @@ function renderLeafMain(sec, parent){
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
-        COLS.forEach(key=>{
+        COLS.forEach((key,ci)=>{
           const t=getT(key);
           const colors=t[theme];
           const txt=row[key];
@@ -1578,7 +1830,17 @@ function renderLeafMain(sec, parent){
           td.style.background=colors.bg;
           td.style.color=colors.text;
           td.style.fontStyle=t.italic?'italic':'normal';
-          const seg=mk('span','seg'); seg.textContent=row.key;
+          const seg=mk('span','seg'); seg.textContent=row.key;   // explicit mode: inline ref
+          // subtle mode: a faint 🔗 glyph in the FIRST column's right gutter (the seg ref
+          // is the same across columns, so one marker per row, anchored left for stability).
+          if(ci===0 && row.key){
+            td.classList.add('seg-host');
+            const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
+            lk.title=row.key;   // full SC ref, e.g. mn10:2.5
+            lk.setAttribute('aria-label','Copy link to '+row.key);
+            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            td.appendChild(lk);
+          }
           const ct=mk('span','ct grw');  // granular columns: render baked-in \n as line breaks (ez_reader)
           if(DIFF && key===DIFF.revised && txt && txt!==row[DIFF.base]){
             fillDiffText(ct, row[DIFF.base], txt);
