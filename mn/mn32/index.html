@@ -1923,9 +1923,11 @@ const JUMP_PREFIX = 'mn32:';   // this page's ref prefix, prefilled by the 🦘 
 // ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
-const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8};   // supported collections (single source: quickjump.LIMITS)
-const JUMP_GROUPED = {"an": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "vb": 18};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_GROUPED = {"an": 1, "ea": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
 const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
+const JUMP_AB = {"vb": 1};           // Abhidhamma books → one page per book at tv_ab/<abbr>/
+const JUMP_RANGE = {"sa": 100};     // flat ref → numeric-range unit page (sa)
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
@@ -1965,6 +1967,8 @@ function parseJumpRef(raw){
   //                  ud1.1            → kn/ud/index.html#ud1.1
   //                  ud1.1:2.3        → kn/ud/index.html#tr-ud1.1:2.3
   //                  mil3.1.1         → kn/mil/index.html#mil3.1.1 (deep, multi-level)
+  // Abhidhamma:      vb1              → tv_ab/vb/index.html#vb1 (section anchor)
+  //                  vb1:24.5         → tv_ab/vb/index.html#tr-vb1:24.5 (segment)
   const m = /^\s*([a-z]+(?:-[a-z]+)*)\s*(\d+)(?:\.(\d+(?:\.\d+)*(?:-\d+)?))?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
   if(!m) return null;
   const nik = m[1].toLowerCase(), n = parseInt(m[2], 10), sub = m[3] || null, seg = m[4] || null;
@@ -1975,10 +1979,23 @@ function parseJumpRef(raw){
     const suttaId = nik + n + (sub ? '.' + sub : '');   // dhp1 / ud1.1 / mil3.1.1
     return {nik: 'kn', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : '')};
   }
+  if(JUMP_AB[nik]){
+    const suttaId = nik + n + (sub ? '.' + sub : '');   // vb1 (Abhidhamma book section anchor)
+    return {nik: 'tv_ab', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : '')};
+  }
   if(JUMP_GROUPED[nik]){
     const page = nik + n;                              // folder, e.g. an/an3/
     const suttaId = sub ? page + '.' + sub : null;     // an3.65 (null for a bare book ref)
     return {nik, page, suttaId, seg, ref: (suttaId || page) + (seg ? ':' + seg : '')};
+  }
+  if(JUMP_RANGE[nik]){
+    if(sub) return {err: nik.toUpperCase()+' refs look like '+nik+n+' or '+nik+n+':2.5'};
+    const bucket = JUMP_RANGE[nik];
+    const start = Math.floor((n-1)/bucket)*bucket + 1;          // 1, 101, …, 1301
+    const end = Math.min(start + bucket - 1, JUMP_LIMITS[nik]);  // 100, …, 1362 (tail clamps)
+    const suttaId = nik + n;                                     // sa42
+    return {nik, page: nik + start + '-' + end, suttaId, seg,
+            ref: suttaId + (seg ? ':' + seg : '')};
   }
   if(sub) return {err: nik.toUpperCase()+' refs look like '+nik+n+' or '+nik+n+':2.5'};
   const base = nik + n;                                // flat: the page IS the sutta
