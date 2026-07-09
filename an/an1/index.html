@@ -1974,17 +1974,48 @@ const NODE_EL={};
 // the first few leaves of a render pass synchronously so the initial viewport never
 // flashes empty. LEAF_BUILD holds each pending leaf's build-now closure — the
 // synchronous escape hatch for deep links (see scrollToEl / withScrollAnchor).
+//
+// Every book defaults every section OPEN (indexTree sets SO[id]=true for all nodes),
+// so on a big book (Vibhaṅga ≈3300 leaves, an AN book ≈1500) nearly all of them sit
+// as placeholders observed at once. A single scrollbar drag can bring HUNDREDS of
+// them within the 2000px margin in one IntersectionObserver callback tick — building
+// them all synchronously in that tick is what froze the page for seconds. lazyQueue +
+// requestAnimationFrame spread that work across frames (LAZY_BATCH per frame) instead
+// of doing it all at once; the escape hatch (ensureRowBuilt/scrollToEl) still builds
+// its one target immediately, bypassing the queue.
 const LEAF_BUILD={};    // leafId → build-now fn (entry deleted once built)
 let eagerLeafBudget=0;  // reset by renderMain/rerenderNode before each pass
 let lazyObs=null;
+const LAZY_BATCH=6;
+let lazyQueue=[];
+let lazyFlushScheduled=false;
+function flushLazyQueue(){
+  lazyFlushScheduled=false;
+  let n=0;
+  while(lazyQueue.length && n<LAZY_BATCH){
+    const id=lazyQueue.shift();
+    const f=LEAF_BUILD[id];
+    if(f) f();
+    n++;
+  }
+  if(lazyQueue.length) scheduleLazyFlush();
+}
+function scheduleLazyFlush(){
+  if(lazyFlushScheduled) return;
+  lazyFlushScheduled=true;
+  requestAnimationFrame(flushLazyQueue);
+}
 function ensureLazyObs(){
   if(!lazyObs){
     lazyObs=new IntersectionObserver(entries=>{
       entries.forEach(en=>{
         if(!en.isIntersecting || !en.target.isConnected) return;
-        const f=LEAF_BUILD[en.target.dataset.leaf];
-        if(f) f();
+        const id=en.target.dataset.leaf;
+        if(!LEAF_BUILD[id]) return;
+        lazyObs.unobserve(en.target);   // queued now — don't re-fire for this target
+        lazyQueue.push(id);
       });
+      if(lazyQueue.length) scheduleLazyFlush();
     },{rootMargin:'2000px 0px'});
   }
   return lazyObs;
