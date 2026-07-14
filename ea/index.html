@@ -12,8 +12,8 @@
 [data-theme="dark"]{--bg:#1a1612;--text:#e8dfc8;--accent:#c8a060;--muted:#9a8878;
   --border:#3a3028;--card:#231e18;--head:#2a2418;--row-line:#3a3028;--hover:#2a2418;
   --bar:#201a12;--bar-border:#4a3c2c}
-.navbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;
-  justify-content:flex-end;gap:.45rem;background:var(--bar);
+.navbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;flex-wrap:wrap;
+  gap:.45rem;background:var(--bar);
   border-bottom:1px solid var(--bar-border);padding:.4rem .9rem;
   box-shadow:0 1px 6px rgba(0,0,0,.15);transition:background .2s}
 .nav-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
@@ -32,9 +32,14 @@
 .set-ctl{display:flex;align-items:center;gap:.25rem}
 .settings-pop .nav-btn{width:auto;min-width:30px;padding:0 .45rem}
 .set-help{text-decoration:none;white-space:nowrap}
-.bar-crumbs{flex:1;display:flex;align-items:center;font-family:sans-serif;font-size:.82rem;min-width:0}
+.bar-crumbs{display:flex;align-items:center;font-family:sans-serif;font-size:.82rem;
+  margin-right:1.6rem}
 .bar-crumbs a{color:var(--accent);text-decoration:none}
 .bar-crumbs a:hover{text-decoration:underline}
+.bar-crumbs .home-logo{flex-shrink:0;display:block;opacity:.85;transition:opacity .12s}
+.bar-crumbs .home-logo:hover{opacity:1}
+.bar-crumbs .home-logo img{height:56px;width:56px;object-fit:cover;border-radius:10px;
+  box-shadow:0 1px 5px rgba(0,0,0,.3);display:block}
 .bar-crumbs .sep-c{margin:0 .3rem;color:var(--muted)}
 .bar-crumbs .cur{color:var(--text);font-weight:600}
 .bar-crumbs .cur-full{color:var(--muted);margin-left:.5rem;font-style:italic;
@@ -117,6 +122,22 @@ a{color:var(--accent)}
   color:var(--accent);font-size:.72rem;font-family:sans-serif;cursor:pointer;
   white-space:nowrap;transition:background .15s}
 .ix-ebt-btn:hover{background:var(--hover)}
+
+/* "⛔ EBT" — links to the EBT/LBT classification legend for a book marked as not
+   EBT-compliant (see index_cards._not_ebt_button). Plain link, not a popup. */
+.ix-notebt-btn{flex-shrink:0;display:flex;align-items:center;padding:0 .6rem;
+  border:1px solid #b03030;border-radius:6px;background:var(--card);
+  color:#b03030;font-size:.72rem;font-family:sans-serif;text-decoration:none;
+  white-space:nowrap;transition:background .15s}
+.ix-notebt-btn:hover{background:var(--hover)}
+
+/* "✅ EBT" — links to the EBT/LBT classification legend for a book (or portion of
+   one) called out as EBT-compliant (see index_cards._ebt_ok_button). */
+.ix-ebtok-btn{flex-shrink:0;display:flex;align-items:center;padding:0 .6rem;
+  border:1px solid #2f8a3e;border-radius:6px;background:var(--card);
+  color:#2f8a3e;font-size:.72rem;font-family:sans-serif;text-decoration:none;
+  white-space:nowrap;transition:background .15s}
+.ix-ebtok-btn:hover{background:var(--hover)}
 .ebt-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:700}
 .ebt-overlay.show{display:block}
 .ebt-pop[hidden]{display:none}
@@ -162,7 +183,20 @@ a.ebt-item:hover{background:var(--hover);border-color:var(--accent)}
 </head>
 <body>
 <nav class="navbar">
-  <div class="bar-crumbs"><a href="../index.html" title="Home">🏠</a><span class="sep-c">›</span><a href="../major/index.html">Major</a><span class="sep-c">›</span><span class="cur" title="Ekottarika Āgama">EA</span><span class="cur-full">Ekottarika Āgama</span></div>
+  <div class="bar-crumbs"><a class="home-logo" href="../index.html" title="Home — s.4nt.org"><img src="../debabel-logo-1k.jpg" alt="s.4nt.org home"></a><span class="sep-c">›</span><a href="../major/index.html">Major</a><span class="sep-c">›</span><span class="cur" title="Ekottarika Āgama">EA</span><span class="cur-full">Ekottarika Āgama</span></div>
+  <span>&emsp;&emsp;</span>
+  <div class="jump" id="jump">
+    <span class="nav-btn" id="jumpBtn"
+          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). Press / to jump from anywhere.">🦘</span>
+    <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
+           title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
+           autocomplete="off" spellcheck="false">
+    <div class="jump-msg" id="jumpMsg"></div>
+    <div class="jump-hist" id="jumpHist"></div>
+  </div>
+  <button class="nav-btn" id="topBtn" title="Back to top"
+          onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
+  <span>&emsp;&emsp;</span>
   <div class="settings-wrap" id="siteSettingsWrap">
     <button class="nav-btn" id="siteSettingsBtn" title="Settings" onclick="siteToggleSettings()">⚙</button>
     <div class="settings-pop" id="siteSettingsPop">
@@ -188,19 +222,6 @@ a.ebt-item:hover{background:var(--hover);border-color:var(--accent)}
       </div>
     </div>
   </div>
-  <span>&emsp;</span>
-  <div class="jump" id="jump">
-    <span class="nav-btn" id="jumpBtn"
-          title="Jump to a sutta — type a ref like mn125 or dn16 and press Enter; add a segment to land right on it (mn125:2.5). Click for your recent suttas (up to 20). Press / to jump from anywhere.">🦘</span>
-    <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
-           title="Type a sutta ref (mn125, dn16, mn125:2.5…) and press Enter"
-           autocomplete="off" spellcheck="false">
-    <div class="jump-msg" id="jumpMsg"></div>
-    <div class="jump-hist" id="jumpHist"></div>
-  </div>
-  <span>&emsp;</span>
-  <button class="nav-btn" id="topBtn" title="Back to top"
-          onclick="window.scrollTo({top:0,behavior:'smooth'})">🔝</button>
 </nav>
 
 <h1>Ekottarika Āgama — Parallel Translations</h1>
@@ -269,19 +290,20 @@ a.ebt-item:hover{background:var(--hover);border-color:var(--accent)}
   <div class="ebt-body" id="ebtBody"></div>
 </div>
 
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../index.html" title="s.4nt.org — home"><img src="../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../help.html">Help</a><a href="../help.html#about">About</a><a href="../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 10, 2026 at 08:06 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../index.html" title="s.4nt.org — home"><img src="../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../help.html">Help</a><a href="../help.html#about">About</a><a href="../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 14, 2026 at 06:58 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 <script>
 const JUMP_ROOT = '..';
 const JUMP_PREFIX = '';
 // ── 🦘 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
-const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "vb": 18, "arv": 28};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "ds": 2, "vb": 18, "dt": 2, "pp": 2, "kv": 23, "ya": 10, "patthana": 24, "arv": 28, "vimt": 12};   // supported collections (single source: quickjump.LIMITS)
 const JUMP_GROUPED = {"an": 1, "ea": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
 const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
-const JUMP_AB = {"vb": 1};           // Abhidhamma books → one page per book at tv_ab/<abbr>/
+const JUMP_AB = {"ds": 1, "dt": 1, "kv": 1, "patthana": 1, "pp": 1, "vb": 1, "ya": 1};           // Abhidhamma books → one page per book at tv_ab/<abbr>/
 const JUMP_RANGE = {"sa": 100};     // flat ref → numeric-range unit page (sa)
-const JUMP_FLAT = {"arv": 1};       // single-file whole-collection books (arv) → <nik>/index.html
+const JUMP_FLAT = {"arv": 1, "vimt": 1};       // single-file whole-collection books (arv) → <nik>/index.html
+const JUMP_L24 = {"vimt": 1};         // dot-addressing books (vimt): <nik>8.1.15 → <nik>/index.html#8.1.15
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
@@ -332,6 +354,14 @@ function parseJumpRef(raw){
   if(!m) return null;
   const nik = m[1].toLowerCase(), n = parseInt(m[2], 10), sub = m[3] || null, seg = m[4] || null;
   if(!(nik in JUMP_LIMITS)) return {err: nik.toUpperCase()+' is not available yet'};
+  // L24 dot-addressing: a DOTTED ref (vimt8.1.15, no colon) → the page anchor #8.1.15
+  // (a real DOM id). Dots = L24 (this system); colon = SuttaCentral (the FLAT branch).
+  if(JUMP_L24[nik] && sub && !seg){
+    if(n < 1 || n > JUMP_LIMITS[nik])
+      return {err: nik.toUpperCase()+' goes from 1 to '+JUMP_LIMITS[nik]};
+    const dot = n + '.' + sub;
+    return {nik, page: '', suttaId: dot, seg: null, ref: nik + dot, hash: '#' + dot};
+  }
   if(JUMP_FLAT[nik]){
     if(sub) return {err: nik.toUpperCase()+' refs look like '+nik+n+' or '+nik+n+':3'};
     if(n < 0 || n > JUMP_LIMITS[nik])
