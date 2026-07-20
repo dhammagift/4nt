@@ -548,6 +548,19 @@ a.ebt-item{color:var(--accent);text-decoration:none}
 a.ebt-item:hover{background:var(--toc-hover);border-color:var(--accent)}
 .ebt-empty{font-size:.8rem;color:var(--muted);font-family:sans-serif}
 
+/* ── ⌨ Keyboard-shortcuts panel — reuses the .ebt-* modal chrome; "?" opens it ── */
+.ks-list{display:flex;flex-direction:column;gap:.15rem}
+.ks-row{display:flex;align-items:baseline;gap:.7rem;padding:.32rem .1rem}
+.ks-keys{flex:0 0 6rem;display:flex;flex-wrap:wrap;gap:.25rem}
+kbd.ks-key{font-family:monospace;font-size:.78rem;min-width:1.3em;text-align:center;
+  padding:.1rem .4rem;border:1px solid var(--sec-border);border-bottom-width:2px;
+  border-radius:5px;background:var(--sec-bg);color:var(--text);white-space:nowrap}
+.ks-desc{font-size:.82rem;color:var(--text);font-family:sans-serif;line-height:1.4}
+.ks-foot{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--border);
+  font-size:.8rem;font-family:sans-serif;color:var(--muted)}
+.ks-foot a{color:var(--accent);text-decoration:none;font-weight:600}
+.ks-foot a:hover{text-decoration:underline}
+
 /* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
 /* Footnote marker. The glyph is raised via position:relative+top (NOT
    vertical-align:super) so it does NOT grow the line box — text rows keep their
@@ -747,7 +760,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </div>
     <!-- 🔍 in-page search -->
     <div class="find-wrap" id="findWrap">
-      <button class="icon-btn" id="findBtn" title="Search this page (highlight all matches, jump prev/next)">🔍</button>
+      <button class="icon-btn" id="findBtn" title="Search this page — or press s (highlight all matches, jump prev/next)">🔍</button>
       <div class="find-pop" id="findPop">
         <div class="find-bar">
           <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
@@ -830,6 +843,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <span class="set-lbl">Help</span>
           <a class="icon-btn set-help" href="../../../help.html#the-columns" title="How to use the side-by-side view — opens the reading guide">❔ Guide</a>
         </div>
+        <div class="set-row">
+          <span class="set-lbl">Shortcuts</span>
+          <button class="icon-btn" title="Show keyboard shortcuts (or press ?)" onclick="toggleMore();ksOpen()">⌨ Keys</button>
+        </div>
         
       </div>
     </div>
@@ -863,7 +880,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 09:59 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 10:47 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -921,6 +938,27 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <button type="button" class="ebt-close" onclick="ebtClose()" aria-label="Close">&#10005;</button>
   </div>
   <div class="ebt-body" id="ebtBody"></div>
+</div>
+
+<!-- ⌨ Keyboard-shortcuts panel — opened by "?" (the web-wide convention) or the ⋮ More
+     menu. Reuses the EBT modal's chrome (.ebt-overlay / .ebt-pop / .ebt-head / .ebt-body)
+     and links out to the full reading guide. -->
+<div class="ebt-overlay" id="ksOverlay" onclick="ksClose()"></div>
+<div class="ebt-pop" id="ksPop" role="dialog" aria-modal="true" aria-labelledby="ksTitle" hidden>
+  <div class="ebt-head">
+    <span class="ebt-title" id="ksTitle">⌨ Keyboard shortcuts</span>
+    <button type="button" class="ebt-close" onclick="ksClose()" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="ebt-body">
+    <div class="ks-list">
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">/</kbd></span><span class="ks-desc">Jump to any sutta — the 🦘 quick-jump box</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">s</kbd></span><span class="ks-desc">Search this page — the 🔍 find box (highlights every match)</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Enter</kbd><kbd class="ks-key">⇧ Enter</kbd></span><span class="ks-desc">While searching: jump to the next / previous match</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">?</kbd></span><span class="ks-desc">Show this shortcuts panel</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Esc</kbd></span><span class="ks-desc">Close any open box or panel</span></div>
+    </div>
+    <div class="ks-foot">Need more? <a href="../../../help.html">Open the full reading guide →</a></div>
+  </div>
 </div>
 
 <script type="application/json" id="tx-pali">["¶ 136.\nDosehi ārakāti ariyaṃ.", "Tenāha ‘‘niddosa’’nti.", "Sā pana niddosatā lokuttara·bhāvena savisesāti\nāha ‘‘lokuttara’’nti.", "Sammā sundaro pasattho niyyā·niko samādhi sammā·samādhīti āha\n– ‘‘sammā·samādhinti magga·samādhi’’nti.", "Upanisīdati ettha phalaṃ\ntappaṭibaddhavuttitāyāti\nupanisaṃ, kāraṇanti\nāha – ‘‘saupanisanti\nsa·p·pacc·aya’’nti.", "Pari·karoti pari·vāre·tīti pari·k·khāroti āha\n– ‘‘sa·pari·k·khāranti sa·pari·vāra’’nti.", "¶ Parivār·itāti sahajā·tādi·pacc·aya·bhāvena pari·vāra·ntehi viya upagatā.", "Pure·cārikāti vuṭṭhāna·gāmini·bhāvanā sahajā·tādi·pacca·yava·sena pacc·a·yattā pura·s·sarā.", "Tenāha – ‘‘vi·passanā·sammā·diṭṭhi cā’’ti.", "Idāni tāni kiccato dassetuṃ,\n‘‘vi·passanā·sammā·diṭṭhī’’tiādi vuttaṃ.", "Tattha pari·vīmaṃs·a·g·gahaṇaṃ tattha tattha citt·uppāde vīmaṃs·ādhi·pateyyena\npavattiyā sammā·diṭṭhiyā pubbaṅgama·bhāva·dassana·t·thaṃ.", "Tenassa magga·samādhissa nānā·khaṇ·ikaṃ pubbaṅgama·bhāvaṃ dasseti.", "Vīmaṃsana·pari·yosāneti tathāpavattānulomañāṇassa osāne.", "Bhūmi·laddhaṃ vaṭṭaṃ samugghāṭa·yamā·nāti attano santāne\ndīgha·rattaṃ anusay·itaṃ kilesavaṭṭaṃ samucchindanti.", "Vūpa·samaya·mānāti tasseva ve·vacanaṃ.", "Vūpa·samaya·mānāti vā tato eva avasiṭṭhampi vaṭṭaṃ a·p·pavatti·karaṇa·vasena vūpasamenti.", "Tenevāha – ‘‘magga·sammā·diṭṭhi…pe… uppajjatī’’ti.", "Sāti sammā·diṭṭhi.", "Duvidhā·pīti yathā·vuttā duvidhāpi.", "Idha adhi·p·petā vi·passanā·paññā·sahitāya magga·paññāya kiccassa dassi·tattā.", "¶ Lakkhaṇe paṭi·vijjha·māne lakkhaṇiko dhammo paṭi·viddho hotīti\nāha – ‘‘micchā·diṭṭhiṃ…pe… āramma·ṇato pajānātī’’ti.", "Vi·passanā·sammā·diṭṭhi·yampi eseva nayo.", "Kiccatoti bhāvanā·kiccato.", "Sammā·diṭṭhiyaṃ tadadhigatāsammohatāya a·sammohato pajānāti.", "Kiccatoti paṭi·vedha·kiccato.", "Taṃ pana sabbathā a·sammuyha·name·vāti āha ‘‘a·sammohato’’ti.", "Evaṃ pajān·a·nāti micchā·diṭṭhi micchā·diṭṭhīti yāthāvato avabodho.", "Assāti taṃsamaṅgino puggalassa.", "¶ Dvāyanti -kāro dīghaṃ katvā vutto.", "Tenāha ‘‘dvayaṃ vadāmī’’ti.", "Dve avayavā etassāti dvayaṃ.", "Tenāha ‘‘duvidha·koṭṭh·āsaṃ vadāmī’’ti.", "Puññassa eko bhāgo so eva puñña·bhāgiko , ka-kārassa ya-kāraṃ katvā itthi·liṅga·vasena ‘‘puñña·bhāgiyā’’ti vuttaṃ.", "Upadhi·saṅkhā·tassāti khandha·pabandha·saṅkhātassa.", "¶ A·mata·dvāranti ariya·maggaṃ.", "Paññape·tīti niyyā·nādi·pakārato paññapeti.", "Tenāha ‘‘vibhajitvā dassetī’’ti.", "Tattha sammohassa viddhaṃsanena a·sammohato dasseti.", "Tasmiṃ attheti a·mata·dvāra·paññāpane atthe.", "Bojjhaṅga·p·pattāti bojjhaṅga·bhāva·p·pattā.", "Magga·bhāvena niyyāna·bhāvena pavattiyā magga·paññāya a·ṭ·ṭha·n·nampi sādhāraṇattā samudāyassa\nca avayavo aṅganti katvā sesa·dhamme aṅgika·bhāvena dassento ‘‘ariya·maggassa aṅga’’nti āha.", "So bhikkhūti micchā·diṭṭhiṃ ‘‘micchā·diṭṭhī’’ti sammā·diṭṭhiṃ ‘‘sammā·diṭṭhī’’ti jānanto bhikkhu.", "Pajahanatthāyāti samuccheda·vasena pajaha·nāya.", "Paṭi·lābhatthāyāti magga·sammā·diṭṭhiyā adhi·gamāya.", "Kusala·vāyāmoti vi·passanā·sampayuttova kosalla·sambhūto vāyāmo.", "Sara·tīti sato, taṃ panassa\nsaraṇaṃ sati·samaṅgitā·yāti āha\n‘‘sa·tiyā samannāgato’’ti.", "Kāmañcettha vi·passanā·sammā·diṭṭhiṃ yathā·bhūtā sammā·vāyāma·sa·tiyo saha·jātā ca purejātā ca hutvā pari·vārenti,\n‘‘itiyime tayo dhammā sammā·diṭṭhiṃ anuparidhāvanti\nanu·pari·vattantī’’ti pana vacanato,\n‘‘ettha hī’’tiādinā magga·sammā·diṭṭhiyā eva sesa·dhammānaṃ yathā·rahaṃ saha·caraṇa·bhāvena parivār·aṇaṃ yojitaṃ.", "Sammāsaṅkappādīnanti\nādi-saddena sammā·vācā·kammantā·jīvānaṃ gahaṇaṃ itaresaṃ pari·vāra·bhāvena gahitattā .", "Na hi sakkā te eva pari·vāre parivār·a·vante ca katvā vattuṃ\nsaṅkarato sammoha·jananato ca.", "Tayoti sammā·diṭṭhi·vāyāma·sa·tiyo saha·jāta·pari·vārāva honti\nmagga·k·khaṇ·ikānaṃ tesaṃ adhi·p·petattā vi·passanā·khaṇa·viratīnaṃ a·sambhavato.", "¶ 137.Takkana·vasena loka·siddhenāti adhi·p·pāyo.", "‘‘Evañcevañca bhavitabba’’nti vi·vidhaṃ takkanaṃ kūpe viya udakassa āramma·ṇassa ākaḍḍhanaṃ vitakkanaṃ vitakko.", "Saṅkappa·nava·senāti taṃ taṃ āramma·ṇaṃ gahetvā kappana·vasena.", "Takkanaṃ kappananti ca ataṃ·saha·jātā·name·vāti daṭṭhabbaṃ.", "Eka·g·goti iminā samādhinā laddh·upakā·rasseva vitakkassa appanā·pari·yāyo hotīti dasseti.", "Visesena vā appanā vitakkassa vasena cittaṃ āramma·ṇaṃ abhi·ropeti, vitakke\nasati kathanti āha ‘‘vitakke panā’’tiādi.", "Atta·noyeva dhammatāya cittaṃ āramma·ṇaṃ abhi·ruha·tīti, etena ārammaṇa·dhammānaṃ gahaṇaṃ nāma sa·bhāva·siddhaṃ,\nna dhamm·antaram·apekkhati, vitakko pana pavatta·māno ārammaṇā·bhiniropana·vase·neva pavatta·tīti dasseti.", "Evaṃ sa·ntepi sa·bhāvā·vitakka·citt·uppādato savi·takka·citt·uppādassa ārammaṇa·g·gahaṇa·viseso\nvitakkena jātoti katvā vitakko cittassa ārammaṇa·g·gahaṇe visesa·pacc·ayoti pākaṭoyam·attho.", "Apare pana bhaṇanti – yathā koci rāja·vallabhaṃ, taṃsambandhīnaṃ mittaṃ vā nissāya rājagehaṃ ārohati anupavisati,\nevaṃ vitakkaṃ nissāya cittaṃ āramma·ṇaṃ ārohati\nvitakkassa ārammaṇā·bhiniropana·sa·bhā·vattā,\naññesaṃ dhammānañca a·vitakka·sa·bhāvato.", "Tenāha bhagavā – ‘‘cetaso abhi·niropanā’’ti (dha. sa. 7).", "¶ Yadi evaṃ kathaṃ a·vitakka·cittaṃ āramma·ṇaṃ āroha·tīti?", "Vitakka·baleneva.", "Yathā hi so puriso pari·cayena tena vi·nāpi nirāsaṅko rājagehaṃ pavisati,\nevaṃ pari·cayena vitakkena vi·nāpi a·vitakkaṃ cittaṃ āramma·ṇaṃ ārohati.", "Pari·caye·nāti ca santāne\npavatta·vitakka·bhāvanā·saṅkhātena pari·cayena.", "Vitakkassa hi santāne\nabhi·ṇhaṃ pavattassa vasena cittassa āramma·ṇābhi·ruhanaṃ cira·pari·citaṃ;\ntena taṃ kadāci vitakkena vi·nāpi tattha pavatta·teva;\nyathā ñāṇa·saha·gataṃ cittaṃ sammasana·vasena cira·pari·citaṃ kadāci ñāṇa·rahitampi sammasana·vasena pavattati;\nyathā vā kilesa·sahitaṃ hutvā pavattaṃ\nsabbaso kilesa·rahitampi pari·cayena kilesa·vāsanā·vasena pavattati,\nevaṃ sampadam·idaṃ daṭṭhabbaṃ.", "¶ Vācaṃ saṅkharotīti vācaṃ uppādeti,\nvacī·ghos·uppattiyā vise·sa·pacc·ayo hotīti attho.", "Lokiya·vitakko dvattiṃsa·citta·saha·gato vācaṃ saṅkharoti\nvacī·viññatti·jananato.", "Vacī·saṅkhāro·tveva panassa\nnāmaṃ hoti ruḷhito, taṃsamatthatā·nirodhato vā sambhavato pana saṅkhāroti.", "‘‘Lokuttara·sammā·saṅkappaṃ parivār·entī’’ti vatvā tividhe sammā·saṅkappe kadāci katamaṃ pari·vāre·ntīti?", "Codanaṃ sandhāyāha ‘‘etthā’’tiādi.", "Nānā·cittesu labbhanti\nnānā·samannāhāra·hetu·kattā, pubba·bhāge·yeva ca te uppajjantīti.", "Tīṇi nāmāni labhati tividhassapi paṭi·pakkhassa samucchindanena sātisayaṃ tiṇṇampi kicca·kara·ṇato.", "Esa nayo sammāvāc·ādīsupi.", "¶ 138.\nViramati etāyāti ve·ramaṇī virati vuccati.", "Sā musā·vādato viramaṇassa kāraṇa·bhāvato cetanāpi verassa maṇa·nato vinās·a·nato virati·pīti āha –\n‘‘viratipi cetanāpi vaṭṭatī’’ti.", "Ārakā rama·tīti samucchinnehi dūrato samussāreti.", "Vinā tehi rama·tīti acc·anta·meva tehi vinā bhavati.", "Tato tatoti diṭṭhe a·diṭṭhavād·ādito musā·vādā.", "Visesato an·uppatti·dhammattā paṭi·nivattā hutvā.", "¶ 140.Tividhena kuhana·vatthunāti pacc·aya·paṭi·sevana-sāmanta·jappana-iriyā·patha·pavattana·saṅkhātena\npāpicchatā nibbattena tividhena kuhana·vatthunā.", "Etāya kuhanāya karaṇa·bhūtāya paccay·uppād·an·atthaṃ nimittaṃ sīlaṃ etesanti yojanā.", "Atta·visaya·lābha·hetu akkosana·khuṃsana·vambhanā·divasena pisanaṃ ghaṭṭanaṃ viheṭhanaṃ nippeso.", "Ito laddhaṃ a·ñ·ñassa, tato laddhaṃ parassa datvā evaṃ lābhena lābhaṃ nijigīṃsatīti lābhena lābhaṃ nijigīṃsanā.", "Pāḷiyaṃ āgato kuhanā·divasena micchā·ājīvo.", "Ko pana soti āha ‘‘ājīva·hetū’’tiādi.", "Tāsaṃ·yevāti avadhār·aṇaṃ,\n‘‘ājīvo kuppa·māno kāya·vacī·dvāresu eva kuppatī’’ti katvā vuttaṃ.", "¶ 141.\nSammā pasatthā sobhanā niyyā·nikā diṭṭhi etassāti\nsammā·diṭṭhi, puggalo.", "Tassa pana yasmā sammā·diṭṭhi saccā·bhisa·mayassa nibbāna·sacchi·kiriyāya avassayo,\ntasmā vuttaṃ – ‘‘magga·sammā·diṭṭhiyaṃ ṭhitassā’’ti.", "Pahoti bhavati tāya saheva uppajjati pavattati.", "Pacc·avekkhaṇa·ñāṇaṃ yāthāvato jānana·ṭ·ṭhena sammā·ñāṇanti idhā·dhippetaṃ,\ntañca kho magga·samādhimhi ṭhite eva hotīti\nimam·atthaṃ dassetuṃ āha –\n‘‘magga·sammā·samādhimhi…pe… sammā·ñāṇaṃ pahotī’’tiādi.", "Iminā kiṃ dasse·tīti?", "Yathā magga·sammā·diṭṭhiyaṃ ṭhito puggalo,\n‘‘sammā·diṭṭhī’’ti vutto, evaṃ magga·phala·pacc·avekkhaṇa·ñāṇe ṭhito,\n‘‘sammā·ñāṇo’’ti vutto,\ntassa ca magga·phala·sammā·samādhi·pavattiyā pahoti\nsammā·ñāṇassa sammā·vimuttiyā paho·tīti imam·atthaṃ dasseti.", "Phala·samādhi tāva pavattatu,\nmagga·samādhi pana kathanti?", "Tampi a·kuppa·bhāva·tāya accanta·samādhi·bhāvato kicca·nipphattiyā pavattate·vāti vattabbataṃ labhati.", "Ṭhapetvā aṭṭhaphalaṅgānīti\nphala·bhūtāni sammā·diṭṭhi·ādīni a·ṭ·ṭha·ṅgāni,\n‘‘sammā·diṭṭhissa sammā·saṅkappo pahotī’’tiādinā visuṃ gahitattā ṭhapetvā.", "Sammā·ñāṇaṃ pacc·avekkha·ṇaṃ katvāti\npacc·avekkhaṇa·ñāṇaṃ sammā·ñāṇaṃ katvā.", "Phalaṃ kātunti phala·dhamma·saha·carita·tāya vipāka·sabhā·vatāya ca ‘‘phala’’nti\nladdha·nāme phala·sampayutta·dhamme sammā·vimuttiṃ kātuṃ vaṭṭa·tīti vuttaṃ.", "Tathā ca vuttaṃ sallekha·sutta·vaṇṇanāyaṃ (ma. ni. a·ṭ·ṭha.\n1.83) ‘‘phala·sampayuttāni pana sammā·diṭṭhi·ādīni a·ṭ·ṭha·ṅgāni ṭhapetvā sesa·dhammā sammā·vimuttīti veditabbā’’ti.", "¶ 142.Nijjiṇṇāti nijjīritā, vi·d·dhastā vinās·itāti attho.", "Phalaṃ kathitanti ‘‘sammā·diṭṭhissa, bhikkhave,\nmicchā·diṭṭhi nijjiṇṇā hotī’’ti iminā vārena sāmañña·phalaṃ kathitanti vadanti,\nnijjīra·ṇaṃ paṭi·p·passambhananti adhi·p·pāyo.", "Nijjīra·ṇaṃ pana samucchindananti\nkatvā, majjhima·bhāṇakā…pe… maggo kathitoti vadanti.", "Dassana·ṭ·ṭhenāti pariññā·bhisa·mayā·divasena catu·n·naṃ sa·c·cānaṃ pacc·akkhato dassana·ṭ·ṭhena.", "Vidita·karaṇ·aṭṭhe·nāti pacc·akkhena yathā·diṭṭhānaṃ magga·phalānaṃ pākaṭa·karaṇa·ṭ·ṭhena.", "Tadadhimutt·aṭṭhe·nāti tasmiṃ yathā·sacchi·kate nibbāne adhi·muccana·bhāvena.", "¶ Kusala·pakkhāti an·a·vajja·koṭṭh·āsā.", "Mahā·vipāka·dānenāti mahato vipulassa lokuttarassa sukha·vipākassa ceva kāyik·ādi·dukkha·vipākassa ca dānena.", "¶ Yathā mahā·vipākassa dānena mahā·cattārīsakaṃ, tathā bahutā·yapi mahā·cattārīsa·koti dassetuṃ,\n‘‘imasmiñca pana sutte pañca sammā·diṭṭhiyo kathitā’’tiādi vuttaṃ.", "Bahu·atthopi hi mahā-saddo hoti\n‘‘mahā·jano’’tiādīsu (ma. ni. 2.65).", "Ettha ca ‘‘natthi dinna’’ntiādinā vatthu·bhedena dasa micchā·diṭṭhi·dhammā kathitā, vatthu·bhedeneva,\n‘‘atthi dinna’’ntiādinā dasa sammā·diṭṭhi·dhammāti vīsati hoti.", "Yathā ‘‘sammā·diṭṭhissa, bhikkhave, sammā·saṅkappo pahotī’’tiādinā magga·vasena dasa sammatta·dhammā,\ntappaṭipakkha·bhūtā ‘‘micchā·diṭṭhissa micchā·saṅkappo pahotī’’tiādinā atthato dasa micchatta·dhammāti vīsati,\ntathā phala·vasena tesu evaṃ vīsati.", "Kathaṃ vārepi sammā·diṭṭhi·ādayo dasāti vīsati?", "Evamete dve cattārīsakāni purimena saddhiṃ tayo cattārīsakā vi·bhāv·itāti veditabbā.", "¶ 143.\nPasaṃsiyassa uju·vi·pacc·a·nīkaṃ nindiyaṃ pasaṃsantopi atthato pasaṃsiyaṃ nindanto nāma hoti.", "Pasaṃsiyassa guṇa·pari·dhaṃsana·mukh·eneva hi nindiyassa pasaṃsāya pavattanatoti āha –\n‘‘micchā·diṭṭhinā·māyaṃ sobh·a·nāti vada·ntopi sammā·diṭṭhiṃ garahati nāmā’’tiādi.", "Evam·ādīti ādi·saddena ‘‘natthi\nhetu natthi pacc·ayo sa·t·tānaṃ saṃki·lesāyā’’ti (dī. ni. 1.168;\nma. ni. 2.227) evam·ādiṃ saṅgaṇhāti;\ntasmā evaṃ·vādinoti evaṃ hetu paṭi·k·khepa·vādinoti attho.", "Okkanta·niyāmāti ogāḷha·micchatta·niyāmā.", "Evarūpaṃ laddhiṃ gahe·tvāti·ādīsu yaṃ vattabbaṃ,\ntaṃ cūḷa·puṇṇama·sutta·vaṇṇanāyaṃ vutta·naya·meva tasmā tattha vutta·nayeneva veditabbaṃ.", "Ediso hi ‘‘buddhānampi a·tekiccho’’tiādi vutta·sadiso.", "¶ Attano nindā·bhayenāti ‘‘sammā·diṭṭhiñca nāmete garahantī’’ādinā upari parehi\nvattabba·nindā·bhayena.", "Ghaṭṭana·bhayenāti tathā paresaṃ āsādanā·bhayena.", "Saha·dhammena parena attano upari kātabba·niggaho upārambho, garahato pari·t·tāso upārambha·bhayaṃ,\ntaṃ pana atthato upavāda·bhayaṃ hotīti\nāha ‘‘upavādabhayenā’’ti.", "Sesaṃ suviññeyya·meva.", "¶ Mahā·cattārīsaka·sutta·vaṇṇanāya līna·t·tha·p·pakāsanā samattā."]</script>
@@ -998,10 +1036,18 @@ function refFromKey(key){
   document.head.appendChild(style);
 })();
 // EBT (SuttaCentral) cross-tradition parallels, keyed by sutta id: {sid: {full, resembling}}.
-// Default {} on pages with no sutta-level tree nodes (MN/DN: the whole page is one sutta,
-// so no TREE node's id ever matches a key here) — see debabel.parallels/index_cards.py's
-// sibling per-row button on the MN/DN/DA/MA INDEX pages, which this doesn't replace.
+// On grouped pages (AN/SN/…) this holds one entry per sutta TREE node, so each sutta
+// header matches a key and gets its own button (renderGroupMain). On a single-sutta page
+// (MN/DN/DA/MA: the whole page is one sutta) it holds the ONE page-own entry, keyed by the
+// page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
+// button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {};
+// This page's OWN sutta's EBT parallels ({ref, sid}) on a single-sutta page, else null.
+// The button attaches to PAGE_EBT_NODE — the first top-level TREE node (the sutta-title
+// row) — mirroring the per-sutta tree button on grouped pages. Also reachable via the
+// ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
+const PAGE_EBT = null;
+const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1374,6 +1420,26 @@ function ebtClose(){
   document.getElementById('ebtPop').hidden=true;
 }
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ebtClose(); });
+
+// ── ⌨ Keyboard-shortcuts panel ("?" opens it) ──
+function ksOpen(){
+  document.getElementById('ksOverlay').classList.add('show');
+  document.getElementById('ksPop').hidden=false;
+}
+function ksClose(){
+  document.getElementById('ksOverlay').classList.remove('show');
+  document.getElementById('ksPop').hidden=true;
+}
+// "?" (= Shift+/) anywhere outside a text field opens the shortcuts panel — the near-
+// universal web convention (GitHub/Gmail/Slack/…). Guarded against inputs so it never
+// fires mid-typing (e.g. a literal "?" in the search or jump box).
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='?' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t=ev.target, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault(); ksOpen();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ksClose(); });
 function scrollToEl(id){
   if(id.indexOf('tr-')===0) ensureRowBuilt(id.slice(3));
   const el=document.getElementById(id);
@@ -2417,6 +2483,9 @@ function renderGroupMain(node, parent){
   // MN/DN/DA/MA leave it {} (their button lives on the collection index page instead).
   const ebt=EBT_PARALLELS[node.id];
   if(ebt) gh.appendChild(ebtButtonFor(node.id, ebt));
+  // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
+  // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
+  else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2521,7 +2590,11 @@ function renderLeafMain(sec, parent){
   const mt=mk('span','mt'); mt.textContent=so?'−':'+';
   const sl=mk('span','sl'); sl.textContent=sec.label;
   const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
-  sh.append(mt,sl,sc);
+  sh.append(mt,sl);
+  // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
+  // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
+  if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
+  sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
   if(so) sb.appendChild(buildLeafBody(sec));
@@ -3017,6 +3090,15 @@ window.addEventListener('hashchange', jumpToHash);
     else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🦘
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
 })();
 </script>
 </body>

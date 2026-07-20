@@ -548,6 +548,19 @@ a.ebt-item{color:var(--accent);text-decoration:none}
 a.ebt-item:hover{background:var(--toc-hover);border-color:var(--accent)}
 .ebt-empty{font-size:.8rem;color:var(--muted);font-family:sans-serif}
 
+/* ── ⌨ Keyboard-shortcuts panel — reuses the .ebt-* modal chrome; "?" opens it ── */
+.ks-list{display:flex;flex-direction:column;gap:.15rem}
+.ks-row{display:flex;align-items:baseline;gap:.7rem;padding:.32rem .1rem}
+.ks-keys{flex:0 0 6rem;display:flex;flex-wrap:wrap;gap:.25rem}
+kbd.ks-key{font-family:monospace;font-size:.78rem;min-width:1.3em;text-align:center;
+  padding:.1rem .4rem;border:1px solid var(--sec-border);border-bottom-width:2px;
+  border-radius:5px;background:var(--sec-bg);color:var(--text);white-space:nowrap}
+.ks-desc{font-size:.82rem;color:var(--text);font-family:sans-serif;line-height:1.4}
+.ks-foot{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--border);
+  font-size:.8rem;font-family:sans-serif;color:var(--muted)}
+.ks-foot a{color:var(--accent);text-decoration:none;font-weight:600}
+.ks-foot a:hover{text-decoration:underline}
+
 /* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
 /* Footnote marker. The glyph is raised via position:relative+top (NOT
    vertical-align:super) so it does NOT grow the line box — text rows keep their
@@ -747,7 +760,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </div>
     <!-- 🔍 in-page search -->
     <div class="find-wrap" id="findWrap">
-      <button class="icon-btn" id="findBtn" title="Search this page (highlight all matches, jump prev/next)">🔍</button>
+      <button class="icon-btn" id="findBtn" title="Search this page — or press s (highlight all matches, jump prev/next)">🔍</button>
       <div class="find-pop" id="findPop">
         <div class="find-bar">
           <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
@@ -830,6 +843,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <span class="set-lbl">Help</span>
           <a class="icon-btn set-help" href="../../help.html#the-columns" title="How to use the side-by-side view — opens the reading guide">❔ Guide</a>
         </div>
+        <div class="set-row">
+          <span class="set-lbl">Shortcuts</span>
+          <button class="icon-btn" title="Show keyboard shortcuts (or press ?)" onclick="toggleMore();ksOpen()">⌨ Keys</button>
+        </div>
         <div class="set-row"><span class="set-lbl">EBT parallels</span><button class="icon-btn" onclick="ebtOpenData(&quot;MA 98&quot;, EBT_PARALLELS[&quot;ma98&quot;])" title="EBT parallel suttas (8)">&Vert; EBT</button></div>
       </div>
     </div>
@@ -863,7 +880,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 09:51 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 10:34 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -921,6 +938,27 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <button type="button" class="ebt-close" onclick="ebtClose()" aria-label="Close">&#10005;</button>
   </div>
   <div class="ebt-body" id="ebtBody"></div>
+</div>
+
+<!-- ⌨ Keyboard-shortcuts panel — opened by "?" (the web-wide convention) or the ⋮ More
+     menu. Reuses the EBT modal's chrome (.ebt-overlay / .ebt-pop / .ebt-head / .ebt-body)
+     and links out to the full reading guide. -->
+<div class="ebt-overlay" id="ksOverlay" onclick="ksClose()"></div>
+<div class="ebt-pop" id="ksPop" role="dialog" aria-modal="true" aria-labelledby="ksTitle" hidden>
+  <div class="ebt-head">
+    <span class="ebt-title" id="ksTitle">⌨ Keyboard shortcuts</span>
+    <button type="button" class="ebt-close" onclick="ksClose()" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="ebt-body">
+    <div class="ks-list">
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">/</kbd></span><span class="ks-desc">Jump to any sutta — the 🦘 quick-jump box</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">s</kbd></span><span class="ks-desc">Search this page — the 🔍 find box (highlights every match)</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Enter</kbd><kbd class="ks-key">⇧ Enter</kbd></span><span class="ks-desc">While searching: jump to the next / previous match</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">?</kbd></span><span class="ks-desc">Show this shortcuts panel</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Esc</kbd></span><span class="ks-desc">Close any open box or panel</span></div>
+    </div>
+    <div class="ks-foot">Need more? <a href="../../help.html">Open the full reading guide →</a></div>
+  </div>
 </div>
 
 <script type="application/json" id="tx-lzh">["中阿含經 98", "念處經", "我聞如是。", "一時佛遊拘樓痩在劍磨瑟曇拘樓都邑。", "爾時世尊告諸比丘。", "有一道淨衆生。", "度憂畏滅苦惱斷啼哭得正法。", "謂四念處。", "若有過去諸如來無所著等正覺。悉斷五蓋心穢慧羸。立心正住於四念處。修七覺支。", "得覺無上正盡之覺。", "若有未來諸如來無所著等正覺。悉斷五蓋心穢慧羸。立心正住於四念處。修七覺支。", "得覺無上正盡之覺。", "我今現在如來無所著等正覺。", "我亦斷五蓋心穢慧羸。立心正住於四念處。修七覺支。", "得覺無上正盡之覺。", "云何爲四。", "觀身如身念處。如是觀覺心法如法念處。", "云何觀身如身念處。", "比丘者行則知行", "住則知住坐則知坐臥則知臥。", "眠則知眠寤則知寤。眠寤則知眠寤。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者正知出入善觀分別。屈伸低昂", "儀容庠序。善著僧伽梨及諸衣鉢。", "行住坐臥眠寤語默。皆正知之。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者生惡不善念。", "以善法念治斷滅止。", "猶木工師木工弟子彼持墨繩用拼於木。則以利斧斫治令直。", "如是比丘生惡不善念。以善法念治斷滅止。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者。齒齒相著舌逼上齶。以心治心治斷滅止。", "猶二力士捉一羸人。", "處處旋捉自在打鍛。", "如是比丘齒齒相著舌逼上齶。以心治心治斷滅止。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身", "比丘者念入息即知念入息。", "念出息。即知念出息。", "入息長即知入息長。", "出息長即知出息長。", "入息短即知入息短。", "出息短即知出息短。", "學一切身息入。學一切身息出。", "學止身行息入。學止口行息出。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者離生喜樂漬身潤澤", "普遍充滿於此身中", "離生喜樂無處不遍。", "猶工浴人器盛澡豆。水和成摶", "水漬潤澤。普遍充滿", "無處不周。", "如是比丘離生喜樂漬身潤澤", "普遍充滿於此身中", "離生喜樂無處不遍。", "如是比丘觀内身如身觀外身如身。", "立念在身有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者定生喜樂漬身潤澤", "普遍充滿於此身中", "定生喜樂無處不遍", "猶如山泉清淨不濁充滿流溢。", "四方水來。無縁得入。", "即彼泉底水自涌出。流溢於外漬山潤澤普遍充滿", "無處不周。", "如是比丘定生喜樂。漬身潤澤。", "普遍充滿。於此身中", "定生喜樂無處不遍。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘觀身如身。", "比丘者無喜生樂。漬身潤澤", "普遍充滿於此身中", "無喜生樂無處不遍。", "猶青蓮華紅赤白蓮水生水長", "在於水底。彼根莖華葉悉漬潤澤。", "普遍充滿無處不周。", "如是比丘無喜生樂。漬身潤澤", "普遍充滿於此身中", "無喜生樂無處不遍。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘觀身如身。", "比丘者於此身中以清淨心。意解遍滿成就遊。", "於此身中以清淨心無處不遍。", "猶有一人被七肘衣或八肘衣。", "從頭至足於其身體無處不覆。", "如是比丘於此身中。以清淨心無處不遍。", "如是比丘觀内身如身觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者念光明想", "善受善持善憶所念。", "如前後亦然。", "如後前亦然。", "如晝夜亦然。", "如夜晝亦然。", "如下上亦然。", "如上下亦然。", "如是不顛倒心無有纒", "修光明心心終不爲闇之所覆。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者善受觀相善憶所念。", "猶如有人坐觀臥人臥觀坐人。", "如是比丘善受觀相善憶所念。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者此身隨住隨其好惡。從頭至足", "觀見種種不淨充滿。", "我此身中有髮髦爪齒麁細薄膚皮肉筋骨。心腎肝肺大腸小腸。脾胃摶糞腦及腦根。涙汗涕唾膿血肪髓涎膽小便", "猶如器盛若干種子。有目之士", "悉見分明。謂稻粟種蔓菁芥子。", "如是比丘此身隨住隨其好惡。從頭至足", "觀見種種不淨充滿。", "我此身中有髮髦爪齒。麤細薄膚皮肉筋骨。心腎肝肺大腸小腸。脾胃摶糞腦及腦根。涙汗涕唾膿血肪髓涎膽小便", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者觀身諸界。", "我此身中有地界水界火界風界空界識界。", "猶如屠兒殺牛剥皮布地於上分作六段。", "如是比丘觀身諸界。", "我此身中地界水界火界風界空界識界。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘觀身如身。", "比丘者觀彼死屍或一二日至六七日。", "烏鴟所啄豺狼所食。火燒埋地悉腐爛壞。", "見已自比。", "今我此身亦復如是倶有此法終不得離。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘觀身如身。", "比丘者如本見息道。骸骨青色爛腐食半骨璅在地。", "見已自比。", "今我此身亦復如是倶有此法終不得離。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者。如本見息道。離皮肉血唯筋相連。", "見已自比。", "今我此身亦復如是倶有此法終不得離。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者如本見息道。骨節解散散在諸方。", "足骨膞骨髀骨髖骨。脊骨肩骨頸骨髑髏骨。", "各在異處", "見已自比。", "今我此身亦復如是倶有此法終不得離。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "復次比丘。觀身如身。", "比丘者。如本見息道骨白如螺青猶鴿色。赤若血塗", "腐壞碎粖。", "見已自比。", "今我此身亦復如是倶有此法終不得離。", "如是比丘觀内身如身。觀外身如身。", "立念在身。有知有見有明有達。", "是謂比丘觀身如身。", "若比丘比丘尼。如是少少觀身如身者。是謂觀身如身念處", "云何觀覺如覺念處。", "比丘者。覺樂覺時便知覺樂覺。", "覺苦覺時便知覺苦覺。", "覺不苦不樂覺時。便知覺不苦不樂覺。", "覺樂身", "苦身", "不苦不樂身。", "樂心", "苦心", "不苦不樂心。", "樂食", "苦食", "不苦不樂食。", "樂無食", "苦無食", "不苦不樂無食。", "樂欲", "苦欲", "不苦不樂欲。", "樂無欲", "苦無欲", "覺不苦不樂無欲覺時。便知覺不苦不樂無欲覺。", "如是比丘觀内覺如覺。觀外覺如覺。", "立念在覺。有知有見有明有達。", "是謂比丘觀覺如覺。", "若比丘比丘尼如是少少觀覺如覺者。是謂觀覺如覺念處。", "云何觀心如心念處。", "比丘者。有欲心知有欲心如眞。", "無欲心知無欲心如眞。", "有恚", "無恚。", "有癡", "無癡", "有穢汚", "無穢汚。", "有合", "有散。", "有下", "有高。", "有小", "有大。", "修", "不修。", "定", "不定。", "有不解脱心知不解脱心如眞。", "有解脱心知解脱心如眞。", "如是比丘。觀内心如心。觀外心如心。", "立念在心。有知有見有明有達。", "是謂比丘觀心如心。", "若有比丘比丘尼。如是少少觀心如心者。是謂觀心如心念處。", "云何觀法如法念處。", "眼縁色生内結。", "比丘者。内實有結知内有結如眞。", "内實無結知内無結如眞。", "若未生内結而生者知如眞。", "若已生内結滅不復生者知如眞。", "如是耳鼻舌身意。縁法生内結。", "比丘者。内實有結知内有結如眞。", "内實無結知内無結如眞。", "若未生内結而生者知如眞。", "若已生内結滅不復生者知如眞。", "如是比丘觀内法如法。觀外法如法。", "立念在法。有知有見有明有達。", "是謂比丘觀法如法。謂内六處。", "復次比丘。觀法如法。", "比丘者内實有欲知有欲如眞。", "内實無欲知無欲如眞。", "若未生欲而生者知如眞。", "若已生欲滅不復生者知如眞。", "如是瞋恚", "睡眠", "調悔。", "内實有疑知有疑如眞。", "内實無疑知無疑如眞。", "若未生疑而生者知如眞。", "若已生疑滅不復生者知如眞。", "如是比丘觀内法如法。觀外法如法。", "立念在法。有知有見有明有達。", "是謂比丘觀法如法。謂五蓋也。", "復次比丘。觀法如法。", "比丘者。内實有念覺支知有念覺支如眞。", "内實無念覺支知無念覺支如眞。", "若未生念覺支而生者知如眞。", "若已生念覺支。便住不忘而不衰退。轉修増廣者知如眞。", "如是法", "精進", "喜", "息", "定。比丘者。内實有捨覺支知有捨覺支如眞。", "内實無捨覺支知無捨覺支如眞。", "若未生捨覺支而生者知如眞。", "若已生捨覺支。便住不忘而不衰退。轉修増廣者知如眞。", "如是比丘觀内法如法。觀外法如法。", "立念在法。有知有見有明有達。", "是謂比丘觀法如法。謂七覺支。", "若有比丘比丘尼如是少少觀法如法者。是謂觀法如法念處。", "若有比丘比丘尼。七年立心正住四念處者。彼必得二果。", "或現法得究竟智。或有餘得阿那含。置七年。六五四三二一年。", "若有比丘比丘尼。七月立心正住四念處者。彼必得二果。", "或現法得究竟智。或有餘得阿那含。置七月。六五四三二一月。", "若有比丘比丘尼。七日七夜立心正住四念處者。彼必得二果。", "或現法得究竟智。或有餘得阿那含。置七日七夜六五四三二。置一日一夜。", "若有比丘比丘尼。少少須臾頃立心正住四念處者。彼朝行如是暮必得昇進。", "暮行如是朝必得昇進。", "佛説如是。", "彼諸比丘聞佛所説。歡喜奉行"]</script>
@@ -1001,10 +1039,18 @@ function refFromKey(key){
   document.head.appendChild(style);
 })();
 // EBT (SuttaCentral) cross-tradition parallels, keyed by sutta id: {sid: {full, resembling}}.
-// Default {} on pages with no sutta-level tree nodes (MN/DN: the whole page is one sutta,
-// so no TREE node's id ever matches a key here) — see debabel.parallels/index_cards.py's
-// sibling per-row button on the MN/DN/DA/MA INDEX pages, which this doesn't replace.
+// On grouped pages (AN/SN/…) this holds one entry per sutta TREE node, so each sutta
+// header matches a key and gets its own button (renderGroupMain). On a single-sutta page
+// (MN/DN/DA/MA: the whole page is one sutta) it holds the ONE page-own entry, keyed by the
+// page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
+// button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {"ma98": {"full": [{"uid": "sht-sutta11", "href": null}, {"uid": "mn10", "href": "../../mn/mn10/index.html"}, {"uid": "ea12.1", "href": "../../ea/ea12/index.html#ea12.1"}, {"uid": "dn22", "href": "../../dn/dn22/index.html"}], "resembling": [{"uid": "mn119", "href": "../../mn/mn119/index.html"}, {"uid": "ma31", "href": "../../ma/ma31/index.html"}, {"uid": "ma81", "href": "../../ma/ma81/index.html"}, {"uid": "t32", "href": null}]}};
+// This page's OWN sutta's EBT parallels ({ref, sid}) on a single-sutta page, else null.
+// The button attaches to PAGE_EBT_NODE — the first top-level TREE node (the sutta-title
+// row) — mirroring the per-sutta tree button on grouped pages. Also reachable via the
+// ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
+const PAGE_EBT = {"ref": "MA 98", "sid": "ma98"};
+const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1377,6 +1423,26 @@ function ebtClose(){
   document.getElementById('ebtPop').hidden=true;
 }
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ebtClose(); });
+
+// ── ⌨ Keyboard-shortcuts panel ("?" opens it) ──
+function ksOpen(){
+  document.getElementById('ksOverlay').classList.add('show');
+  document.getElementById('ksPop').hidden=false;
+}
+function ksClose(){
+  document.getElementById('ksOverlay').classList.remove('show');
+  document.getElementById('ksPop').hidden=true;
+}
+// "?" (= Shift+/) anywhere outside a text field opens the shortcuts panel — the near-
+// universal web convention (GitHub/Gmail/Slack/…). Guarded against inputs so it never
+// fires mid-typing (e.g. a literal "?" in the search or jump box).
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='?' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t=ev.target, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault(); ksOpen();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ksClose(); });
 function scrollToEl(id){
   if(id.indexOf('tr-')===0) ensureRowBuilt(id.slice(3));
   const el=document.getElementById(id);
@@ -2420,6 +2486,9 @@ function renderGroupMain(node, parent){
   // MN/DN/DA/MA leave it {} (their button lives on the collection index page instead).
   const ebt=EBT_PARALLELS[node.id];
   if(ebt) gh.appendChild(ebtButtonFor(node.id, ebt));
+  // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
+  // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
+  else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2524,7 +2593,11 @@ function renderLeafMain(sec, parent){
   const mt=mk('span','mt'); mt.textContent=so?'−':'+';
   const sl=mk('span','sl'); sl.textContent=sec.label;
   const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
-  sh.append(mt,sl,sc);
+  sh.append(mt,sl);
+  // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
+  // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
+  if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
+  sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
   if(so) sb.appendChild(buildLeafBody(sec));
@@ -3020,6 +3093,15 @@ window.addEventListener('hashchange', jumpToHash);
     else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🦘
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
 })();
 </script>
 </body>

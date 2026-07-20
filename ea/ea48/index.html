@@ -548,6 +548,19 @@ a.ebt-item{color:var(--accent);text-decoration:none}
 a.ebt-item:hover{background:var(--toc-hover);border-color:var(--accent)}
 .ebt-empty{font-size:.8rem;color:var(--muted);font-family:sans-serif}
 
+/* ── ⌨ Keyboard-shortcuts panel — reuses the .ebt-* modal chrome; "?" opens it ── */
+.ks-list{display:flex;flex-direction:column;gap:.15rem}
+.ks-row{display:flex;align-items:baseline;gap:.7rem;padding:.32rem .1rem}
+.ks-keys{flex:0 0 6rem;display:flex;flex-wrap:wrap;gap:.25rem}
+kbd.ks-key{font-family:monospace;font-size:.78rem;min-width:1.3em;text-align:center;
+  padding:.1rem .4rem;border:1px solid var(--sec-border);border-bottom-width:2px;
+  border-radius:5px;background:var(--sec-bg);color:var(--text);white-space:nowrap}
+.ks-desc{font-size:.82rem;color:var(--text);font-family:sans-serif;line-height:1.4}
+.ks-foot{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--border);
+  font-size:.8rem;font-family:sans-serif;color:var(--muted)}
+.ks-foot a{color:var(--accent);text-decoration:none;font-weight:600}
+.ks-foot a:hover{text-decoration:underline}
+
 /* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
 /* Footnote marker. The glyph is raised via position:relative+top (NOT
    vertical-align:super) so it does NOT grow the line box — text rows keep their
@@ -747,7 +760,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </div>
     <!-- 🔍 in-page search -->
     <div class="find-wrap" id="findWrap">
-      <button class="icon-btn" id="findBtn" title="Search this page (highlight all matches, jump prev/next)">🔍</button>
+      <button class="icon-btn" id="findBtn" title="Search this page — or press s (highlight all matches, jump prev/next)">🔍</button>
       <div class="find-pop" id="findPop">
         <div class="find-bar">
           <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
@@ -830,6 +843,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <span class="set-lbl">Help</span>
           <a class="icon-btn set-help" href="../../help.html#the-columns" title="How to use the side-by-side view — opens the reading guide">❔ Guide</a>
         </div>
+        <div class="set-row">
+          <span class="set-lbl">Shortcuts</span>
+          <button class="icon-btn" title="Show keyboard shortcuts (or press ?)" onclick="toggleMore();ksOpen()">⌨ Keys</button>
+        </div>
         
       </div>
     </div>
@@ -863,7 +880,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 09:55 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 10:39 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -921,6 +938,27 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <button type="button" class="ebt-close" onclick="ebtClose()" aria-label="Close">&#10005;</button>
   </div>
   <div class="ebt-body" id="ebtBody"></div>
+</div>
+
+<!-- ⌨ Keyboard-shortcuts panel — opened by "?" (the web-wide convention) or the ⋮ More
+     menu. Reuses the EBT modal's chrome (.ebt-overlay / .ebt-pop / .ebt-head / .ebt-body)
+     and links out to the full reading guide. -->
+<div class="ebt-overlay" id="ksOverlay" onclick="ksClose()"></div>
+<div class="ebt-pop" id="ksPop" role="dialog" aria-modal="true" aria-labelledby="ksTitle" hidden>
+  <div class="ebt-head">
+    <span class="ebt-title" id="ksTitle">⌨ Keyboard shortcuts</span>
+    <button type="button" class="ebt-close" onclick="ksClose()" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="ebt-body">
+    <div class="ks-list">
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">/</kbd></span><span class="ks-desc">Jump to any sutta — the 🦘 quick-jump box</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">s</kbd></span><span class="ks-desc">Search this page — the 🔍 find box (highlights every match)</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Enter</kbd><kbd class="ks-key">⇧ Enter</kbd></span><span class="ks-desc">While searching: jump to the next / previous match</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">?</kbd></span><span class="ks-desc">Show this shortcuts panel</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Esc</kbd></span><span class="ks-desc">Close any open box or panel</span></div>
+    </div>
+    <div class="ks-foot">Need more? <a href="../../help.html">Open the full reading guide →</a></div>
+  </div>
 </div>
 
 <script type="application/json" id="tx-lzh">["聞如是：", "一時，佛在舍衛國祇樹給孤獨 園。", "爾時，世尊告諸比丘：「其有眾生，", "修行殺 生，廣布殺生，", "種地獄罪，餓鬼、畜生行；若生 人中，壽命極短。", "所以然者，由害他命。", "「若 有眾生盜他物者，種三惡道之罪；", "若生人 中，恒遭貧匱，食不充口，衣不蓋形。", "皆由 盜故，劫奪物者，即斷他命根。", "「若有眾生，好  喜 貪泆，種三惡道；", "若生人中，門不貞良，竊 盜淫泆。", "「若有眾生妄語者，種地獄罪；若生 人中，", "為人所輕，言不信受，為人所賤。", "所 以然者，皆由前世妄語所致。", "「若有眾生兩 舌者，種三惡道之罪；", "設生人中，心恒不定， 常懷愁憂。", "所以然者，由彼人兩頭傳虛 言故。", "「若有眾生麁言者，種三惡道之罪；", "若 生人中，為人醜弊，常喜罵呼。", "所以然者， 由彼人言不專正之所致也。", "「若有眾生鬪 亂彼此，種三惡道之罪；", "設生人中，多諸怨 憎，親親離散。", "所以然者，皆由前世鬪亂之 所致也。", "「若有眾生嫉妬者，種三惡道；若生 人中，乏諸衣裳。", "所以然者，由彼人起貪 嫉故。", "「若有眾生起害意，種三惡道；設生 人中，", "恒多虛妄，不解至理，心亂不定。", "所 以然者，皆由前世恚怒所致也，無有慈 仁。", "「若有眾生，行邪見者，種三惡道；", "若生 人中，乃在邊地，不生中國，", "不覩三尊道法 之義，或復聾盲瘖瘂，", "身形不正，不解善法、 惡法之趣。", "所以然者，皆由前世無信根 故，", "亦不信沙門、婆羅門、父母、兄弟。", "「比丘知 之，由此十惡之報，致此殃舋。", "是故，比丘！", "當 離十惡，修行正見。", "如是，比丘！", "當作是學。」", "爾 時，諸比丘聞佛所說，歡喜奉行。", "聞如是：", "一時，佛在舍衛國祇樹給孤獨 園。", "爾時，世尊十五日說戒時，將諸比丘，", "前後 圍遶，往詣普會講堂。", "爾時，世尊默然觀察， 諸聖眾寂寞不語。", "是時，阿難白佛言：", "「今日 聖眾盡集講堂，唯然，世尊！", "當與諸比丘說 禁戒。", "」爾時，世尊亦復默然不語。", "是時，阿難須 臾復白佛言：", "「今正是時，宜說禁戒，初夜欲 盡。", "」爾時，世尊復默不語。", "爾時，阿難須臾復白 佛言：「中夜欲竟，", "眾僧勞頓，唯願世尊以時 說戒。", "」爾時，世尊復默然不語。", "是時，阿難須 臾復白佛言：", "「後夜欲盡，唯願世尊以時 說戒。」", "佛告阿難：「眾中不淨者，故不說戒。", "今 聽上座，使說禁戒。", "若僧上座不堪任說戒 者，聽持律說禁戒。", "若無持律者，其能 誦戒通利者，當唱之使說戒。", "自今已後，如 來更不說戒。", "眾中不淨，如來於中說戒，", "彼人 頭破為七分，如彼酬羅果無異。」", "是時，阿 難悲泣交集，", "並作是說：「聖眾今日便為孤 窮。", "如來正法去何速疾？", "不淨之人出何速 疾？」", "是時，大目乾連便作是念：「此眾中何等 毀法之人，", "在此眾中，乃令如來不說禁 戒？", "」是時，大目乾連入三昧定，遍觀聖眾 心中瑕穢。", "爾時，目連見馬師、", "滿宿二比丘在 眾會中，是時目連即從座起，", "至彼比丘所， 而告之曰：「汝等速起，離此座中。", "如來見譏， 由卿等故，如來不說禁戒。」", "爾時，二比丘默 然不語。", "是時，目連復再三告曰：「汝等速起， 不須住此。", "」是時，彼比丘默然不對。", "是時，目 連即前捉手將至門外，還取門閉，", "前白佛 言：「不淨比丘已將在外，", "唯然世尊時說 禁戒。」", "佛告目連：「止！止！目連！", "如來更不與 比丘說戒。", "如來所說言不有二，還詣座 所。」", "是時，目連復白佛言：「今此眾中已生 瑕穢，", "我不堪任行維那法，唯願世尊更 差餘人。", "」爾時，世尊默然可之。", "是時，目連頭面 禮世尊足，還就本座。", "是時，阿難白世尊言：", "「毘婆尸如來出現世時，聖眾多少？", "為經幾 時，乃生瑕穢？", "乃至迦葉弟子多少？", "云何說 戒？」", "佛告阿難：「九十一劫有佛出世，", "名毘婆 尸如來、至真、等正覺，出現世間。", "爾時，三會聖 眾，初一會時比丘有百千六萬八千聖眾；", "第二會時十六萬聖眾；", "第三會時十萬聖眾， 皆是阿羅漢。", "彼佛壽八萬四千歲，百歲之中 聖眾清淨，", "彼佛恒以一偈為禁戒：", "「『忍辱為第一，　　佛說無為最，", "不以剃鬚髮，　　害他為沙門。』", "「是時，彼佛以此一偈，", "百歲之中而為禁戒， 已生瑕穢，便立禁戒。", "「復於三十一劫中，有 佛名試詰如來、", "至真、等正覺，出現於世。", "爾 時，亦復三會聖眾，初一會時有十六萬聖 眾；", "第二會時十四萬聖眾；第三會時十萬聖 眾。", "彼佛爾時，八十年中清淨無瑕穢，亦說一 偈：", "「『若眼見非邪，　　慧者護不著，", "棄捐於眾惡，　　在世為黠慧。』", "「爾時，彼佛八十年中說此一偈，", "後有瑕穢， 更立禁戒。", "爾時，試詰佛壽七萬歲。", "「於彼劫 中，復有佛出現世間，名曰毘舍羅婆，", "亦三 會聖眾，初會之時十萬聖眾，", "盡是羅漢；第二 會時八萬羅漢；", "第三會時七萬羅漢，諸漏已 盡。", "毘舍羅婆如來七十年中無瑕穢。", "爾時，復 以一偈半為禁戒：", "「『不害亦不非，　　奉行於大戒， \n　於食知止足，", "床座亦復然， \n　執志為專一，　　是則諸佛教。』", "「七十年中以此一偈為禁戒，後有瑕穢， 更立禁戒。", "毘舍羅婆如來壽七萬歲。", "「於此賢 劫中，有佛出世，", "名曰拘樓孫如來，出現世 間。", "爾時，二會聖眾，初會之時七萬聖眾，", "皆是 阿羅漢；第二會時六萬阿羅漢。", "彼佛爾時，六 十年中無有瑕穢。", "彼佛爾時，以二偈以為 禁戒。", "「『譬如蜂採華，　　其色甚香潔，", "以味惠施他，　　道士遊聚落。", "不誹謗於人，　　亦不觀是非，", "但自觀身行，　　諦觀正不正。』", "「六十年中說此二偈，以為禁戒，", "自此已 來，以有瑕穢，便立禁戒。", "彼佛壽六萬歲。", "「於 此賢劫中有佛出世，", "名曰拘那含牟尼如來、 至真、等正覺。", "爾時，二會聖眾，初會之時六十 萬聖眾，", "皆是阿羅漢；第二會時四十萬聖 眾，皆是阿羅漢。", "爾時，彼佛四十年中無有瑕 穢，以一偈為禁戒：", "「『執志莫輕戲，　　當學尊寂道，", "賢者無愁憂，　　常滅志所念。』", "「四十年中說此一偈，以為禁戒，", "自此已 來，便有瑕穢，更立禁戒。", "彼佛壽四萬歲。", "「於 此賢劫有佛，名為迦葉，出現世間。", "爾時， 彼佛亦二會聖眾，初會之時四十萬眾；", "第二 會時三十萬眾，皆是阿羅漢。", "二十年中無有 瑕穢，恒以一偈，以為禁戒：", "「『一切惡莫作，　　當奉行其善，", "自淨其志意，　　是則諸佛教。』", "「二十年中說此一偈，以為禁戒，", "犯禁之後， 更立制限。", "爾時，迦葉佛壽二萬歲。", "「我今如 來出現於世，一會聖眾千二百五十人，", "十二 年中無有瑕穢，亦以一偈為禁戒：", "「『護口意清淨，　　身行亦清淨，", "淨此三行跡，　　修行仙人道。』", "「十二年中說此一偈，以為禁戒，以生犯律 之人，", "轉有二百五十戒，自今已後眾僧集 會，", "啟白如律：『諸賢！咸聽！", "今十五日說戒，今僧 忍者，眾僧和合。", "』說禁戒以啟此已。", "設有比 丘有所說者，不應說戒，各共默然。", "若無 語者，應為說戒。", "乃至說戒序後，復當問： 『諸賢，誰不清淨？", "』如是再三，『誰不清淨？", "』清淨者， 默然持之。", "然今人壽命極短，盡壽不過百 年。", "是故，阿難！", "善受持之。」", "爾時，阿難白世尊 言：「過去久遠諸佛世尊，", "壽命極長，犯律者少， 無有瑕穢，", "然今人民壽命為短少，不過 十十，", "過去諸佛滅度之後，有遺法住世，為 經幾時？」", "佛告阿難：「過去諸佛滅度之後，法 不久存。」", "阿難白佛言：「設如來滅度之後，正 法存世當經幾時？」", "佛告阿難曰：「我滅度之 後，法當久存。", "迦葉佛滅度後，遺法住七日 中。", "汝今，阿難！", "如來弟子為少。", "莫作是 觀。", "東方弟子無數億千，南方弟子無數億千。", "是故，阿難！", "當建此意，我釋迦文佛壽命極 長。", "所以然者，肉身雖取滅度，法身存在，此 是其義。", "當念奉行。」", "爾時，阿難及諸比丘聞佛 所說，歡喜奉行。", "聞如是：", "一時，佛在舍衛國祇樹給孤獨 園，", "與大比丘眾五百人俱。", "爾時，阿難偏露 右肩，右膝著地，白世尊言：", "「如來玄鑒，無事 不察，", "當來、過去、現在三世皆悉明了，", "諸過去 諸佛姓字、名號，弟子菩薩翼從多少，", "皆悉知 之，一劫、百劫、若無數劫，悉觀察知。", "亦復知 國王、大臣、人民姓字，", "斯能分別，如今現在國 界若干，亦復明了。", "將來久遠，彌勒出現，至真、 等正覺，", "欲聞其變；弟子翼從、佛境豐樂，為 經幾時？」", "佛告阿難：「汝還就座，聽我所說，彌 勒出現，", "國土豐樂，弟子多少，善思念之，執在 心懷。", "」是時，阿難從佛受教，即還就座。", "爾時， 世尊告阿難曰：", "「將來久遠於此國界，當有 城郭名曰雞頭，", "東西十二由旬，南北七由旬，", "土地豐熟，人民熾盛，街巷成行。", "爾時，城中有 龍王名曰水光，夜雨澤香，晝則清和。", "是時，雞 頭城中有羅剎鬼名曰葉華，", "所行順法，不 違正教，", "伺人民寢寐之後，除去穢惡諸不 淨者，", "又以香汁而灑其地，極為香淨。", "「阿難 當知，爾時，閻浮地東、西、南、北十萬由旬，", "諸山 河石壁皆自消滅，四大海水各據一方。", "時，閻 浮地極為平整，如鏡清明，舉閻浮地內，", "穀 食豐賤，人民熾盛，多諸珍寶，", "諸村落相近，雞 鳴相接。", "是時，弊花果樹枯竭，穢惡亦自消滅，", "其餘甘美果樹，香氣殊好者，皆生乎地。爾時。", "時氣和適，四時順節，人身之中無有百八之 患。", "貪欲、瞋恚、愚癡不大殷勤，", "人心平均皆同 一意，相見歡悅，", "善言相向，言辭一類，無有差 別，", "如彼欝單曰人，而無有異。", "是時，閻浮地 內人民大小皆同一嚮，無若干之差別也。", "彼時男女之類意欲大小便，", "地自然開，事訖 之後，地復還合。", "爾時，閻浮地內自然生粳米，", "亦無皮裹，極為香美，食無患苦。", "所謂金銀、 珍寶、車 璩 、瑪瑙、", "真珠、虎珀，各散在地，無 人省錄。", "是時，人民手執此寶，自相謂言：", "『昔者 之人由此寶故，各相傷害，", "繫閉牢獄，更無 數苦惱，", "如今此寶與瓦石同流，無人守護。』", "「爾 時，法王出現，名曰蠰佉，", "正法治化，七寶成 就。", "所謂七寶者，輪寶、象寶、", "馬寶、珠寶、玉女寶、 典兵寶、", "守藏之寶，是謂七寶，", "領此閻浮地 內，不以刀杖，自然靡伏。", "如今，阿難！", "四珍之 藏，乾陀越國伊羅鉢寶藏，", "多諸珍琦異物， 不可稱計；", "第二彌梯羅國般綢大藏，亦多珍 寶；", "第三須賴吒大國有寶藏，亦多珍寶；", "第 四婆羅 ［木＊奈］ 蠰佉有大藏，", "多諸珍寶，不可稱 計，", "此四大藏自然應現，諸守藏人各來白王：", "『唯願大王以此寶藏之物，惠施貧窮！", "』爾時， 蠰佉大王得此寶已，", "亦復不省錄之，意 無財物之想。", "時，閻浮地內自然樹上生衣，極 細柔軟，", "人取著之，如今欝單曰人自然 樹上生衣，而無有異。", "「爾時，彼王有大臣，名 曰修梵摩，", "是王少小同好，王甚愛敬，", "又且 顏貌端正，不長、不短，不肥、", "不瘦，不白、不黑，不 老、不少。", "是時，修梵摩有妻，名曰梵摩越，", "玉 女中最極為殊妙，如天帝妃，", "口作優鉢 蓮花香，身作栴檀香，", "諸婦人八十四態，永無 復有，亦無疾病亂想之念。", "爾時，彌勒菩薩於 兜率天，", "觀察父母不老、不少，便降神下應，", "從右脅生，如我今日右脅生無異，", "彌勒菩 薩亦復如是。", "兜率諸天各各唱令：『彌勒菩薩 已降神下。", "』是時，修梵摩即與子立字，名曰 彌勒，", "有三十二相、八十種好，莊嚴其身，身 黃金色。", "爾時，人壽極長，無有諸患，", "皆壽八萬 四千歲，女人年五百歲然後出適。", "爾時，彌勒 在家未經幾時，便當出家學道。", "「爾時，去雞 頭城不遠，", "有道樹名曰龍華，高一由旬，廣 五百步。", "時，彌勒菩薩坐彼樹下，成無上道果；", "當其夜半，彌勒出家，即其夜成無上道。", "時， 三千大千剎土，六變震動，", "地神各各相告曰：『今 彌勒已成佛！", "』轉至聞四天王宮，『彌勒已成 佛道！", "』轉轉聞徹三十三天、焰天、兜率天、化自 在天、", "他化自在天，聲展轉乃至梵天：『彌勒已 成佛道！", "』爾時，魔名大將以法治化，聞如來 名教音響之聲，", "歡喜踊躍，不能自勝，七日 七夜不眠不寐。", "是時，魔王將欲界無數天 人，至彌勒佛所，恭敬禮拜。", "「彌勒聖尊與諸 天漸漸說法微妙之論，所謂論者：", "施論、戒論、 生天之論，欲不淨想，出要為妙。", "爾時，彌勒見 諸人民已發心歡喜，諸佛世尊常所說法：", "苦、習、盡、道，悉與諸天人廣分別其義。", "爾時， 座上八萬四千天子諸塵垢盡，得法眼淨。", "爾 時，大將魔王告彼界人民之類曰：『汝等速出 家。", "所以然者，彌勒今日已度彼岸，亦當 度汝等使至彼岸。』", "「爾時，雞頭城中長者，名 曰善財，", "聞魔王教令，又聞佛音響，", "將八 萬四千眾，至彌勒佛所，頭面禮足，在一 面坐。", "爾時，彌勒漸與說法微妙之論，所謂論 者：", "施論、戒論、生天之論，欲不淨想，出要為 妙。", "爾時，彌勒見諸人民心開意解，如諸佛 世尊常所說法：", "苦、習、盡、道，與諸人民廣分 別義。", "爾時，座上八萬四千人，諸塵垢盡，得法 眼淨。", "是時，善財與八萬四千人等，即前白佛：", "『求索出家，善修梵行，盡成阿羅漢道。", "』爾時， 彌勒初會八萬四千阿羅漢。", "「是時，蠰佉王 聞彌勒已成佛道，", "便往至佛所，欲得聞 法。", "時，彌勒與說法，初善、中善、竟善，義理 深邃。", "爾時，大王復於異時立太子，", "賜剃頭 師珍寶，復以雜寶與諸梵志，", "將八萬四千 眾生，往至佛所，", "求作沙門；盡成道果， 得阿羅漢。", "「是時，修梵摩大長者聞彌勒已 成佛道，", "將八萬四千梵志之眾，往至佛所，", "求作沙門；得阿羅漢。", "唯修梵摩一人，斷 三結使，必盡苦際。", "「是時，佛母梵摩越復將 八萬四千婇女之眾，", "往至佛所，求作沙門。", "是時，諸女人盡得羅漢；", "唯有梵摩越一人， 斷三結使，成須陀洹。", "「爾時，諸剎利婦聞彌 勒如來出現世間，成等正覺，", "數千萬眾往 至佛所，頭面禮足，在一面坐。", "各各生心，求 作沙門，出家學道；", "或有越次取證，或有 不取證者。", "爾時，阿難！", "其不越次取證者， 盡是奉法之人，", "患厭一切世間不可樂想。", "爾 時，彌勒當說三乘之教，如我今日弟子之 中，", "大迦葉者行十二頭陀，過去諸佛所善 修梵行，", "此人常佐彌勒，勸化人民。」", "爾時，迦 葉去如來不遠，", "結加趺坐，正身正意，繫念 在前。", "爾時，世尊告迦葉曰：「吾今年已衰耗， 年向八十餘。", "然今如來有四大聲聞，", "堪任遊 化，智慧無盡，眾德具足。", "云何為四？", "所謂大 迦葉比丘、君屠鉢漢比丘、", "賓頭盧比丘、羅云 比丘。", "汝等四大聲聞要不般涅槃，", "須吾法 沒盡，然後乃當般涅槃。", "大迦葉亦不應般 涅槃，要須彌勒出現世間。", "所以然者，彌勒 所化弟子，", "盡是釋迦文佛弟子，由我遺化得 盡有漏。", "摩竭國界毘提村中，大迦葉於彼 山中住。", "又彌勒如來將無數千人眾，前後圍 遶，往至此山中，", "遂蒙佛恩，諸鬼神當與開 門，使得見迦葉禪窟。", "「是時，彌勒伸右手 指示迦葉，告諸人民：", "『過去久遠釋迦文佛弟 子，名曰迦葉！", "今日現在，頭陀苦行最為第 一。", "』是時，諸人民見已，歎未曾有，", "無數百千眾 生，諸塵垢盡，得法眼淨。", "或復有眾生，見迦 葉身已，", "此名為最初之會，九十六億人，皆得 阿羅漢。", "斯等之人皆是我弟子。", "所以然者， 悉由受我教訓之所致也。", "亦由四事因緣： 惠施、仁愛、利人、等利。", "爾時，阿難！", "彌勒如來當 取迦葉僧伽梨著之。", "是時，迦葉身體奄然星 散。", "是時，彌勒復取種種香華，供養迦葉。", "所 以然者，諸佛世尊有恭敬心於正法故。", "彌 勒亦由我所受正法化，得成無上正真之 道。", "「阿難當知，彌勒佛第二會時，有九十四 億人，", "皆是阿羅漢，亦復是我遺教弟子，", "行四 事供養之所致也。", "又彌勒第三之會九十二 億人，", "皆是阿羅漢，亦復是我遺教弟子。", "「爾時， 比丘姓號，皆名慈氏弟子，", "如我今日諸聲聞 皆稱釋迦弟子。", "爾時，彌勒與諸弟子說法： 『汝等比丘，", "當思惟無常之想、樂有苦想、計 我無我想、", "實有空想、色變之想、青瘀之想、 腹脹之想、", "食不消想、血想、一切世間不可樂 想。", "所以然者，比丘當知，此十想者，", "皆是過 去釋迦文佛與汝等說，", "令得盡有漏，心得 解脫。", "「『若復此眾中釋迦文佛弟子，", "過去時修 於梵行，來至我所；或於釋迦文佛所，", "奉持 其法，來至我所；", "或復於釋迦文佛所，供養 三寶，來至我所；", "或於釋迦文佛所，彈指之 頃，修於善本，", "來至此間；或於釋迦文佛所， 行四等心，", "來至此者；或於釋迦文佛所，受 持五戒、", "三自歸，來至我所；或於釋迦文佛所，", "起神寺廟，來至我所；或於釋迦文佛所，", "補 治故寺，來至我所；或於釋迦文佛所，", "受八 關齋法，來至我所；或於釋迦文佛所，", "香花 供養，來至此者；或復於彼聞佛法，", "悲泣墮 淚，來至我所；或復於釋迦文佛，", "專意聽法， 來至我所；復盡形壽善修梵行，", "來至我所； 或復書讀諷誦，", "來至我所者；承事供養，來至 我所者。』", "「是時，彌勒便說此偈：", "「『增益戒聞德，　　禪及思惟業，", "善修於梵行，　　而來至我所。", "勸施發歡心，　　修行心原本，", "意無若干想，　　皆來至我所。", "或發平等心，　　承事於諸佛，", "飯食 於 聖眾，　　皆來至我所。", "或誦戒契經，　　善習與人說，", "熾然於法本，　　今來至我所。", "釋種善能化，　　供養諸舍利，", "承事法供養，　　今來至我所。", "若有書寫經，　　頒宣於素上，", "其有供養經，　　皆來至我所。", "繒綵及眾物，　　供養於神寺，", "自稱南無佛，　　皆來至我所。", "供養於現在，　　諸佛過去者，", "禪定正平等，　　亦無有增減。", "是故於佛法，　　承事於聖眾，", "專心事三寶，　　必至無為處。』", "「阿難當知，彌勒如來在彼眾中當說此偈。", "爾時，眾中諸天、人民思惟此十想，", "十一姟人 諸塵垢盡，得法眼淨。", "「彌勒如來千歲之中，眾 僧無有瑕穢，", "爾時恒以一偈，以為禁戒：", "「『口意不行惡，　　身亦無所犯，", "當除此三行，　　速脫生死淵。』", "「過千歲之後，當有犯戒之人，遂復立戒。", "「彌 勒如來當壽八萬四千歲，", "般涅槃後，遺法當 存八萬四千歲。", "所以然者，爾時眾生皆是 利根。", "其有善男子、善女人，欲得見彌勒佛，", "及三會聲聞眾，及鷄頭城，", "及見蠰佉王，并 四大藏珍寶者，", "欲食自然粳米，并著自然 衣裳，", "身壞命終生天上者，彼善男子、", "善女 人，當勤加精進，無生懈怠，", "亦當供養諸法 師承事，名華、", "［打－丁＋鳥］ 香種種供養無令有失。", "如 是，阿難！", "當作是學。」", "爾時，阿難及諸大會聞 佛所說，歡喜奉行。", "聞如是：", "一時，佛在舍衛國祇樹給孤獨 園。", "爾時，眾多比丘集普會講堂，", "各生此念： 「今如來甚奇！甚特！", "過去取般涅槃者，亦復知 彼姓名、", "種族、持戒、翼從，皆悉分明，", "三昧，智慧、 解脫、解脫見慧，", "身壽有長短，皆悉知之。", "云何， 諸賢！", "為是如來分別法處，極為清淨，", "知彼 諸佛姓字所出之處乎？", "為是諸天來至佛所 而告此耶？」", "爾時，世尊以天耳徹聞眾多比丘 各興此論，", "便往至諸比丘所，在中央坐。", "爾 時，世尊告諸比丘：「汝等集此為何等論？", "欲 說何法？」", "諸比丘白佛言：「我等集此，論正法 之要。", "諸人各興此論議：『如來甚奇！甚特！", "乃 能知過去諸佛世尊名字姓號，", "智慧多少，靡 不貫博，甚可奇雅。", "云何，諸賢！", "為是如來分 別法界，極為清淨，", "知彼諸佛姓字所出之 處乎？", "為是諸天來至佛所而告此耶？』」", "爾時， 世尊告諸比丘：", "「汝等欲得聞過去諸佛神智 之力乎？", "姓字名號、壽命長短耶？」", "諸比丘對曰： 「今正是時，唯願世尊敷演其義。」", "佛告諸比 丘：「汝等善思念之，吾當與汝廣演其義。", "」爾 時，眾多比丘從佛受教。", "世尊告曰：「比丘當 知，過去九十一劫有佛出世，", "號毘婆尸如 來、至真、等正覺。", "復次，三十一劫有佛出世，", "名 式詰如來、至真、等正覺。", "復於彼三十一劫 內有佛，名毘舍羅婆如來出世。", "於此賢劫 中有佛出世，名拘屢孫如來。", "復於賢劫 中有佛出世，", "名拘那含牟尼如來、至真、等 正覺。", "復於賢劫中有佛出世，名曰迦葉。", "復 於賢劫中，我出現世，", "釋迦文如來、至真、等正 覺。」", "爾時，世尊便說此偈：", "「九十一劫中，　　有佛毘婆尸，", "三十一劫中，　　式詰如來出。", "復於彼劫中，　　毘舍如來現，", "今日賢劫中，　　四佛復出世。", "拘孫那迦葉，　　如日照世間，", "欲知名字者，　　其號悉如是。", "「毘婆尸如來者出剎利種，", "式詰如來亦出剎 利種，毘舍羅婆如來亦出剎利種，", "拘屢孫如 來出婆羅門種，", "拘那含牟尼如來出婆羅門 種，", "迦葉如來出婆羅門種，如我今出剎利 種。」", "爾時，世尊便說此偈：", "「前佛有現者，　　皆出剎利種，", "拘孫至迦葉，　　出於婆羅門。", "最尊無能及，　　我今天人師，", "諸根而淡泊，　　出於剎利姓。", "「 毘婆 尸如來姓瞿曇，", "式詰如來亦出瞿曇， 比舍羅婆亦出瞿曇，", "迦葉如來出迦葉姓， 拘樓孫、拘那含牟尼亦出迦葉姓，", "同上 而無異，我今如來姓瞿曇。」", "爾時，世尊便說 此偈：", "「如初諸三佛，　　出於瞿曇種，", "後三至迦葉，　　出於迦葉姓。", "如我今現在，　　天人所奉敬，", "諸根而淡泊，　　出於瞿曇姓。", "「比丘當知，毘婆尸如來姓拘鄰若，", "式詰如 來亦出拘鄰若，", "毘舍羅婆如來亦出拘鄰 若，拘屢孫如來出婆羅墮，", "拘那含牟尼如來 亦出婆羅墮，迦葉如來亦出婆羅墮，", "如 我今如來、至真、等正覺出於拘鄰若。」", "爾時， 世尊便說此偈：", "「如初諸三佛，　　出於拘鄰若，", "後三至迦葉，　　出於婆羅墮。", "如我今現在，　　天人所奉敬，", "諸根而淡泊，　　出於拘鄰若。", "「毘婆尸如來坐波羅利華樹下而成佛道，", "式詰如來坐分陀利樹下而成佛道，", "毘 舍羅婆如來坐波羅樹下而成佛道，", "拘屢 孫如來坐尸利沙樹下而成佛道，", "拘那 含牟尼如來坐優頭跋羅樹下而成佛 道，", "迦葉如來坐尼拘留樹下而成道果，", "如 我今日如來坐吉祥樹下而成佛道。」", "爾時， 世尊便說此偈：", "「初一成佛道，　　波羅利樹下，", "式坐分陀利，　　毘舍坐波羅。", "拘孫坐尸利，　　拘那跋羅下，", "迦葉拘留樹，　　吉祥我成道。", "七佛天中天，　　照明於世間，", "因緣坐諸樹，　　各成其道果。", "「毘婆尸如來弟子有十六萬八千之眾，", "式詰 如來弟子之眾有十六萬，", "毘舍羅婆如來弟 子之眾十萬，", "拘屢孫如來弟子之眾有八萬 人，", "拘那含牟尼如來弟子之眾有七萬人，", "迦葉如來弟子之眾有六萬眾，", "如我今日弟 子之眾有千二百五十人，", "皆是阿羅漢，諸漏 永盡，無復諸縛。」", "爾時，世尊便說此偈：", "「百千六萬八，　　毘婆尸弟子，", "百千及六萬，　　式詰弟子眾。", "百千比丘眾，　　毘舍婆弟子，", "拘孫八萬眾，　　拘那含七萬。", "迦葉六萬眾，　　皆是阿羅漢，", "我今釋迦文，　　千二百五十。", "皆是真人行，　　布現於法教，", "遺法餘弟子，　　其數不可計。", "「毘婆尸如來侍者，名曰大導師；式詰如來侍 者，", "名曰善覺；毘舍羅婆如來侍者，", "名曰勝 眾；拘屢孫如來侍者，", "名曰吉祥；拘那含牟 尼如來侍者，名曰毘羅先；", "迦葉如來侍者， 名曰導師；我今侍者，名曰阿難。」", "爾時，世尊 便說此偈：", "「大道及善覺，　　勝眾與吉祥，", "毘羅先導師，　　阿難第七侍。", "此人供養聖，　　無有不得時，", "諷誦又受持，　　不失其義理。", "「毘婆尸如來壽八萬四千歲，式詰如來壽七 萬歲，", "毘舍羅婆如來壽六萬歲，拘屢孫如來 壽五萬歲，", "拘那含如來壽四萬歲，迦葉如來 壽二萬歲，", "如我今日壽極減少，極壽不過 百歲。」", "爾時，世尊便說斯偈：", "「初佛八萬四，　　次佛七萬歲，", "毘舍婆六萬，　　拘留壽五萬、", "一萬二萬年，　　是拘那含壽，", "迦葉壽二萬，　　唯我壽百年。", "「如是，諸比丘！", "如來觀知諸佛姓名號字，皆悉 分明，", "種類出處靡不貫練，持戒、", "智慧、禪定、 解脫皆悉了知。」", "爾時，阿難白世尊言：「如來亦 說，", "過去恒沙諸佛取滅度者，", "如來亦知；當 來恒沙諸佛方當來者，如來亦知。", "如來何故 不記爾許佛所造？", "今但說七佛本末。」", "佛告 阿難：「皆有因緣本末故，", "如來說七佛之本 末；過去恒沙諸佛，亦說七佛本末；", "將來彌勒 出現世時，亦當記七佛之本末；", "若師子應 如來出時，亦當記七佛之本末；", "若承柔順佛 出世時，亦當記七佛之本末；", "若光焰佛出 現世時，亦當記七佛之名號；", "若無垢佛出 現世時，亦當記迦葉之本末；", "若寶光佛出 現世時，亦當記釋迦文之本末。」", "爾時，世尊 便說此偈：", "「師子柔順光，　　無垢及寶光，", "彌勒之次第，　　皆當成佛道。", "彌勒記式佛，　　師子記毘舍，", "柔順記拘孫，　　光焰記牟尼，", "無垢記迦葉，　　皆說曩所緣，", "寶光成三佛，　　亦當記我號。", "過去諸三佛，　　及以將來者，", "皆當記七佛，　　曩所之本末。", "「由此因緣故，如來記七佛名號耳。」", "爾時，阿 難白世尊言：「此經名何等？", "當云何奉行？」", "佛 告阿難：「此經名曰記佛名號，當念奉行。」", "爾 時，阿難及諸比丘聞佛所說，歡喜奉行。", "聞如是：", "一時，佛在羅閱城迦蘭陀竹園 所。", "是時，師子長者往至舍利弗所，頭面禮足， 在一面坐。", "爾時，師子長者白舍利弗言：「唯 願尊者當受我請？」", "是時，舍利弗默然受請。", "是時，長者見尊者默然受請，便從坐起，", "禮 足而退，復至大目乾連、離越、大迦葉、", "阿那 律、迦旃延、滿願子、優婆離、須菩提、", "羅 云、均頭沙彌，如此上首者請五百人。", "是時， 師子長者即還，", "辦具種種極妙飲食，敷好 座具，又白：", "「時到，諸真人羅漢靡所不監，", "今食具已辦，唯願屈顧，臨覆下舍。」", "爾時，諸 大聲聞各著三衣，持鉢入城至長者家。", "時， 長者見諸最尊坐已定，手自斟酌，行種種 飲食。", "見諸聖眾食已訖，行清淨水。", "人施一 白 ［疊＊毛］ ，前受呪願。", "是時，尊者舍利弗與長者 說極妙之法，便從坐起而去。", "還詣靜室。", "爾 時，羅云至世尊所，頭面禮足，在一面坐。", "爾 時，世尊問曰：「汝今為從何來？」", "羅云報云：「師 子長者今日來見請。」", "佛告之曰：「云何，羅云！", "飲食為妙？", "為不妙？", "為細耶？", "為麁耶？」", "羅云報 曰：「飲食極妙，又且豐多。", "今此白 ［疊＊毛］ ，從彼得 之。」", "佛告羅云：「眾僧斯有幾人？", "上坐是誰？」", "羅云白佛言：「和上舍利弗最為上首，", "及諸 神德弟子有五百人。」", "佛告羅云。", "「云何，羅云！", "彼長者獲福為多乎？」", "羅云白佛言：「唯然，世 尊！", "彼長者得福之報不可稱計。", "施一羅漢 其福難限，何況大神妙天人所敬奉？", "今五百 人均是真人，其福有何可量？」", "佛告羅云， 「今施五百羅漢之功德，", "若從眾中僧次， 請一沙門，請已，供養；", "計此眾中差人之福， 及與五百羅漢之福，", "百倍、千倍、巨億萬倍、不 可以譬喻為比。", "所以然者，眾中所差，其 福難限，獲甘露滅盡之處。", "羅云當知，猶如 有人自誓說曰：", "『吾要當飲此江河諸水。", "』彼 人為堪任不乎？」", "羅云白佛言：「不也。世尊！", "所 以然者，此閻浮地極為廣大。", "此閻浮地有 四大河：一者恒伽，", "二者新頭，三者私陀， 四者博叉。", "一一河者，從有五百。", "然此人 終不能飲水使盡，但勞其功，事終不成 也。」", "「彼人復作是說：『我自有方便因緣，", "可得 飲諸水使盡。", "』云何有因緣得飲諸水？", "爾 時，彼人便作是念：『我當飲海水。", "所以然者， 一切諸流，皆歸投乎海。", "』云何，羅云！", "彼人能 得飲諸水乎？」", "羅云白佛言：「如此方便，可得 飲水使盡。", "所以然者，一切諸流皆歸乎 海，", "由此因緣故，彼人得飲水盡。」", "佛告之 曰：「如是。羅云！", "一切私施猶如彼流，或獲 福，", "或不獲福，眾僧者如彼大海。", "所以然 者，流河決水以入于海，", "便滅本名，但有大 海之名耳。羅云！", "此亦如是，今此十人皆從 眾中出，非眾不成。", "云何為十？", "所謂向須陀 洹、得須陀洹、向斯陀含、", "得斯陀含、向阿那含、 得阿那含、", "向阿羅漢、得阿羅漢、辟支佛、佛，", "是 謂十人皆由眾中，非獨自立。羅云！", "當以此 方便，知其眾中差者，其福不可限量。", "是故， 羅云！", "善男子、善女人欲求其福不可稱計， 當供養聖眾。", "羅云當知，猶如有人以酥 投水，凝，", "不得廣普，若以油投水，則遍滿其 上。", "是故，羅云，當念供養聖眾比丘僧。", "如是， 羅云！", "當作是學。」", "爾時，師子長者聞如來歎 說施眾之福，不歎說餘福。", "爾時，長者以餘 時，", "往至世尊所，頭面禮足，在一面坐。", "爾時， 師子長者白世尊言：", "「適聞如來而歎說施 眾之福，", "不歎別請人之福，自今已後常當 供養聖眾。」", "佛告之曰：「我不作爾說：", "『當供 養聖眾，不供養餘人。", "』今施畜生猶獲其福， 何況餘人？", "但我所說者福有多少。", "所以然 者，如來聖眾可敬、可貴，是世間無上福田。", "今此眾中有四向、四得及聲聞乘、辟支佛乘、 佛乘。", "其有善男子、善女人欲得三乘之道 者，當從眾中求之。", "所以然者，三乘之道 皆出乎眾。長者！", "我觀此因緣義，故而說此 語耳。", "亦不教人應施聖眾，不應施餘人。」", "爾時，長者白世尊言：「如是，如尊教勅，自 今已後。", "若作福業，盡當供養聖眾，不選 擇人施。」", "爾時，世尊與彼長者說微妙之法， 令發歡悅之心。", "長者聞法已，即從座起，頭 面禮足，便退而去。", "爾時，師子長者意欲施 立福業。", "爾時，諸天來告之曰：「此是向須陀洹之人，", "此 是得須陀洹，施此得福多，施此得福少。」", "爾 時，天人即歎頌曰：", "「如來歎擇施，　　與此諸德士，", "施此獲福多，　　如良田生苗。」", "爾時，師子長者默然不對。", "爾時，天人復語長 者：「此是持戒人，", "此是犯戒人；此向須陀洹人，", "此是得須陀洹人；此向斯陀含人，此是得斯 陀含人；", "此向阿那含，此得阿那含；此向 阿羅漢，此得阿羅漢；", "此是聲聞乘，此是辟支 佛乘，", "此是佛乘；施此得福少，施此得福多。」", "爾時，師子長者默然不對。", "何以故爾？", "但憶如 來教誡，不選擇而施。", "爾時，師子長者復以 餘時，至世尊所，", "頭面禮足，在一面坐：「我自 憶念請聖眾飯之，", "有天來告我言：『此是持 戒，此是犯戒；", "此人向須陀洹，此人得須陀洹， 乃至三乘皆悉分別。", "』又說此偈：", "「『如來歎擇施，　　與此諸德士，", "施此獲福多，　　如良田生苗。』", "「時我復作是念：『如來教誡不可違戾，", "豈 當生心選擇施乎？", "終無是非之心、高下之 意也。", "』時我復作是念：『我當盡施一切眾 生之類，", "汝自持戒受福無窮，若使犯戒自 受其殃。", "但愍眾生，非食不濟命。』」", "佛告長 者：「善哉！善哉！長者！", "行過弘誓，菩薩所施心 恒平等。", "長者當知，若菩薩惠施之日，", "諸天來 告之：『族姓子當知，", "此是持戒人，此是犯戒 人，施此得福多，施此得福少。", "』爾時，菩薩 終無此心：『此應施，此不應施。", "』然菩薩執意 而無是非，", "亦不言此持戒，亦不言此犯戒。", "是故，長者！", "當念平等惠施，長夜之中獲福無 量。」", "是時，師子長者憶如來教誡，熟視世尊，", "意不移動，即於座上，得法眼淨。", "是時，師子 長者即從座起，頭面禮足，便退而去。", "爾時， 長者去未久，佛告諸比丘曰：", "「此師子長 者憶平等施故，", "又視如來從頭至足，即 於座上得法眼淨。", "」爾時，世尊告諸比丘：", "「我優婆塞中第一弟子平等施者，所謂師子 長者是。」", "爾時，諸比丘聞佛所說，歡喜奉行。", "聞如是：", "一時，佛在羅閱城迦蘭陀竹園 所，", "與大比丘眾五百人俱。", "爾時，尊者舍利 弗在耆闍崛山中屏猥之處，補納故衣。", "爾時，有十千梵迦夷天從梵天沒，來至舍 利弗所，", "頭面禮足，各圍遶侍焉，又以此偈 而歎頌曰：", "「歸命人中上，　　歸命人中尊，", "我等今不得，　　為依何等禪？」", "是時，十千梵迦夷天說此語已，舍利弗默 然可之。", "爾時，諸天以見舍利弗默然可已， 即禮足退去。", "諸天去未遠，舍利弗即入金 剛三昧。", "是時有二鬼，一名伽羅，二名優婆 伽羅。", "毘沙門天王使遣至毘留勒天王所，欲 論人、天之事。", "是時，二鬼從彼虛空而過，", "遙 見舍利弗結加趺坐，繫念在前，", "意寂然定， 伽羅鬼謂彼鬼言：", "「我今堪任以拳打此沙 門頭。」", "優波伽羅鬼語第二鬼曰：「汝勿興此 意打沙門頭。", "所以然者，此沙門極有神德，", "有大威力，此尊名舍利弗，", "世尊弟子中聰明 高才無復過是，智慧弟子中最為第一。", "備 於長夜，受苦無量。」", "是時，彼鬼再三曰：「我能 堪任打此沙門頭。」", "優波伽羅鬼報曰：「汝今不 隨我語者，", "汝便住此，吾欲捨汝去此。」", "惡 鬼曰：「汝畏此沙門乎？」", "優波伽羅鬼曰：「我實 畏之，設汝以手打此沙門者，", "此地當分 為二分，正爾，當暴風疾雨，", "地亦振動，諸天 驚動，地已振動，", "四天王亦當驚怖，四天王已 知於我等，不安其所。」", "是時惡鬼曰：「我今堪 任辱此沙門。", "」善鬼聞已，便捨而去。", "時，彼惡鬼 即以手打舍利弗頭。", "是時，天地大動，四面 有暴風疾雨，尋時來至，", "地即分為二分，此 惡鬼即以全身墮地獄中。", "爾時，尊者舍利弗 即從三昧起，整衣服，下耆闍崛山，", "往詣竹 園至世尊所，頭面禮足，在一面坐。", "爾時，佛 告舍利弗曰：「汝今身體無有疾病乎？」", "舍利 弗言：「體素無患，唯苦頭痛。」", "世尊告曰：「伽羅鬼 以手打汝頭。", "若當彼鬼以手打須彌山者， 即時須彌山便為二分。", "所以然者，彼鬼有 大力故。", "今此鬼受其罪報故，全身入阿 鼻地獄中。」", "爾時，世尊告諸比丘：「甚奇！甚特！", "金剛三昧力乃至於斯。", "由此三昧力故無 所傷害，", "正使須彌山打其頭者，終不能 動其毫毛。", "所以然者，比丘聽之。", "於此賢 劫中有佛，名拘屢孫如來、至真、等正覺。", "彼 佛有二大聲聞，一名等壽，二名大智。", "比 丘等壽，神足第一；比丘大智，智慧第一，", "如我 今日舍利弗智慧第一，目乾連神足第一。", "爾 時，等壽、大智二比丘，俱得金剛三昧。", "當於 一時，等壽比丘在閑靜之處，入金剛三昧。", "時，諸牧牛人、牧羊人、取薪草人，見此比丘坐 禪，", "各各自相謂言：『此沙門今日以取無常。", "』是 時，牧牛人及取薪人集諸草木，", "［卄／積］ 比丘身 上，以火燒已，而捨之去。", "「是時，等壽比丘即 從三昧起，正衣服，便退而去。", "是時，比丘即 以其日，著衣持鉢，入村乞食。", "時，諸取薪 草人見此比丘村中乞食，各各自相謂言：", "『此 比丘昨日以取命終，我等以火焚燒，", "今日 復還活，今當立字，字曰還活。", "』若有比丘 得金剛三昧者，火所不燒，", "刀斫不入，水所 不漂，不為他所中傷。", "如是，比丘！", "金剛三 昧威德如是。", "今舍利弗得此三昧，", "舍利弗 比丘多遊二處：空三昧、金剛三昧。", "是故，諸比 丘！", "當求方便，行金剛三昧。", "如是，比丘！", "當 作是學。」", "爾時，世尊告諸比丘：「我當教汝，", "如舍利弗 比丘，比丘智慧、大智、分別廣智、", "無邊智、捷 疾之智、普遊智、利智、", "甚深智、斷智，少欲知足、 閑靜勇猛、", "念不分散、戒成就、三昧成就、 智慧、", "解脫見慧成就、柔和無爭、去惡辯 了、", "忍諸言語、歎說離惡、常念去離、", "愍念生 萠、然熾正法、與人說法無有厭足。」", "爾時， 世尊便說此偈：", "「十千諸天人，　　盡是梵迦夷，", "自歸舍利弗，　　於靈鷲山頂：", "『歸命人中上，　　歸命人中尊，", "我今不能知，　　為依何等禪？", "』 \n如是弟子花，　　莊嚴佛道樹，", "如天晝度園，　　快樂無有比。」", "「弟子華者，即是舍利弗比丘是。", "所以然者， 此人則能莊嚴佛樹。", "道樹者，即如來是也；如 來能覆蓋一切眾生。", "是故，比丘！", "當念勤加勇 猛精進，如舍利弗比丘。", "如是，比丘！", "當作是 學。」", "爾時，諸比丘聞佛所說，歡喜奉行。"]</script>
@@ -998,10 +1036,18 @@ function refFromKey(key){
   document.head.appendChild(style);
 })();
 // EBT (SuttaCentral) cross-tradition parallels, keyed by sutta id: {sid: {full, resembling}}.
-// Default {} on pages with no sutta-level tree nodes (MN/DN: the whole page is one sutta,
-// so no TREE node's id ever matches a key here) — see debabel.parallels/index_cards.py's
-// sibling per-row button on the MN/DN/DA/MA INDEX pages, which this doesn't replace.
+// On grouped pages (AN/SN/…) this holds one entry per sutta TREE node, so each sutta
+// header matches a key and gets its own button (renderGroupMain). On a single-sutta page
+// (MN/DN/DA/MA: the whole page is one sutta) it holds the ONE page-own entry, keyed by the
+// page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
+// button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {"ea48.1": {"resembling": [{"uid": "an10.217-219", "href": "../../an/an10/index.html#an10.217-219"}, {"uid": "ma15", "href": "../../ma/ma15/index.html"}]}, "ea48.2": {"full": [{"uid": "ma37", "href": "../../ma/ma37/index.html"}, {"uid": "lzh-sarv-kd13#t0239b07", "href": null}, {"uid": "lzh-mi-kd15", "href": null}, {"uid": "t33", "href": null}, {"uid": "t34", "href": null}, {"uid": "lzh-mu-kd14", "href": null}, {"uid": "lzh-sarv-kd13", "href": null}, {"uid": "an8.20", "href": "../../an/an8/index.html#an8.20"}, {"uid": "lzh-dg-kd14", "href": null}, {"uid": "pli-tv-kd19", "href": null}, {"uid": "t35", "href": null}, {"uid": "san-mu-kd14", "href": null}, {"uid": "xct-mu-kd14", "href": null}]}, "ea48.4": {"full": [{"uid": "da1", "href": "../../da/da1/index.html"}, {"uid": "sht-sutta1", "href": null}, {"uid": "t3", "href": null}, {"uid": "t4", "href": null}, {"uid": "dn14", "href": "../../dn/dn14/index.html"}, {"uid": "t2", "href": null}, {"uid": "uf10", "href": null}], "resembling": [{"uid": "sf29", "href": null}, {"uid": "sf36", "href": null}, {"uid": "sn12.65", "href": "../../sn/sn12/index.html#sn12.65"}, {"uid": "sf56", "href": null}, {"uid": "sf30", "href": null}, {"uid": "sf296", "href": null}, {"uid": "sf250", "href": null}, {"uid": "sf28", "href": null}, {"uid": "sf31", "href": null}, {"uid": "sf33", "href": null}, {"uid": "sf32", "href": null}, {"uid": "san-lo-mvu94", "href": null}, {"uid": "sf34", "href": null}]}, "ea48.6": {"resembling": [{"uid": "sa1330", "href": "../../sa/sa1301-1362/index.html#sa1330"}, {"uid": "sa-2.329", "href": null}, {"uid": "ud4.4", "href": null}]}};
+// This page's OWN sutta's EBT parallels ({ref, sid}) on a single-sutta page, else null.
+// The button attaches to PAGE_EBT_NODE — the first top-level TREE node (the sutta-title
+// row) — mirroring the per-sutta tree button on grouped pages. Also reachable via the
+// ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
+const PAGE_EBT = null;
+const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1374,6 +1420,26 @@ function ebtClose(){
   document.getElementById('ebtPop').hidden=true;
 }
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ebtClose(); });
+
+// ── ⌨ Keyboard-shortcuts panel ("?" opens it) ──
+function ksOpen(){
+  document.getElementById('ksOverlay').classList.add('show');
+  document.getElementById('ksPop').hidden=false;
+}
+function ksClose(){
+  document.getElementById('ksOverlay').classList.remove('show');
+  document.getElementById('ksPop').hidden=true;
+}
+// "?" (= Shift+/) anywhere outside a text field opens the shortcuts panel — the near-
+// universal web convention (GitHub/Gmail/Slack/…). Guarded against inputs so it never
+// fires mid-typing (e.g. a literal "?" in the search or jump box).
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='?' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t=ev.target, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault(); ksOpen();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ksClose(); });
 function scrollToEl(id){
   if(id.indexOf('tr-')===0) ensureRowBuilt(id.slice(3));
   const el=document.getElementById(id);
@@ -2417,6 +2483,9 @@ function renderGroupMain(node, parent){
   // MN/DN/DA/MA leave it {} (their button lives on the collection index page instead).
   const ebt=EBT_PARALLELS[node.id];
   if(ebt) gh.appendChild(ebtButtonFor(node.id, ebt));
+  // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
+  // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
+  else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2521,7 +2590,11 @@ function renderLeafMain(sec, parent){
   const mt=mk('span','mt'); mt.textContent=so?'−':'+';
   const sl=mk('span','sl'); sl.textContent=sec.label;
   const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
-  sh.append(mt,sl,sc);
+  sh.append(mt,sl);
+  // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
+  // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
+  if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
+  sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
   if(so) sb.appendChild(buildLeafBody(sec));
@@ -3017,6 +3090,15 @@ window.addEventListener('hashchange', jumpToHash);
     else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🦘
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
 })();
 </script>
 </body>

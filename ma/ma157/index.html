@@ -548,6 +548,19 @@ a.ebt-item{color:var(--accent);text-decoration:none}
 a.ebt-item:hover{background:var(--toc-hover);border-color:var(--accent)}
 .ebt-empty{font-size:.8rem;color:var(--muted);font-family:sans-serif}
 
+/* ── ⌨ Keyboard-shortcuts panel — reuses the .ebt-* modal chrome; "?" opens it ── */
+.ks-list{display:flex;flex-direction:column;gap:.15rem}
+.ks-row{display:flex;align-items:baseline;gap:.7rem;padding:.32rem .1rem}
+.ks-keys{flex:0 0 6rem;display:flex;flex-wrap:wrap;gap:.25rem}
+kbd.ks-key{font-family:monospace;font-size:.78rem;min-width:1.3em;text-align:center;
+  padding:.1rem .4rem;border:1px solid var(--sec-border);border-bottom-width:2px;
+  border-radius:5px;background:var(--sec-bg);color:var(--text);white-space:nowrap}
+.ks-desc{font-size:.82rem;color:var(--text);font-family:sans-serif;line-height:1.4}
+.ks-foot{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--border);
+  font-size:.8rem;font-family:sans-serif;color:var(--muted)}
+.ks-foot a{color:var(--accent);text-decoration:none;font-weight:600}
+.ks-foot a:hover{text-decoration:underline}
+
 /* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
 /* Footnote marker. The glyph is raised via position:relative+top (NOT
    vertical-align:super) so it does NOT grow the line box — text rows keep their
@@ -747,7 +760,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </div>
     <!-- 🔍 in-page search -->
     <div class="find-wrap" id="findWrap">
-      <button class="icon-btn" id="findBtn" title="Search this page (highlight all matches, jump prev/next)">🔍</button>
+      <button class="icon-btn" id="findBtn" title="Search this page — or press s (highlight all matches, jump prev/next)">🔍</button>
       <div class="find-pop" id="findPop">
         <div class="find-bar">
           <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
@@ -830,6 +843,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <span class="set-lbl">Help</span>
           <a class="icon-btn set-help" href="../../help.html#the-columns" title="How to use the side-by-side view — opens the reading guide">❔ Guide</a>
         </div>
+        <div class="set-row">
+          <span class="set-lbl">Shortcuts</span>
+          <button class="icon-btn" title="Show keyboard shortcuts (or press ?)" onclick="toggleMore();ksOpen()">⌨ Keys</button>
+        </div>
         <div class="set-row"><span class="set-lbl">EBT parallels</span><button class="icon-btn" onclick="ebtOpenData(&quot;MA 157&quot;, EBT_PARALLELS[&quot;ma157&quot;])" title="EBT parallel suttas (3)">&Vert; EBT</button></div>
       </div>
     </div>
@@ -863,7 +880,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 09:51 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 10:35 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -921,6 +938,27 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <button type="button" class="ebt-close" onclick="ebtClose()" aria-label="Close">&#10005;</button>
   </div>
   <div class="ebt-body" id="ebtBody"></div>
+</div>
+
+<!-- ⌨ Keyboard-shortcuts panel — opened by "?" (the web-wide convention) or the ⋮ More
+     menu. Reuses the EBT modal's chrome (.ebt-overlay / .ebt-pop / .ebt-head / .ebt-body)
+     and links out to the full reading guide. -->
+<div class="ebt-overlay" id="ksOverlay" onclick="ksClose()"></div>
+<div class="ebt-pop" id="ksPop" role="dialog" aria-modal="true" aria-labelledby="ksTitle" hidden>
+  <div class="ebt-head">
+    <span class="ebt-title" id="ksTitle">⌨ Keyboard shortcuts</span>
+    <button type="button" class="ebt-close" onclick="ksClose()" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="ebt-body">
+    <div class="ks-list">
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">/</kbd></span><span class="ks-desc">Jump to any sutta — the 🦘 quick-jump box</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">s</kbd></span><span class="ks-desc">Search this page — the 🔍 find box (highlights every match)</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Enter</kbd><kbd class="ks-key">⇧ Enter</kbd></span><span class="ks-desc">While searching: jump to the next / previous match</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">?</kbd></span><span class="ks-desc">Show this shortcuts panel</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Esc</kbd></span><span class="ks-desc">Close any open box or panel</span></div>
+    </div>
+    <div class="ks-foot">Need more? <a href="../../help.html">Open the full reading guide →</a></div>
+  </div>
 </div>
 
 <script type="application/json" id="tx-lzh">["我聞如是：", "一時，佛遊鞞蘭若，在黃蘆園中。", "爾時，鞞蘭若梵志年耆宿老，壽將欲過，", "命埀至盡，年百二十，拄杖而行。", "中後彷徉，往詣佛所，共相問訊，", "當在佛前倚杖而立，白曰：「瞿曇！", "我聞沙門瞿曇年幼極少，新出家學。", "若有名德沙門梵志親自來詣，而不禮敬，", "亦不尊重，不從坐起，不請令坐。瞿曇！", "此事大為不可。」", "世尊告曰：「梵志！", "我初不見天及魔、梵、沙門、梵志，從人至天，", "謂自來詣，能令如來禮敬尊重，而從坐起，請令坐者。梵志！", "若有來詣，欲令如來禮敬尊重，", "而從坐起，請令坐者，彼人必當頭破七分。」", "梵志復白：「瞿曇無味。」", "世尊告曰：「梵志！", "有事令我無味，然不如汝言。", "若有色味、聲味、香味、觸味者，", "彼如來斷智絕滅拔根終不復生，", "是謂有事令我無味，然不如汝言。」", "梵志復白：「瞿曇無恐怖。」", "世尊告曰：「梵志！", "有事令我無恐怖，然不如汝言。", "若有色恐怖，聲、香、味、觸恐怖者，", "彼如來斷智絕滅拔根終不復生，", "是謂有事令我無恐怖，然不如汝言。」", "梵志復白：「瞿曇不入胎。」", "世尊告曰：「梵志！", "有事令我不入胎，然不如汝言。", "若有沙門、梵志當來胎床，", "斷智絕滅拔根終不復生者，我說彼不入胎，", "如來當來胎床，斷智絕滅拔根終不復生，", "是故令我不入胎。", "是謂有事令我不入胎，然不如汝言。", "「梵志！", "我於此眾生無明來，無明樂，無明覆，", "無明卵之所裹，我先觀法，我於眾生為最第一。", "猶鷄生卵，或十或十二，隨時念，", "隨時覆，隨時暖，隨時擁護。", "彼於其後，鷄設放逸，於中有鷄子，或以口嘴，", "或以足爪，啄破其卵，安隱自出，彼於鷄子為最第一。", "我亦如是，於此眾生無明來，無明樂、無明覆，", "無明卵之所裹，我先觀法，我於眾生為最第一。", "「梵志！", "我持蒿草往詣覺樹，布草樹下，敷尼師檀，結加趺坐，", "不破正坐，要至漏盡，我不破正坐，要至漏盡。", "我正坐已，離欲、離惡不善之法，有覺、", "有觀，離生喜、樂，逮初禪成就遊，", "是謂我爾時獲第一增上心，即於現法得安樂居，", "易不難得，樂住無怖，安隱快樂，令昇涅槃。", "「復次，梵志！", "我覺、觀已息，內靜、一心，無覺、", "無觀，定生喜、樂，逮第二禪成就遊，", "是謂我爾時獲第二增上心，即於現法得安樂居，", "易不難得，樂住無怖，安隱快樂，令昇涅槃。", "「復次，梵志！", "我離於喜欲捨無求遊，正念正智而身覺樂，", "謂聖所說，聖所捨、念、樂住、空，逮第三禪成就遊，", "是謂我爾時獲第三增上心，即於現法得安樂居，", "易不難得，樂住無怖，安隱快樂，令昇涅槃。", "復次，梵志！", "我樂滅、苦滅，喜、憂本已滅，不苦不樂、", "捨、念、清淨，逮第四禪成就遊，", "是謂我爾時獲第四增上心，即於現法得安樂居，", "易不難得，樂住無怖，安隱快樂，令昇涅槃。", "「復次，梵志！", "我已得如是定心清淨，無穢無煩，", "柔軟善住，得不動心，覺憶宿命智通作證。", "我有行有相貌，憶本無量昔所經歷，謂一生、", "二生、百生、千生、成劫、敗劫、無量成敗劫，", "彼眾生名某，彼昔更歷，我曾生彼，如是姓、", "如是字、如是生、如是飲食、如是受苦樂、", "如是長壽、如是久住、如是壽訖，此死生彼，", "彼死生此，我生在此，如是姓、如是字、如是生、", "如是飲食、如是受苦樂、如是長壽、如是久住、", "如是壽訖，是謂我爾時初夜得此第一明達。", "以本無放逸，樂住遠離，修行精懃，謂無智滅而智生，", "闇壞而明成，無明滅而明生，謂憶宿命智作證明達。", "「復次，梵志！", "我已得如是定心清淨，無穢無煩，柔軟善住，", "得不動心，學於生死智通作證，我以清淨天眼出過於人，", "見此眾生死時生時，好色惡色，妙與不妙，", "往來善處及不善處，隨此眾生之所作業，見其如真。", "若此眾生成就身惡行，口、意惡行，誹謗聖人，邪見，", "成就邪見業，彼因緣此，", "身壞命終，必至惡處，生地獄中。", "若此眾生成就身妙行，口、意妙行，不誹謗聖人，正見，", "成就正見業，彼因緣此，", "身壞命終，必昇善處，上生天中。", "是謂我爾時中夜得此第二明達。", "以本無放逸，樂住遠離，修行精勤，謂無智滅而智生，", "闇壞而明成，無明滅而明生，謂生死智作證明達。", "「復次，梵志！", "我已得如是定心清淨，無穢無煩，柔軟善住，得不動心，", "學於漏盡智通作證，我知此苦如真，", "知此苦習、知此苦滅，知此苦滅道如真。", "知此漏如真，知此漏習、知此漏滅，知此漏滅道如真。", "我如是知、如是見，欲漏心解脫，", "有漏、無明漏心解脫，解脫已，", "便知解脫，生已盡，梵行已立，", "所作已辦，不更受有，知如真。", "是謂我爾時後夜得此第三明達。", "以本無放逸，樂住遠離，修行精勤，謂無智滅而智生，", "闇壞而明成，無明滅而明生，謂漏盡智作證明達。", "「復次，梵志！", "若有正說而說不癡法，眾生生世，一切眾生最勝，", "不為苦樂所覆，當知正說者即是我也。", "所以者何？", "我說不癡法，眾生生世，一切眾生最勝，不為苦樂所覆。」", "於是，鞞蘭若梵志即便捨杖，稽首佛足，", "白世尊曰：「世尊為第一，世尊為大，", "世尊為最，世尊為勝，世尊為等，世尊為不等，", "世尊無與等等，世尊無障，世尊無障人。世尊！", "我今自歸於佛、法及比丘眾，唯願世尊受我為優婆塞，", "從今日始，終身自歸，乃至命盡。」", "佛說如是。", "鞞蘭若梵志及諸比丘，聞佛所說，歡喜奉行。"]</script>
@@ -1000,10 +1038,18 @@ function refFromKey(key){
   document.head.appendChild(style);
 })();
 // EBT (SuttaCentral) cross-tradition parallels, keyed by sutta id: {sid: {full, resembling}}.
-// Default {} on pages with no sutta-level tree nodes (MN/DN: the whole page is one sutta,
-// so no TREE node's id ever matches a key here) — see debabel.parallels/index_cards.py's
-// sibling per-row button on the MN/DN/DA/MA INDEX pages, which this doesn't replace.
+// On grouped pages (AN/SN/…) this holds one entry per sutta TREE node, so each sutta
+// header matches a key and gets its own button (renderGroupMain). On a single-sutta page
+// (MN/DN/DA/MA: the whole page is one sutta) it holds the ONE page-own entry, keyed by the
+// page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
+// button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {"ma157": {"full": [{"uid": "an8.11", "href": "../../an/an8/index.html#an8.11"}, {"uid": "pli-tv-bu-vb-pj1#1.1.1-#1.9.1", "href": null}, {"uid": "t75", "href": null}]}};
+// This page's OWN sutta's EBT parallels ({ref, sid}) on a single-sutta page, else null.
+// The button attaches to PAGE_EBT_NODE — the first top-level TREE node (the sutta-title
+// row) — mirroring the per-sutta tree button on grouped pages. Also reachable via the
+// ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
+const PAGE_EBT = {"ref": "MA 157", "sid": "ma157"};
+const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1376,6 +1422,26 @@ function ebtClose(){
   document.getElementById('ebtPop').hidden=true;
 }
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ebtClose(); });
+
+// ── ⌨ Keyboard-shortcuts panel ("?" opens it) ──
+function ksOpen(){
+  document.getElementById('ksOverlay').classList.add('show');
+  document.getElementById('ksPop').hidden=false;
+}
+function ksClose(){
+  document.getElementById('ksOverlay').classList.remove('show');
+  document.getElementById('ksPop').hidden=true;
+}
+// "?" (= Shift+/) anywhere outside a text field opens the shortcuts panel — the near-
+// universal web convention (GitHub/Gmail/Slack/…). Guarded against inputs so it never
+// fires mid-typing (e.g. a literal "?" in the search or jump box).
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='?' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t=ev.target, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault(); ksOpen();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ksClose(); });
 function scrollToEl(id){
   if(id.indexOf('tr-')===0) ensureRowBuilt(id.slice(3));
   const el=document.getElementById(id);
@@ -2419,6 +2485,9 @@ function renderGroupMain(node, parent){
   // MN/DN/DA/MA leave it {} (their button lives on the collection index page instead).
   const ebt=EBT_PARALLELS[node.id];
   if(ebt) gh.appendChild(ebtButtonFor(node.id, ebt));
+  // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
+  // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
+  else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2523,7 +2592,11 @@ function renderLeafMain(sec, parent){
   const mt=mk('span','mt'); mt.textContent=so?'−':'+';
   const sl=mk('span','sl'); sl.textContent=sec.label;
   const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
-  sh.append(mt,sl,sc);
+  sh.append(mt,sl);
+  // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
+  // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
+  if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
+  sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
   if(so) sb.appendChild(buildLeafBody(sec));
@@ -3019,6 +3092,15 @@ window.addEventListener('hashchange', jumpToHash);
     else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🦘
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
 })();
 </script>
 </body>

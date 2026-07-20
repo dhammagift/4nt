@@ -548,6 +548,19 @@ a.ebt-item{color:var(--accent);text-decoration:none}
 a.ebt-item:hover{background:var(--toc-hover);border-color:var(--accent)}
 .ebt-empty{font-size:.8rem;color:var(--muted);font-family:sans-serif}
 
+/* ── ⌨ Keyboard-shortcuts panel — reuses the .ebt-* modal chrome; "?" opens it ── */
+.ks-list{display:flex;flex-direction:column;gap:.15rem}
+.ks-row{display:flex;align-items:baseline;gap:.7rem;padding:.32rem .1rem}
+.ks-keys{flex:0 0 6rem;display:flex;flex-wrap:wrap;gap:.25rem}
+kbd.ks-key{font-family:monospace;font-size:.78rem;min-width:1.3em;text-align:center;
+  padding:.1rem .4rem;border:1px solid var(--sec-border);border-bottom-width:2px;
+  border-radius:5px;background:var(--sec-bg);color:var(--text);white-space:nowrap}
+.ks-desc{font-size:.82rem;color:var(--text);font-family:sans-serif;line-height:1.4}
+.ks-foot{margin-top:.85rem;padding-top:.7rem;border-top:1px solid var(--border);
+  font-size:.8rem;font-family:sans-serif;color:var(--muted)}
+.ks-foot a{color:var(--accent);text-decoration:none;font-weight:600}
+.ks-foot a:hover{text-decoration:underline}
+
 /* ── FOOTNOTE PANE (Sujato comments; SEG_NOTES) ── */
 /* Footnote marker. The glyph is raised via position:relative+top (NOT
    vertical-align:super) so it does NOT grow the line box — text rows keep their
@@ -747,7 +760,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     </div>
     <!-- 🔍 in-page search -->
     <div class="find-wrap" id="findWrap">
-      <button class="icon-btn" id="findBtn" title="Search this page (highlight all matches, jump prev/next)">🔍</button>
+      <button class="icon-btn" id="findBtn" title="Search this page — or press s (highlight all matches, jump prev/next)">🔍</button>
       <div class="find-pop" id="findPop">
         <div class="find-bar">
           <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
@@ -830,6 +843,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
           <span class="set-lbl">Help</span>
           <a class="icon-btn set-help" href="../../help.html#the-columns" title="How to use the side-by-side view — opens the reading guide">❔ Guide</a>
         </div>
+        <div class="set-row">
+          <span class="set-lbl">Shortcuts</span>
+          <button class="icon-btn" title="Show keyboard shortcuts (or press ?)" onclick="toggleMore();ksOpen()">⌨ Keys</button>
+        </div>
         <div class="set-row"><span class="set-lbl">EBT parallels</span><button class="icon-btn" onclick="ebtOpenData(&quot;DA 14&quot;, EBT_PARALLELS[&quot;da14&quot;])" title="EBT parallel suttas (7)">&Vert; EBT</button></div>
       </div>
     </div>
@@ -863,7 +880,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 09:52 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 19, 2026 at 10:35 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -921,6 +938,27 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <button type="button" class="ebt-close" onclick="ebtClose()" aria-label="Close">&#10005;</button>
   </div>
   <div class="ebt-body" id="ebtBody"></div>
+</div>
+
+<!-- ⌨ Keyboard-shortcuts panel — opened by "?" (the web-wide convention) or the ⋮ More
+     menu. Reuses the EBT modal's chrome (.ebt-overlay / .ebt-pop / .ebt-head / .ebt-body)
+     and links out to the full reading guide. -->
+<div class="ebt-overlay" id="ksOverlay" onclick="ksClose()"></div>
+<div class="ebt-pop" id="ksPop" role="dialog" aria-modal="true" aria-labelledby="ksTitle" hidden>
+  <div class="ebt-head">
+    <span class="ebt-title" id="ksTitle">⌨ Keyboard shortcuts</span>
+    <button type="button" class="ebt-close" onclick="ksClose()" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="ebt-body">
+    <div class="ks-list">
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">/</kbd></span><span class="ks-desc">Jump to any sutta — the 🦘 quick-jump box</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">s</kbd></span><span class="ks-desc">Search this page — the 🔍 find box (highlights every match)</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Enter</kbd><kbd class="ks-key">⇧ Enter</kbd></span><span class="ks-desc">While searching: jump to the next / previous match</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">?</kbd></span><span class="ks-desc">Show this shortcuts panel</span></div>
+      <div class="ks-row"><span class="ks-keys"><kbd class="ks-key">Esc</kbd></span><span class="ks-desc">Close any open box or panel</span></div>
+    </div>
+    <div class="ks-foot">Need more? <a href="../../help.html">Open the full reading guide →</a></div>
+  </div>
 </div>
 
 <script type="application/json" id="tx-lzh">["如是我聞：", "一時，佛在摩竭國菴婆羅村 北，毘陀山因陀娑羅窟中。", "爾時，釋提桓 因發微妙善心，", "欲來見佛：「今我當往至世 尊所。」", "時，諸忉利天聞釋提桓因發妙善 心，", "欲詣佛所，即尋詣帝釋，白言：「善哉！", "帝 釋！", "發妙善心，欲詣如來，我等亦樂侍從詣 世尊所。」", "時，釋提桓因即告執樂神般遮翼 曰：", "「我今欲詣世尊所，", "汝可俱行，此忉利諸 天亦當與我俱詣佛所。」", "對曰：「唯然！", "」時，般遮 翼持琉璃琴，", "於帝釋前忉利天眾中鼓琴 供養。", "時，釋提桓因、忉利諸天及般遮翼，", "於法 堂上忽然不現，", "譬如力士屈伸臂頃，至 摩竭國北毘陀山中。", "爾時，世尊入火焰三昧，", "彼毘陀山同一火色，時國人見，", "自相謂言：「此 毘陀山同一火色，將是如來諸天之力。」", "時，釋 提桓因告般遮翼曰：「如來、", "至真甚難得覩， 而能垂降此閑靜處，寂默無聲，", "禽獸為侶，此 處常有諸大神天侍衛世尊，", "汝可於前鼓 琉璃琴娛樂世尊，吾與諸天尋於後往。」", "對 曰：「唯然！", "」即受教已，持琉璃琴於先詣佛。", "去佛不遠，鼓琉璃琴，以偈歌曰：", "「跋陀禮汝父，　　汝父甚端嚴；", "生汝時吉祥，　　我心甚愛樂。", "本以小因緣，　　欲心於中生；", "展轉遂增廣，　　如供養羅漢。", "釋子專四禪，　　常樂於閑居；", "正意求甘露，　　我專念亦爾。", "能仁發道心，　　必欲成正覺；", "我今求彼女，　　必欲會亦爾。", "我心生染著，　　愛好不捨離；", "欲捨不能去，　　如象為鈎制。", "如熱遇涼風，　　如渴得冷泉；", "如取涅槃者，　　如水滅於火。", "如病得良醫，　　飢者得美食；", "充足生快樂，　　如羅漢遊法。", "如象被深鈎，　　而猶不肯伏；", "［馬＊奔］ 突難禁制，　　放逸不自止。", "猶如清涼池，　　眾花覆水上；", "疲熱象沐浴，　　舉身得清涼。", "我前後所施，　　供養諸羅漢；", "世有福報者，　　盡當與彼供。", "汝死當共死，　　汝無我活為？", "寧使我身死，　　不能無汝存。", "忉利天之主，　　釋今與我願；", "稱汝禮節具，　　汝善思察之。」", "爾時，世尊從三昧起，告般遮翼言：「善哉！", "善 哉！", "般遮翼！", "汝能以清淨音和琉璃琴稱讚 如來，琴聲、", "汝音，不長不短，悲和哀婉，感動人 心。", "汝琴所奏，眾義備有，亦說欲縛，", "亦說梵 行，亦說沙門，亦說涅槃。」", "爾時，般遮翼白佛 言：", "「我念世尊昔鬱鞞羅尼連禪水邊，", "阿 遊波陀尼俱律樹下初成佛道時，", "有尸漢 陀天大將子及執樂天王女，", "共於一處，但 設欲樂，我於爾時見其心爾，即為作頌，", "頌說欲縛，亦說梵行，亦說沙門，亦說涅槃。", "時，彼天女聞我偈已，舉目而笑語我言：『般 遮翼！", "我未見如來，我曾於忉利天法講堂 上，", "聞彼諸天稱讚如來，有如是德，有如 是力。", "汝常懷信，親近如來，我今意欲與汝 共為知識。", "』世尊！", "我時與一言之後，不復與 語。」", "時，釋提桓因作是念：", "「此般遮翼已娛樂 如來訖，我今寧可念於彼人。", "」時，天帝釋即 念彼人。", "時，般遮翼復生念言：「今天帝釋乃能 念我。", "」即持琉璃琴詣帝釋所。", "帝釋告曰：「汝 以我名并稱忉利天意，", "問訊世尊：『起居輕 利，遊步強耶？』」", "時，般遮翼承帝釋教，即詣世尊 所，", "頭面禮足，於一面住，白世尊言：", "「釋提桓 因及忉利諸天故，", "遣我來問訊世尊：『起居輕 利，遊步強耶？』」", "世尊報曰：「使汝帝釋及忉利天 壽命延長，快樂無患。", "所以然者？", "諸天、世人及 阿須輪諸眾生等，", "皆貪壽命、安樂、無患。」", "爾 時，帝釋復自念言：「我等宜往禮覲世尊。", "」即 與忉利諸天往詣佛所，頭面禮足，却住一 面。", "時，帝釋白佛言：「不審我今去世尊遠近 可坐？」", "佛告帝釋曰：「汝天眾多，但近我坐。」", "時， 世尊所止因陀羅窟，自然廣博，無所障碍。", "爾時，帝釋與忉利諸天及般遮翼皆禮佛足，", "於一面坐，帝釋白佛言：「一時，", "佛在舍衛國 婆羅門舍，爾時世尊入火焰三昧，", "我時以 少因緣，乘千輻寶車，", "詣毘樓勒天王所，於 空中過，", "見一天女叉手在世尊前立，我尋 語彼女言：", "『若世尊三昧起者，汝當稱我名 字，", "問訊世尊：起居輕利，遊步強耶？", "』不審彼 女後竟為我達此心不？世尊！", "寧能憶此事 不？」", "佛言：「憶耳！", "彼女尋以汝聲致問於我，吾 從定起，猶聞汝車聲。」", "帝釋白佛言：「昔者，", "我 以少緣，與忉利諸天集在法堂，", "彼諸舊天 皆作是言：『若如來出世，", "增益諸天眾，減損 阿須輪眾。", "』今我躬見世尊，躬見自知，躬自 作證，如來、", "至真出現於世，增益諸天眾，減 損阿須輪眾。", "此有瞿夷釋女，於世尊所淨 修梵行，", "身壞命終，生忉利天宮，即為我子。", "忉利諸天皆稱言：", "『瞿夷大天子有大功德， 有大威力。", "』復有餘三比丘，於世尊所淨修 梵行，身壞命終，", "生於卑下執樂神中，常 日日來為我給使，", "瞿夷見已，以偈觸嬈 曰：", "「『汝為佛弟子，　　我本在家時，", "以衣食供養，　　禮拜致恭恪。", "汝等名何人？", "躬受佛教誡； \n　淨眼之所說，　　汝不觀察之。", "我本禮敬汝，　　從佛聞上法；", "生三十三天，　　為帝釋作子。", "汝等何不觀？", "我所有功德； \n　本為女人身，　　今為帝釋子。", "汝等本俱共，　　同修於梵行；", "今獨處卑賤，　　為吾等給使。", "本為弊惡行，　　今故受此報；", "獨處於卑賤，　　為吾等給使。", "生此處不淨，　　為他所觸嬈；", "聞已當患厭，　　此處可厭患。", "從今當精勤，　　勿復為人使；", "二人勤精進，　　思惟如來法。", "捨彼所戀著，　　觀欲不淨行；", "欲縛不真實，　　誑惑於世間。", "如象離羈靽，　　超越忉利天；", "釋及忉利天，　　集法講堂上。", "彼已勇猛力，　　超越忉利天；", "釋歎未曾有，　　諸天亦見過。", "此是釋迦子，　　超越忉利天；", "患厭於欲縛，　　瞿夷說此言。", "摩竭國有佛，　　名曰釋迦文；", "彼子大失意，　　其後還得念。", "三人中一人，　　故為執樂神；", "二人見道諦，　　超越忉利天。", "世尊所說法，　　弟子不懷疑；", "俱共同聞法，　　二人勝彼一。", "自見殊勝已，　　皆生光音天；", "我觀見彼已，　　故來至佛所。』」", "帝釋白佛言：「願開閑暇，一決我疑。」", "佛言：「隨 汝所問，吾當為汝一一演說。」", "爾時，帝釋即白 佛言：「諸天、世人、乾沓和、", "阿須羅及餘眾生 等，", "盡與何結相應，乃至怨讐、刀杖相向？」", "佛 告釋言：「怨結之生，皆由貪嫉，故使諸天、", "世 人、阿須羅、餘眾生等，刀杖相加。」", "爾時，帝釋即 白佛言：「實爾！世尊！", "怨結之生，由貪嫉故，使 諸天、", "世人、阿須羅、餘眾生等，刀杖相加。", "我今 聞佛所說，疑網悉除，無復疑也，", "但不解此 貪嫉之生，何由而起？", "何因何緣？", "誰為原首？", "從 誰而有？", "從誰而無？」", "佛告帝釋：「貪嫉之生，皆 由愛憎，愛憎為因，", "愛憎為緣，愛憎為首，從 此而有，無此則無。」", "爾時，帝釋即白佛言：「實 爾。世尊！", "貪嫉之生，皆由愛憎，愛憎為因，", "愛憎 為緣，愛憎為首，從此而有，無此則無。", "我今 聞佛所說，迷惑悉除，無復疑也。", "但不解 愛憎復何由而生？", "何因何緣？", "誰為原首？", "從 誰而有？", "從誰而無？」", "佛告帝釋：「愛憎之生，皆 由於欲，", "因欲緣欲，欲為原首，從此而有，無 此則無。」", "爾時，帝釋白佛言：「實爾！世尊！", "愛憎之 生，皆由於欲，因欲緣欲，", "欲為原首，從此而 有，無此則無。", "我今聞佛所說，迷惑悉除，無 復疑也。", "但不知此欲復何由生？", "何因何 緣？", "誰為原首？", "從誰而有？", "從誰而無？」", "佛告帝 釋：「愛由想生，因想緣想，", "想為原首，從此而 有，無此而無。」", "爾時，帝釋白佛言：「實爾！世尊！", "愛由想生，因想緣想，", "想為原首，從此而有， 無此則無。", "我今聞佛所說，無復疑也。", "但不 解想復何由而生？", "何因何緣？", "誰為原首？", "從 誰而有？", "從誰而無？」", "佛告帝釋：「想之所生，由 於調戲，", "因調緣調，調為原首，從此而有，無 此則無。帝釋！", "若無調戲則無想，無想則無 欲，無欲則無愛憎，", "無愛憎則無貪嫉，若 無貪嫉，則一切眾生不相傷害。帝釋！", "但緣 調為本，因調緣調，", "調為原首，從此有想， 從想有欲，", "從欲有愛憎，從愛憎有貪嫉；", "以貪嫉故，使群生等共相傷害。」", "帝釋白佛 言：「實爾！世尊！", "由調有想，因調緣調，調為原 首，", "從此有想由調而有，無調則無。", "若本無 調者則無想，無想則無欲，無欲則無愛憎，", "無愛憎則無貪嫉，無貪嫉則一切群生不 相傷害。", "但想由調生，因調緣調，", "調為原首， 從調有想，從想有欲，", "從欲有愛憎，從愛 憎有貪嫉，", "從貪嫉使一切眾生共相傷 害。", "我今聞佛所說，迷惑悉除，無復疑也。」", "爾 時，帝釋復白佛言：「一切沙門、", "婆羅門盡除調 戲在滅迹耶？", "為不除調戲在滅迹耶？」", "佛 告帝釋：「一切沙門、", "婆羅門不盡除調戲在 滅迹也。", "所以然者？", "帝釋，世間有種種界，眾 生各依己界，", "堅固守持，不能捨離，謂己為 實，餘者為虛。", "是故，帝釋！", "一切沙門、婆羅門 不盡除調戲而在滅迹。」", "爾時，帝釋白佛言： 「實爾！世尊！", "世間有種種眾生，各依己界，堅 固守持，", "不能捨離，謂己為是，餘為虛妄。", "是 故一切沙門、婆羅門不盡除調戲而在滅 迹。", "我聞佛言，疑惑悉除，無復疑也。」", "帝釋復 白佛言：「齊幾調在滅迹耶？」", "佛告帝釋：「調 戲有三：一者口，二者想，三者求。", "彼口所言， 自害、害他，亦二俱害。", "捨此言已，如所言，不 自害、不害他、不二俱害。", "知時比丘如口所 言，專念不亂，", "想亦自害、害他，亦二俱害；捨 此想已，", "如所想，不自害、不害他，二俱不 害，", "知時比丘如所想，專念不亂。帝釋！", "求亦 自害、害他，亦二俱害；捨此求已，如所求，", "不自害、不害他，不二俱害，", "知時比丘如 所求，專念不亂。」", "爾時，釋提桓因言：「我聞佛 所說，無復狐疑。」", "又白佛言：「齊幾名賢聖捨 心？」", "佛告帝釋：「捨心有三：", "一者喜身，二者憂 身，三者捨身。帝釋！", "彼喜身者，自害、害他，", "亦 二俱害；捨此喜已，如所喜，", "不自害、害他， 二俱不害，", "知時比丘專念不忘，即名受具 足戒。帝釋！", "彼憂身者，自害、害彼，", "亦二俱害； 捨此憂已，如所憂，", "不自害、害他，二俱不 害，", "知時比丘專念不忘，即名受具足戒。", "復 次，帝釋！", "彼捨身者，自害、害他，亦二俱害；", "捨 此身已，如所捨，不自害、", "不害他，二俱不 害，", "知時比丘專念不忘，是即名為受具足 戒。」", "帝釋白佛言：「我聞佛所說，無復狐疑。」", "又 白佛言：「齊幾名賢聖律諸根具足？」", "佛告帝 釋：「眼知色，我說有二：可親、不可親。", "耳聲、鼻 香、舌味、身觸、", "意法，我說有二：可親、不可親。」", "爾時，帝釋白佛言：「世尊！", "如來略說，未廣分 別，我以具解。", "眼知色，我說有二：可親、不可 親。", "耳聲、鼻香、舌味、身觸、意法有二：可親、不 可親。世尊！", "如眼觀色，善法損減，不善法增，", "如此眼知色，我說不可親；耳聲、", "鼻香、舌味、 身觸、意知法，", "善法損減，不善法增，我說不 可親。世尊！", "如眼見色，善法增長，不善法減，", "如是眼知色，我說可親；耳聲、", "鼻香、舌味、身 觸、意知法，", "善法增長，不善法減，我說可親。」", "佛告帝釋：「善哉！善哉！", "是名賢聖律諸根具 足。」", "帝釋白佛言：「我聞佛所說，無復狐疑。」", "復 白佛言：「齊幾比丘名為究竟、", "究竟梵行、究 竟安隱、究竟無餘？」", "佛告帝釋：「為愛所苦，身 得滅者，", "是為究竟、究竟梵行、究竟安隱、究 竟無餘。」", "帝釋白佛言：「我本長夜，", "所懷疑網， 今者如來開發所疑。」", "佛告帝釋：「汝昔頗曾 詣沙門、婆羅門所問此義不？」", "帝釋白佛言： 「我自憶念：昔者，", "曾詣沙門、婆羅門所諮問此 義。", "昔我一時曾集講堂，與諸天眾共論：", "『如 來為當出世，為未出世？", "』時共推求，不見如 來出現于世，", "各自還宮，五欲娛樂。世尊！", "我 復於後時見諸大神天，自恣五欲已，漸各 命終。", "時我，世尊！", "懷大恐怖，衣毛為竪。", "時， 見沙門、婆羅門處在閑靜，去家離欲，", "我尋 至彼所問言：『云何名究竟？", "』我問此義，彼不 能報。", "彼既不知，逆問我言：『汝為是誰？", "』我尋 報言：『我是釋提桓因。", "』彼復問言：『汝是何釋？", "』我 時答言：『我是天帝釋，", "心有所疑，故來相問 耳。", "』時，我與彼如所知見，說於釋義。", "彼問 我言：『更為我弟子，", "我今是佛弟子，得須陀 洹道，", "不墮餘趣，極七往返，必成道果，", "唯願 世尊記我為斯陀含。", "』說此語已，復作頌 曰：", "「『由彼染穢想，　　故生我狐疑；", "長夜與諸天，　　推求於如來。", "見諸出家人，", "常在閑靜處； \n　謂是佛世尊，", "故往 稽 首言：", "我今故來問，　　云何為究竟？", "問已不能報，　　道迹之所趣。", "今日無等尊，　　是我久所求；", "已觀察己行，　　心已正思惟。", "唯聖先已知，　　我心之所行；", "長夜所修業，　　願淨眼記之。", "歸命人中上，　　三界無極尊；", "能斷恩愛刺，　　今禮日光尊。』」", "佛告帝釋：「汝憶本得喜樂、念樂時不？」", "帝釋 答曰：「如是，世尊！", "憶昔所得喜樂、念樂。世尊！", "我昔曾與阿須輪共戰，", "我時得勝，阿須輪 退，我時則還，", "得歡喜、念樂，計此歡喜、念樂，", "離有穢惡刀杖喜樂、鬪訟喜樂。", "今我於佛 所得喜、念樂，無有刀杖、諍訟之樂。」", "佛告 帝釋：「汝今得喜樂、", "念樂，於中欲求何功德 果？」", "爾時，帝釋白佛言：「我於喜樂、", "念樂中，欲 求五功德果，何等五？", "」即說偈言：", "「我後若命終，　　捨於天上壽；", "處胎不懷患，　　使我心歡喜。", "佛度未度者，　　能說正真道；", "於三佛法中，　　我要修梵行。", "以智慧身居，　　心自見正諦；", "得達本所起，　　於是長解脫。", "但當勤修行，　　習佛真實智；", "設不獲道證，　　功德猶勝天。", "諸有神妙天，　　阿迦尼吒等；", "下至末後身，　　必當生彼處。", "我今於此處，　　受天清淨身；", "復得增壽命，　　淨眼我自知。」", "說此偈已，白佛言：「我於喜樂、", "念樂中，欲得 如是五功德果。」", "爾時，帝釋語忉利諸天曰：", "「汝 於忉利天上梵童子前恭敬禮事，", "今於佛 前復設此敬者，不亦善哉！」", "其語未久，時， 梵童子忽然於虛空中天眾上立，", "向天帝 釋而說偈曰：", "「天王清淨行，　　多利益眾生；", "摩竭帝釋主，　　能問如來義。」", "時，梵童子說此偈已，忽然不現。", "是時，帝釋 即從座起，禮世尊足，遶佛三匝，", "却行而退， 忉利諸天及般遮翼亦禮佛足，却行而退。", "時， 天帝釋少復前行，顧語般遮翼曰：「善哉！", "善 哉！", "汝能先於佛前鼓琴娛樂，", "然後我及諸 天於後方到，我今知汝補汝父位，", "於乾沓 和中最為上首，", "當以彼拔陀乾沓和王 女與汝為妻。」", "世尊說此法時，八萬四千 諸天遠塵離垢，諸法法眼生。", "時，釋提桓因、", "忉 利諸天及般遮翼聞佛所說，歡喜奉行。"]</script>
@@ -1000,10 +1038,18 @@ function refFromKey(key){
   document.head.appendChild(style);
 })();
 // EBT (SuttaCentral) cross-tradition parallels, keyed by sutta id: {sid: {full, resembling}}.
-// Default {} on pages with no sutta-level tree nodes (MN/DN: the whole page is one sutta,
-// so no TREE node's id ever matches a key here) — see debabel.parallels/index_cards.py's
-// sibling per-row button on the MN/DN/DA/MA INDEX pages, which this doesn't replace.
+// On grouped pages (AN/SN/…) this holds one entry per sutta TREE node, so each sutta
+// header matches a key and gets its own button (renderGroupMain). On a single-sutta page
+// (MN/DN/DA/MA: the whole page is one sutta) it holds the ONE page-own entry, keyed by the
+// page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
+// button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {"da14": {"full": [{"uid": "sht-sutta54", "href": null}, {"uid": "t203.73", "href": null}, {"uid": "t15", "href": null}, {"uid": "ma134", "href": "../../ma/ma134/index.html"}, {"uid": "dn21", "href": "../../dn/dn21/index.html"}], "resembling": [{"uid": "sf139", "href": null}, {"uid": "sf241", "href": null}]}};
+// This page's OWN sutta's EBT parallels ({ref, sid}) on a single-sutta page, else null.
+// The button attaches to PAGE_EBT_NODE — the first top-level TREE node (the sutta-title
+// row) — mirroring the per-sutta tree button on grouped pages. Also reachable via the
+// ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
+const PAGE_EBT = {"ref": "DA 14", "sid": "da14"};
+const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1376,6 +1422,26 @@ function ebtClose(){
   document.getElementById('ebtPop').hidden=true;
 }
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ebtClose(); });
+
+// ── ⌨ Keyboard-shortcuts panel ("?" opens it) ──
+function ksOpen(){
+  document.getElementById('ksOverlay').classList.add('show');
+  document.getElementById('ksPop').hidden=false;
+}
+function ksClose(){
+  document.getElementById('ksOverlay').classList.remove('show');
+  document.getElementById('ksPop').hidden=true;
+}
+// "?" (= Shift+/) anywhere outside a text field opens the shortcuts panel — the near-
+// universal web convention (GitHub/Gmail/Slack/…). Guarded against inputs so it never
+// fires mid-typing (e.g. a literal "?" in the search or jump box).
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='?' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t=ev.target, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+  ev.preventDefault(); ksOpen();
+});
+document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') ksClose(); });
 function scrollToEl(id){
   if(id.indexOf('tr-')===0) ensureRowBuilt(id.slice(3));
   const el=document.getElementById(id);
@@ -2419,6 +2485,9 @@ function renderGroupMain(node, parent){
   // MN/DN/DA/MA leave it {} (their button lives on the collection index page instead).
   const ebt=EBT_PARALLELS[node.id];
   if(ebt) gh.appendChild(ebtButtonFor(node.id, ebt));
+  // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
+  // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
+  else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2523,7 +2592,11 @@ function renderLeafMain(sec, parent){
   const mt=mk('span','mt'); mt.textContent=so?'−':'+';
   const sl=mk('span','sl'); sl.textContent=sec.label;
   const sc=mk('span','sc-count'); sc.textContent=total+' seg'+(total>1?'s':'');
-  sh.append(mt,sl,sc);
+  sh.append(mt,sl);
+  // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
+  // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
+  if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid]));
+  sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
   if(so) sb.appendChild(buildLeafBody(sec));
@@ -3019,6 +3092,15 @@ window.addEventListener('hashchange', jumpToHash);
     else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🦘
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
 })();
 </script>
 </body>
