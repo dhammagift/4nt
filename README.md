@@ -1,6 +1,6 @@
 # 4nt fork with paliLookup 
 
-## [https://dhamma.gift/4nt](https://dhamma.gift/4nt)
+## [dhamma.gift/4nt](https://dhamma.gift/4nt) or [s.dhamma.gift](https://s.dhamma.gift/)
 
 ### Feature list:
 
