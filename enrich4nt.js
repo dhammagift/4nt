@@ -55,8 +55,6 @@ function processHtml(dir) {
         }
     });
 
-
-
     const pattern = /(<a\b[^>]*class="ix-row"[^>]*href="([^/"]+)\/index\.html"[^>]*>)/g;
 
     function walk(currentDir) {
@@ -83,14 +81,14 @@ function processHtml(dir) {
             let content = fs.readFileSync(filePath, 'utf8');
             let changed = false;
 
-            const newContent = content.replace(pattern, (match, fullTag, folderName) => {
+            const newContentIndex = content.replace(pattern, (match, fullTag, folderName) => {
                 if (/\sid=/.test(fullTag)) return fullTag;
-                changed = true;
                 return fullTag.slice(0, -1) + ` id="${folderName}">`;
             });
             
-            if (newContent !== content) {
-                content = newContent;
+            if (newContentIndex !== content) {
+                content = newContentIndex;
+                changed = true;
             }
 
             const relativeToRoot = path.relative(currentDir, dir);
@@ -109,19 +107,42 @@ function processHtml(dir) {
                 changed = true;
             }
 
-            if (content.includes('debabel-logo-1k.jpg')) {
-                content = content.split('debabel-logo-1k.jpg').join('/assets/img/headerlogo.png');
+            // 1. Замена src у <img> с классом logo-mini на logo4nt.png
+            const logoMiniRegex = /(<img\b[^>]*class=["'][^"']*?\blogo-mini\b[^"']*?["'][^>]*src=["'])([^"']*)(["'][^>]*>)/gi;
+            const newContentMini = content.replace(logoMiniRegex, `$1/assets/img/logo4nt.png$3`);
+            if (newContentMini !== content) {
+                content = newContentMini;
                 changed = true;
             }
 
-            const absoluteFilePath = path.resolve(filePath);
-            const absoluteRootIndex = path.resolve(dir, 'index.html');
-            if (absoluteFilePath === absoluteRootIndex) {
-                const logoMiniRegex = /(<img\b[^>]*class="logo-mini"[^>]*src=")[^"]*("[^>]*>)/g;
-                if (logoMiniRegex.test(content)) {
-                    content = content.replace(logoMiniRegex, `$1/assets/img/logo4nt.png$2`);
-                    changed = true;
+            // 2. Замена src у <img> внутри <a> с классом site-logo на headerlogo.png
+            const siteLogoRegex = /(<a\b[^>]*class=["'][^"']*?\bsite-logo\b[^"']*?["'][^>]*>[\s\S]*?<img\b[^>]*src=["'])([^"']*)(["'][^>]*>)/gi;
+            const newContentSite = content.replace(siteLogoRegex, `$1/assets/img/headerlogo.png$3`);
+            if (newContentSite !== content) {
+                content = newContentSite;
+                changed = true;
+            }
+
+            // 3. Замена src у <img> внутри <a> с классом home-logo на logo4nt.png
+            const homeLogoRegex = /(<a\b[^>]*class=["'][^"']*?\bhome-logo\b[^"']*?["'][^>]*>[\s\S]*?<img\b[^>]*src=["'])([^"']*)(["'][^>]*>)/gi;
+            const newContentHome = content.replace(homeLogoRegex, `$1/assets/img/logo4nt.png$3`);
+            if (newContentHome !== content) {
+                content = newContentHome;
+                changed = true;
+            }
+
+            // 4. Замена src у <img> внутри <a> с классом ft-logo (кроме ft-right) на logo4nt.png
+            const ftLogoRegex = /(<a\b[^>]*class=["']([^"']*?\bft-logo\b[^"']*?)["'][^>]*>[\s\S]*?<img\b[^>]*src=["'])([^"']*)(["'][^>]*>)/gi;
+            const newContentFt = content.replace(ftLogoRegex, (match, p1, classAttr, p3, p4) => {
+                // Если в классах нет ft-right, заменяем путь
+                if (!classAttr.includes('ft-right')) {
+                    return `${p1}/assets/img/logo4nt.png${p4}`;
                 }
+                return match;
+            });
+            if (newContentFt !== content) {
+                content = newContentFt;
+                changed = true;
             }
             
             if (content.includes('🦘')) {
@@ -144,7 +165,6 @@ function processHtml(dir) {
         const srcLogo = path.join(dir, 'headerlogo.png');
         const destFavicon = path.join(dir, 'favicon.png');
         
-        // Копируем фавиконку только если источник существует
         if (fs.existsSync(srcLogo)) {
             fs.copyFileSync(srcLogo, destFavicon);
         }
@@ -152,6 +172,7 @@ function processHtml(dir) {
         console.error(`Ошибка при копировании фавиконки: ${err.message}`);
     }
 }
+
 
 processHtml(process.argv[2] || '.');
 

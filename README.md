@@ -1,16 +1,16 @@
-# 4nt Mobile-friendly fork with Dhamma.Gift features
+# 4nt fork with paliLookup 
 
-## [dhamma.gift/4nt](https://dhamma.gift/4nt) or [s.dhamma.gift](https://s.dhamma.gift/)
+## [https://dhamma.gift/4nt](https://dhamma.gift/4nt)
 
 ### Feature list:
+
+[dhamma.gift/4nt](https://dhamma.gift/4nt/an/an1/index.html)
 
 * voice tts for pali and English (alt / option + R) (navigate with arrow keys, few other hotkeys from this [help](https://dhamma.gift/assets/common/ttsHelp.html#tts-help-en)) 
 * dictionary lookup (alt / option + A)
 * mobile view - line / column toggle (alt / option + C) 
 * Quick modal window with DG search favorites, quick links and dict (alt / option + P)
 * Anchors added to TOC pages for quick "parallel" texts access e.g. .../mn/#mn137
-* get url params are used to share exact text sets [sn45.8](https://s.dhamma.gift/sn/sn45/?cols=pali%2Cpali_royal_iast%2Cpali_myanmar_iast%2Cpali_bjt_iast#tr-sn45.8:1.1)
-* if accessed via dhamma.gift/4nt DG cloud sync is used to sync settings across your devices
 
 # reading mode toggle alt+C, voice link alt+R, dict toggle alt+A
 <img width="993" height="784" alt="Image" src="https://github.com/user-attachments/assets/ddd6460b-c357-4b8f-b889-3a6132dc43b6" />
