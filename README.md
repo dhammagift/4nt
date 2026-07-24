@@ -25,3 +25,4 @@
 
 ## to quickly navigate to TOC with Parallels
 <img width="1418" height="1044" alt="Image" src="https://github.com/user-attachments/assets/226e85e8-4945-4718-9c59-ef8aeb71c5ec" />
+
