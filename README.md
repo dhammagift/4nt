@@ -1,10 +1,8 @@
-# 4nt fork with paliLookup 
+# 4nt Mobile-friendly fork with Dhamma.Gift features
 
 ## [dhamma.gift/4nt](https://dhamma.gift/4nt) or [s.dhamma.gift](https://s.dhamma.gift/)
 
 ### Feature list:
-
-[dhamma.gift/4nt](https://dhamma.gift/4nt/an/an1/index.html)
 
 * voice tts for pali and English (alt / option + R) (navigate with arrow keys, few other hotkeys from this [help](https://dhamma.gift/assets/common/ttsHelp.html#tts-help-en)) 
 * dictionary lookup (alt / option + A)
