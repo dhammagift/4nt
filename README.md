@@ -16,6 +16,7 @@ git switch mod
 * mobile view - line / column toggle (alt / option + C) 
 * Quick modal window with DG search favorites, quick links and dict (alt / option + P)
 * Anchors added to TOC pages for quick "parallel" texts access e.g. .../mn/#mn137
+* open any text from URL e.g. /?q=an1.5:1.1 or /?q=mn1 instead of http://localhost:8080/4nt/an/an1/index.html?cols=pali%2Cru_dhammagift%2Cbodhi-esque%2Csujato-corrected#tr-an1.5:1.1 etc
 * get url params are used to share exact text sets [sn45.8](https://s.dhamma.gift/sn/sn45/?cols=pali%2Cpali_royal_iast%2Cpali_myanmar_iast%2Cpali_bjt_iast#tr-sn45.8:1.1)
 * if accessed via dhamma.gift/4nt DG cloud sync is used to sync settings across your devices
 
