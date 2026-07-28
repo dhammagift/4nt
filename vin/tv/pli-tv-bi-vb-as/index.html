@@ -806,11 +806,11 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     <span>&emsp;&emsp;</span>
     <!-- 🦘 quick-jump -->
     <div class="jump" id="jump">
-      <button class="icon-btn" id="jumpBtn" title="Jump to any sutta:&#10;• Click 🦘 (or press / anywhere) to open the jump box&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Jump to an outline section (L24) — e.g. mn125.2.3&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here&#10;• Shortcuts: home, major, taisho614&#10;• Your recent jumps show while the box is empty">🦘</button>
+      <button class="icon-btn" id="jumpBtn" title="Jump to any sutta:&#10;• Click 🦘 (or press / anywhere) to open the jump box&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Jump to an outline section (L24) — e.g. mn125.2.3&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here&#10;• Shortcuts: home, major, taisho614&#10;• Link straight to a ref — put ?q=mn125 on any page's URL&#10;• Your recent jumps show while the box is empty">🦘</button>
       <div class="jump-pop" id="jumpPop">
         <span class="jump-box">
           <input class="jump-input" id="jumpInput" placeholder="mn125, dn16:2.5…"
-                 title="Jump to any sutta:&#10;• Click 🦘 (or press / anywhere) to open the jump box&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Jump to an outline section (L24) — e.g. mn125.2.3&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here&#10;• Shortcuts: home, major, taisho614&#10;• Your recent jumps show while the box is empty"
+                 title="Jump to any sutta:&#10;• Click 🦘 (or press / anywhere) to open the jump box&#10;• Type a ref and press Enter — e.g. mn125, an3.65, dhp1&#10;• Jump to an outline section (L24) — e.g. mn125.2.3&#10;• Add a segment to land right on it — e.g. mn125:2.5&#10;• On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here&#10;• Shortcuts: home, major, taisho614&#10;• Link straight to a ref — put ?q=mn125 on any page's URL&#10;• Your recent jumps show while the box is empty"
                  autocomplete="off" spellcheck="false">
           <button class="jump-clear" id="jumpClear" title="Clear input" hidden>✕</button>
         </span>
@@ -948,7 +948,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 27, 2026 at 04:43 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../../index.html" title="s.4nt.org — home"><img src="../../../debabel-logo-1k.jpg" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../../help.html">Help</a><a href="../../../help.html#about">About</a><a href="../../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 28, 2026 at 07:35 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -3183,8 +3183,12 @@ function flashJumpErr(text){
   jumpMsgEl.textContent = text; jumpMsgEl.classList.add('show');
   setTimeout(()=>{ jumpInputEl.classList.remove('bad'); jumpMsgEl.classList.remove('show'); }, 2200);
 }
-function jumpToRef(ref){
+function jumpToRef(ref, opts){
   ref = (ref || '').trim();
+  // `opts.fromUrl` marks a jump the READER didn't type (the ?q= router below): it still
+  // resolves and navigates identically, but stays out of the recent-jumps list, which is
+  // meant to be a record of what this person looked up, not of links they arrived through.
+  const remember = !(opts && opts.fromUrl);
   // IN-PAGE shortcut: on a content page (SO defined) you can omit the work's own name and
   // jump within it — a bare L24 dot-address (`8.4.16`) → this page's anchor; an SC segment
   // with (`8:216.1`, chapter kept) or without (`:2.1`) the chapter → this page's segment.
@@ -3210,7 +3214,7 @@ function jumpToRef(ref){
       if(key) hash = '#tr-' + key;
     }
     if(hash){
-      saveJumpHist([ref].concat(loadJumpHist().filter(x=>x!==ref)));
+      if(remember) saveJumpHist([ref].concat(loadJumpHist().filter(x=>x!==ref)));
       jumpInputEl.value = ''; syncJumpClear();               // in-page jump doesn't reload — clear
       closeJump();
       if(location.hash === hash){ if(typeof jumpToHash === 'function') jumpToHash(); }
@@ -3220,7 +3224,7 @@ function jumpToRef(ref){
   }
   const r = parseJumpRef(ref);
   if(!r || r.err){ flashJumpErr((r&&r.err) || 'Type a ref like mn125, dn16, an3.65 or sn22.59'); return; }
-  saveJumpHist([r.ref].concat(loadJumpHist().filter(x=>x!==r.ref)));
+  if(remember) saveJumpHist([r.ref].concat(loadJumpHist().filter(x=>x!==r.ref)));
   if(r.url !== undefined){ window.location.href = JUMP_ROOT + r.url; closeJump(); return; }
   let hash = '';
   if(r.hash !== undefined) hash = r.hash;                      // pre-built (e.g. JUMP_FLAT's)
@@ -3290,6 +3294,42 @@ document.addEventListener('keydown', ev=>{
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') closeJump(); });
 document.addEventListener('click', ev=>{
   if(jumpPopEl.classList.contains('show') && !ev.target.closest('#jump')) closeJump();
+});
+
+// ── ?q=<ref> — the 🦘 box, driven from the URL ──
+// A #hash can only deep-link WITHIN a page that's already been chosen, so a citation from
+// outside the site can't use one: whoever links to mn125 would have to know it lives at
+// mn/mn125/, an3.65 at an/an3/#3.65, dhp1 at kn/dhp/#1. ?q=<ref> hands the ref to the same
+// parseJumpRef the jump box uses, so ANY page + ?q= resolves a citation and routes itself —
+// the homepage becomes a citation resolver, and `<root>/?q=%s` registers as a browser
+// keyword search. The query string needs no server support: a static host ignores it.
+//
+// On DOMContentLoaded rather than inline, because on viewer pages this JS is inlined BEFORE
+// the init that populates SO/ROW2LEAF, renders, and calls jumpToHash() — an in-page ref
+// resolved any earlier would search an empty index, and a ?q= naming a spot on THIS page has
+// to win over the page's own #hash, so it must also land after jumpToHash has run.
+document.addEventListener('DOMContentLoaded', ()=>{
+  const q = (new URLSearchParams(location.search).get('q') || '').trim();
+  if(!q) return;
+  // Strip q BEFORE jumping. A cross-page ref navigates away and drops it anyway, but an
+  // in-page ref only sets location.hash — which would leave ?q= sitting in the address bar,
+  // so a URL the reader copied AFTERWARDS would re-run the original jump on load and
+  // override the hash it appears to point at.
+  try{
+    const u = new URL(location.href);
+    u.searchParams.delete('q');
+    history.replaceState(null, '', u.pathname + u.search + u.hash);
+  }catch(e){/* replaceState is refused on file:// in some browsers — still jump */}
+  // Put the ref in the box and open the dropdown BEFORE jumping: a ref that resolves closes
+  // it (or navigates away) in this same tick, and one that doesn't is left on screen beside
+  // flashJumpErr's complaint — which renders inside the pop and would otherwise be invisible,
+  // making a mistyped citation link look like a page that simply ignored it.
+  jumpInputEl.value = q; syncJumpClear();
+  openJump();
+  jumpToRef(q, {fromUrl: true});
+  // Resolved in-page → the pop is shut, but focus would still sit in the jump input and eat
+  // the reader's first keystrokes (and the viewer's "/" and Esc bindings).
+  if(!jumpPopEl.classList.contains('show')) jumpInputEl.blur();
 });
 
 
