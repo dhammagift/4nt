@@ -20,6 +20,8 @@
   --than-bg:#eef0f8;  --than-text:#0d1a3a;
   --bar-bg:#ede5d4;   --bar-col-hover:#e4d9c4;--bar-drag:#d4c8a8;
   --rtc-bg:#f8f4ee;
+  /* per-line kinds (tr.k-*) — a quoted canonical passage vs the author's own prose */
+  --kind-rule:var(--line);--kind-bg:rgba(156,128,96,.07);--kind-rule-bg:rgba(92,61,30,.06);
   --header-bg:#5c3d1e;--header-text:#f5ede0;
   --sw:240px;
   --hh:128px;
@@ -44,6 +46,7 @@
   --than-bg:#121520;  --than-text:#a8b8d8;
   --bar-bg:#201a12;   --bar-col-hover:#2a2218;--bar-drag:#3a3020;
   --rtc-bg:#1e1810;
+  --kind-rule:#5a4830;--kind-bg:rgba(232,223,200,.045);--kind-rule-bg:rgba(200,160,96,.07);
   --header-bg:#241c10;--header-text:#e8d8b8;
 }
 
@@ -123,6 +126,130 @@ header{
 }
 .icon-btn:hover{background:rgba(255,255,255,.2)}
 .icon-btn.on{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+
+/* ═══ per-line 🔗 "copy a link" menu ═══
+   Opened from the faint 🔗 in the first column's gutter (Line Seg # = Subtle). Offers the
+   four useful forms of "where am I": the two addresses a reader thinks in (L24 outline
+   section × line segment) crossed with the two shapes a reference travels in (a ?q= page
+   URL anyone can click, and the bare 🐇 quickjump value to paste into the jump box).
+   Styled off .coldef-menu so it reads as the same family as the ⚙ popovers. */
+.sm-menu{position:fixed;z-index:900;width:min(30rem,calc(100vw - 1.5rem));
+  padding:.55rem .6rem .5rem;background:var(--bg);color:var(--text);
+  border:1px solid var(--accent);border-radius:6px;font-family:sans-serif;
+  box-shadow:0 0 0 3px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.4)}
+/* The card floats over text of the same background colour, so a --sec-border edge let it
+   camouflage: it gets an accent border plus a 50%-opacity contrast ring, theme-flipped. */
+html[data-theme="dark"] .sm-menu{
+  box-shadow:0 0 0 3px rgba(255,255,255,.5), 0 8px 24px rgba(0,0,0,.6)}
+.sm-menu[hidden]{display:none}
+/* the title bar doubles as the drag handle */
+.sm-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;
+  margin:-.15rem -.15rem .3rem;padding:.15rem .15rem .25rem;
+  cursor:move;user-select:none;touch-action:none;border-radius:4px}
+.sm-head:hover{background:var(--sec-bg)}
+.sm-menu.dragging{cursor:move}
+.sm-menu.dragging .sm-head{background:var(--sec-bg)}
+.sm-head .sm-close{cursor:pointer}
+.sm-title{font-size:.62rem;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);font-weight:600}
+.sm-close{border:none;background:none;color:var(--muted);cursor:pointer;
+  font-size:.8rem;line-height:1;padding:.1rem .25rem;border-radius:3px}
+.sm-close:hover{background:var(--toc-hover);color:var(--text)}
+/* breadcrumb — each crumb re-points the L24 column at that depth */
+.sm-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:.18rem;
+  font-size:.68rem;margin:0 0 .45rem;line-height:1.45}
+.sm-crumb{border:1px solid transparent;background:none;font:inherit;cursor:pointer;
+  color:var(--muted);padding:.05rem .28rem;border-radius:4px;max-width:20rem;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm-crumb:hover{background:var(--toc-hover);color:var(--text)}
+.sm-crumb.on{color:var(--accent);font-weight:700;border-color:var(--border);
+  background:var(--sec-bg)}
+/* only one outline level covers this line — nothing to pick, so drop the button chrome
+   entirely: it still reads as "the section you're in", it just doesn't invite a click.
+   Two classes, to outrank the .sm-crumb.on box it would otherwise inherit. */
+.sm-crumb.sm-crumb-static,.sm-crumb.sm-crumb-static:hover{cursor:default;
+  border-color:transparent;background:none;padding-left:0}
+.sm-sep{color:var(--muted);opacity:.5;font-size:.6rem}
+/* the 2-column × 2-row grid (+ a row-label gutter) */
+.sm-grid{display:grid;grid-template-columns:4.1rem 1fr 1fr;gap:.3rem;align-items:stretch}
+.sm-ch{font-size:.6rem;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--accent);font-weight:700;padding:.1rem .3rem .05rem}
+.sm-rl{display:flex;flex-direction:column;justify-content:center;
+  font-size:.63rem;color:var(--muted);text-align:right;padding-right:.15rem;
+  line-height:1.25}
+.sm-rl b{color:var(--text);font-size:1.02em;font-weight:600}
+.sm-cell{position:relative;display:block;width:100%;box-sizing:border-box;
+  text-align:left;cursor:pointer;border:1px solid var(--sec-border);
+  background:var(--sec-bg);color:var(--text);border-radius:5px;
+  padding:.34rem .45rem;font-family:monospace;font-size:.72rem;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:background .15s,border-color .15s}
+.sm-cell:hover{background:var(--toc-hover);border-color:var(--accent)}
+.sm-cell.copied{border-color:#2e7d32}
+/* The confirmation OVERLAYS the cell instead of being appended to its text: the cell
+   clips with text-overflow:ellipsis, so appended wording only survived in whichever cell
+   happened to have room — the long ?q= URLs just turned green with nothing said. */
+.sm-cell.copied::after{content:"✓ copied";position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  background:#2e7d32;color:#fff;font-family:sans-serif;font-weight:600;font-size:.72rem;
+  letter-spacing:.02em;border-radius:4px}
+.sm-cell .sm-dim{color:var(--muted)}
+.sm-foot{margin-top:.5rem;padding-top:.4rem;border-top:1px solid var(--border);
+  font-size:.6rem;color:var(--muted)}
+.sm-foot kbd{font-family:monospace;border:1px solid var(--border);border-radius:3px;
+  padding:0 .2rem;background:var(--sec-bg)}
+
+/* ══ "⇄ Cmy" CROSS-LAYER CARD ═════════════════════════════════════════════════════════
+   Where this passage lives in the OTHER layers — mūla ↔ aṭṭhakathā ↔ ṭīkā. Same card
+   chrome as the 🔗 copy-a-link window above (.sm-menu / .sm-crumbs / .sm-grid / .sm-cell /
+   .sm-foot are shared verbatim), plus a layer switch on top. The tab you are reading is
+   marked "you are here" and disabled; a layer that is absent or unpublished is disabled
+   with the reason on hover, so the reader learns the layer isn't there rather than nothing.
+   Data is precomputed per page (crosslink.py → XLINK); nothing is derived in the browser. */
+/* One row per layer: the BUTTON is the jump, the text beside it says what that layer is.
+   Rows are drawn only for positions this text has — a dimmed row means "exists, not
+   published here yet", never "impossible". */
+.xl-list{display:flex;flex-direction:column;gap:.32rem}
+.xl-row{display:flex;align-items:flex-start;gap:.6rem}
+.xl-btn{flex:0 0 6.6rem;text-align:center;border:1px solid var(--accent);border-radius:5px;
+  background:var(--sec-bg);color:var(--accent);font:inherit;font-size:.74rem;font-weight:700;
+  padding:.36rem .3rem;cursor:pointer;text-decoration:none;
+  transition:background .12s,border-color .12s}
+.xl-btn:hover{background:var(--toc-hover)}
+/* the layer you are reading, and one that is not available: same flattened treatment, so
+   only the live rows carry the accent border that invites a click */
+.xl-btn.here,.xl-btn.off{border-color:var(--sec-border);background:var(--bg);
+  color:var(--muted);font-weight:600;cursor:default}
+.xl-btn.off{opacity:.45}
+.xl-desc{flex:1;min-width:0;font-size:.72rem;line-height:1.35;padding-top:.05rem}
+.xl-desc .wk{color:var(--text);font-weight:600}
+.xl-desc .what{color:var(--muted)}
+.xl-desc .st{display:block;font-size:.62rem;color:var(--muted);letter-spacing:.02em}
+.xl-desc .ref{font-family:monospace;font-size:.66rem;color:var(--accent);opacity:.85}
+.xl-row.dim .xl-desc .wk{color:var(--muted);font-weight:600}
+/* A position that holds SEVERAL works (the Samantapāsādikā has four subcommentaries) gets
+   one row per work under a small label, rather than a picker on a shared row — see
+   crosslink.py. `.sub` only marks them; the button keeps its width so the column lines up. */
+.xl-grp{font-size:.58rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  font-weight:700;margin:.35rem 0 -.05rem .2rem}
+.xl-btn.sub{font-size:.68rem}
+.xl-lbt{color:#b03030;font-weight:600}
+html[data-theme="dark"] .xl-lbt{color:#e08a7a}
+/* the title bar names what is being switched (the unit, or one line) */
+.sm-title b{color:var(--accent);font-family:monospace;letter-spacing:0;text-transform:none}
+/* Per-line "⇄" gutter marker — only on texts whose granularity maps line-for-line (the
+   Vinaya, whose commentary anchors the mūla paragraph number). Sits left of the 🔗 when
+   that one is showing, takes its place when it isn't; unlike 🔗 it is NOT gated on
+   data-seg, because it is navigation, not a reference marker. */
+/* ⇄ is a MONOCHROME glyph, not an emoji: at the 🔗's .22 opacity it is invisible in BOTH
+   themes (the emoji survives that low because it carries its own colour). So it takes the
+   accent colour, a much higher resting floor, and no grayscale filter. */
+.seg-xl{position:absolute;top:.35rem;right:.3rem;border:none;background:none;cursor:pointer;
+  color:var(--accent);font-size:.72rem;line-height:1;padding:0;opacity:.55;
+  user-select:none;transition:opacity .12s}
+html[data-seg="subtle"] .seg-xl{right:1.5rem}
+tr:hover .seg-xl{opacity:.85}
+.seg-xl:hover{opacity:1}
 
 /* ⚙ settings popover */
 .settings-wrap{position:relative;display:flex;align-items:center}
@@ -564,9 +691,38 @@ html[data-seg="subtle"] .seg-link{display:block}
 html[data-seg="subtle"] .seg-host{padding-right:1.3em}
 tr:hover .seg-link{opacity:.55}
 .seg-link:hover{opacity:1;filter:none}
+/* LIGHT: a grayscaled emoji at 22% opacity on the light parchment is effectively invisible
+   (dark mode's glyph is bright enough to carry at that level). Raise the resting floor and
+   the row-hover step for both gutter markers — the :hover rules below still take them to
+   full, and need the same theme prefix to outrank these. */
+html[data-theme="light"] .seg-link{opacity:.5;filter:grayscale(.2)}
+html[data-theme="light"] tr:hover .seg-link{opacity:.8}
+html[data-theme="light"] .seg-link:hover{opacity:1;filter:none}
 .seg-link.copied{opacity:1;filter:none;color:var(--accent)}
 .ec{opacity:.25}
 .ct.grw{white-space:pre-wrap}
+/* ── Per-line kinds (`row.k` → `tr.k-<kind>`) ──────────────────────────────────
+   A modern manual that QUOTES the Canon needs the quotation to read as one: in the
+   Buddhist Monastic Code roughly a fifth of the lines are canonical passages that
+   Ṭhānissaro is arguing ABOUT, not his own argument, and the epub's only record of
+   which is which is a wrapper class (bmc_source.KIND_BY_CLASS). Marked with a left
+   rule and a tint rather than italics, since these run for dozens of lines at a
+   stretch and italic prose that long is harder to read, not easier.
+   Inert for every other text: no `k` on a row ⇒ none of this matches. */
+tr.k-quote td.c,tr.k-pali td.c,tr.k-rule td.c,tr.k-verse td.c{
+  box-shadow:inset 3px 0 0 0 var(--kind-rule);background:var(--kind-bg)}
+tr.k-quote td.c{padding-left:1.25rem}
+/* The training rule itself — the formula the whole chapter turns on. */
+tr.k-rule td.c{padding-left:1.25rem;--kind-rule:var(--accent);--kind-bg:var(--kind-rule-bg);
+  font-weight:600}
+/* Pāli left untranslated: the transaction formulae, recited rather than read. */
+tr.k-pali td.c{padding-left:1.25rem;--kind-bg:var(--pali-bg);font-family:Georgia,serif}
+tr.k-pali .ct{color:var(--pali-text)}
+tr.k-verse td.c{padding-left:2rem;font-family:Georgia,serif;font-style:italic}
+/* Ṭhānissaro's one-line summary of a rule, and the "* * *" dividers between rules. */
+tr.k-summary .ct{font-weight:600}
+tr.k-sep td.c{text-align:center;letter-spacing:.5em;color:var(--muted);opacity:.6}
+tr.k-sep .seg-link,tr.k-sep .seg{display:none}
 .dw{background:rgba(196,138,28,.28);border-radius:2px;padding:0 1px;font-weight:600}
 [data-theme="dark"] .dw{background:rgba(255,200,80,.30)}
 tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
@@ -574,11 +730,18 @@ tr[id]{scroll-margin-top:calc(var(--hh) + var(--ch) + 8px)}
 /* ── "∥ EBT" parallels button (grouped-nikāya sutta headers) + its modal ──
    Mirrors index_cards.py's per-row button/popup on the MN/DN/DA/MA collection
    index pages — same visual language, reusing THIS template's own theme vars. */
+/* A pill sits INSIDE .gh, whose own background is --sec-bg, so a plate of --bg (or of
+   --toc-hover) differs from its surroundings by ~3% and simply dissolves — worst in dark,
+   where every token is within a few points of black. Hence an accent-TINTED plate and an
+   accent edge: the one pair of values that reads against the header in both themes. The
+   tints are the theme accents at low alpha (light #5c3d1e, dark #c8a060). */
 .ix-ebt-btn{flex-shrink:0;display:inline-flex;align-items:center;margin-left:.4rem;
-  padding:0 .55rem;height:20px;border:1px solid var(--sec-border);border-radius:5px;
-  background:var(--bg);color:var(--accent);font-size:.62rem;font-family:sans-serif;
-  cursor:pointer;white-space:nowrap;transition:background .12s}
-.ix-ebt-btn:hover{background:var(--toc-hover)}
+  padding:0 .55rem;height:20px;border:1px solid var(--accent);border-radius:5px;
+  background:rgba(92,61,30,.12);color:var(--accent);font-size:.62rem;font-weight:600;
+  font-family:sans-serif;cursor:pointer;white-space:nowrap;transition:background .12s}
+.ix-ebt-btn:hover{background:rgba(92,61,30,.24)}
+html[data-theme="dark"] .ix-ebt-btn{background:rgba(200,160,96,.20)}
+html[data-theme="dark"] .ix-ebt-btn:hover{background:rgba(200,160,96,.34)}
 .ebt-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:800}
 .ebt-overlay.show{display:block}
 .ebt-pop[hidden]{display:none}
@@ -798,6 +961,43 @@ body.fn-dragging{user-select:none;cursor:row-resize}
     .home-logo img, img.home-logo { width: 16px; }
 </style></head>
 <body>
+<!-- Per-line 🔗 "copy a link" menu. Placed here, BEFORE the main script, so the script can
+     bind its handlers at top level; position:fixed makes its spot in the flow irrelevant. -->
+<div class="sm-menu" id="segMenu" hidden="" role="dialog" aria-label="Copy a link to this section or line">
+  <div class="sm-head" title="drag to move">
+    <span class="sm-title">copy a link to this section (or line)</span>
+    <button class="sm-close" type="button" id="smClose" aria-label="Close">✕</button>
+  </div>
+  <div class="sm-crumbs" id="smCrumbs"></div>
+  <div class="sm-grid">
+    <span></span>
+    <span class="sm-ch">L24 outline</span>
+    <span class="sm-ch">line seg #</span>
+
+    <span class="sm-rl"><b>page link</b>?q=…</span>
+    <button class="sm-cell" type="button" id="smUrlL24"></button>
+    <button class="sm-cell" type="button" id="smUrlSeg"></button>
+
+    <span class="sm-rl"><b>quickjump</b>🐇 value</span>
+    <button class="sm-cell" type="button" id="smQjL24"></button>
+    <button class="sm-cell" type="button" id="smQjSeg"></button>
+  </div>
+  <div class="sm-foot">Click a cell to copy<span id="smFootLvl"></span> ·
+    <kbd>Esc</kbd> closes</div>
+</div>
+
+<!-- ⇄ Cross-layer card — this passage in the mūla / aṭṭhakathā / ṭīkā. Opened by the
+     "⇄ Cmy" pill on a unit header, or (where the text maps line-for-line) by the ⇄ in a
+     line's gutter. Reuses the 🔗 card's chrome; see the .xl-* CSS above. -->
+<div class="sm-menu" id="xlCard" hidden="" role="dialog" aria-label="Switch layer">
+  <div class="sm-head" title="drag to move">
+    <span class="sm-title" id="xlTitle">switch layer</span>
+    <button class="sm-close" type="button" id="xlClose" aria-label="Close">✕</button>
+  </div>
+  <div class="xl-list" id="xlList"></div>
+  <div class="sm-foot"><kbd>Esc</kbd> closes
+  </div>
+</div>
 
 <header id="mainHeader">
   <!-- Site logo doubles as the breadcrumb home link; spans both nav rows. -->
@@ -821,8 +1021,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 • Click 🐇 (or press / anywhere) to open the jump box
 • Type a ref and press Enter — e.g. mn125, an3.65, dhp1
 • Jump to an outline section (L24) — e.g. mn125.2.3
+• A numbered vagga keeps its dot — dhp2. is Dhp's 2nd vagga, dhp2 its 2nd verse
 • Add a segment to land right on it — e.g. mn125:2.5
 • On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here
+• Taishō texts are t0614 — with a section, t0614.1.6.3
 • Shortcuts: home, major, abhi, taisho614
 • Link straight to a ref — put ?q=mn125 on any page's URL
 • Your recent jumps show while the box is empty">🐇</button>
@@ -832,8 +1034,10 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 • Click 🐇 (or press / anywhere) to open the jump box
 • Type a ref and press Enter — e.g. mn125, an3.65, dhp1
 • Jump to an outline section (L24) — e.g. mn125.2.3
+• A numbered vagga keeps its dot — dhp2. is Dhp's 2nd vagga, dhp2 its 2nd verse
 • Add a segment to land right on it — e.g. mn125:2.5
 • On a page, drop its name — 8.4.16 (L24) or :2.5 (segment) stays here
+• Taishō texts are t0614 — with a section, t0614.1.6.3
 • Shortcuts: home, major, abhi, taisho614
 • Link straight to a ref — put ?q=mn125 on any page's URL
 • Your recent jumps show while the box is empty" autocomplete="off" spellcheck="false" type="search">
@@ -931,7 +1135,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
                         </select>
                     </div>
                 <div class="set-row">
-          <span class="set-lbl" title="SuttaCentral segment references (e.g. mn10:2.5).">SC segment refs</span>
+          <span class="set-lbl" title="Per-line reference markers (e.g. mn125:2.5) — Subtle shows a 🔗 you can click to copy a link.">Line Seg #</span>
           <button class="icon-btn" id="segBtn" onclick="cycleSeg()" title="Click to cycle:
 • Off — hidden
 • Subtle — a faint 🔗 in the gutter (hover for the ref, click to copy a link)
@@ -1009,7 +1213,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 </div>
 
 <!-- STATIC PAGE FOOTER (shared module footer.py) — aligns with the content column. -->
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="/assets/img/logo4nt.png" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Jul 31, 2026 at 03:05 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="/assets/img/logo4nt.png" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Aug 06, 2026 at 06:07 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 
 <!-- FOOTNOTE PANE — lower-left region of the sidebar on desktop (bottom sheet on
      mobile). Body is populated by openNote() with build-sanitized note HTML. When no
@@ -1095,7 +1299,7 @@ body.fn-dragging{user-select:none;cursor:row-resize}
 <script type="application/json" id="tx-sujato-corrected">["Middle Discourses 119", "Mindfulness of the Body", "So I have heard.", "At one time the Buddha was staying near Sāvatthī in Jeta’s Grove, Anāthapiṇḍika’s monastery.", "Then after the meal, on return from almsround,\nseveral mendicants sat together in the assembly hall and this discussion came up among them.", "“It’s incredible, reverends, it’s amazing,", "how the Blessed One, who knows and sees, the perfected one,\nthe fully awakened Buddha has said that mindfulness of the body,\nwhen developed and cultivated, is very fruitful and beneficial.”", "But their conversation was left unfinished.\nThen the Buddha came out of retreat and went to the assembly hall.\nHe sat on the seat spread out", "and addressed the mendicants,", "“Mendicants, what were you sitting talking about just now?\nWhat conversation was left unfinished?”", "So the mendicants told him what they had been talking about.\nThe Buddha said:", "", "", "", "“And how, mendicants, is mindfulness of the body developed and cultivated to be very fruitful and beneficial?", "It’s when a mendicant—gone to a wilderness, or to the root of a tree,\nor to an empty hut—sits down cross-legged, sets their body straight, and brings mindfulness to the present.", "Just mindful, they breathe in.\nMindful, they breathe out.", "Breathing in heavily they know:\n‘I’m breathing in heavily.’\nBreathing out heavily they know:\n‘I’m breathing out heavily.’", "When breathing in lightly they know:\n‘I’m breathing in lightly.’\nBreathing out lightly they know:\n‘I’m breathing out lightly.’", "They practice like this:\n‘I’ll breathe in experiencing the whole body.’\nThey practice like this:\n‘I’ll breathe out experiencing the whole body.’", "They practice like this:\n‘I’ll breathe in stilling the physical process.’\nThey practice like this:\n‘I’ll breathe out stilling the physical process.’", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That’s how a mendicant develops mindfulness of the body.", "Furthermore, when a mendicant is walking they know ‘I am walking’.\nWhen standing they know ‘I am standing’.\nWhen sitting they know ‘I am sitting’.\nAnd when lying down they know ‘I am lying down’.", "Whatever posture their body is in, they know it.", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, a mendicant acts lucidly-discerning when going out and coming back;\nwhen looking ahead and aside;\nwhen bending and extending the limbs;\nwhen bearing the outer robe, bowl and robes;\nwhen eating, drinking, chewing, and tasting;\nwhen urinating and defecating;\nwhen walking, standing, sitting, sleeping, waking, speaking, and keeping silent.", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, a mendicant examines their own body,\nup from the soles of the feet and down from the tips of the hairs, wrapped in skin and full of many kinds of filth.", "‘In this body there is head hair, body hair, nails, teeth, skin, flesh,\nsinews, bones, bone marrow, kidneys, heart, liver, diaphragm, spleen,\nlungs, intestines, mesentery, undigested food, feces, bile, phlegm, pus,\nblood, sweat, fat, tears, grease, saliva, snot, synovial fluid, urine.’", "It’s as if there were a bag with openings at both ends, filled with various kinds of grains, such as", "fine rice, wheat, mung beans, peas, sesame, and ordinary rice.", "And a person with clear eyes were to open it and examine the contents:", "‘These grains are fine rice, these are wheat, these are mung beans,\nthese are peas, these are sesame, and these are ordinary rice.’", "In the same way, a mendicant examines their own body,\nup from the soles of the feet and down from the tips of the hairs, wrapped in skin and full of many kinds of filth. …", "", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, a mendicant examines their own body, whatever its placement or posture, according to the elements:", "‘In this body there is the earth element, the water element, the fire element, and the air element.’", "It’s as if a deft butcher or butcher’s apprentice were to kill a\ncow and sit down at the crossroads with the meat cut into chops.", "In the same way, a mendicant examines their own body, whatever its placement or posture, according to the elements:", "‘In this body there is the earth element, the water element, the fire element, and the air element.’", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, suppose a mendicant were to see a corpse discarded in a charnel ground.\nAnd it had been dead for one, two, or three days, bloated, livid, and festering.", "They’d compare it with their own body:", "‘This body is also of that same nature, that same kind, and cannot go beyond that.’", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Or suppose they were to see a corpse discarded in a charnel ground being devoured by crows,\nhawks, vultures, herons, hounds, tigers, leopards, jackals, and many kinds of little creatures.", "They’d compare it with their own body:", "‘This body is also of that same nature, that same kind, and cannot go beyond that.’", "", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, suppose they were to see a corpse discarded in a charnel ground,\na skeleton with flesh and blood, held together by sinews …", "A skeleton without flesh but smeared with blood, and held together by sinews …", "A skeleton rid of flesh and blood, held together by sinews …", "Bones rid of sinews scattered in every direction.\nHere a hand-bone, there a foot-bone, here an ankle bone, there a shin-bone, here a thigh-bone, there a hip-bone,\nhere a rib-bone, there a back-bone, here an arm-bone,\nthere a neck-bone, here a jaw-bone, there a tooth, here the skull. …", "", "", "", "", "", "White bones, the color of shells …", "Decrepit bones, heaped in a pile …", "Bones rotted and crumbled to powder.", "They’d compare it with their own body:", "‘This body is also of that same nature, that same kind, and cannot go beyond that.’", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to lay life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, a mendicant, quite secluded from sensual pleasures,\nsecluded from unskillful qualities, enters and remains in the first jhāna,\nwhich has the mental joy and physical pleasure born of seclusion, while directing verbal thoughts and pondering them.", "They drench, steep, fill, and spread their body with mental joy and physical pleasure born of seclusion.\nThere's no part of the body that's not spread with mental joy and physical pleasure born of seclusion.", "It’s like when a deft bathroom attendant or their apprentice pours bath powder into a bronze dish,\nsprinkling it little by little with water.\nThey knead it until the ball of bath powder is soaked and saturated with moisture, spread through inside and out;\nyet no moisture oozes out.", "In the same way, they drench, steep, fill,\nand spread their body with mental joy and physical pleasure born of seclusion.\nThere's no part of the body that's not spread with mental joy and physical pleasure born of seclusion.", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to lay life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, as directed verbal thoughts and pondering them are stilled,\na mendicant enters and remains in the second jhāna,\nwhich has the mental joy and physical pleasure born of samādhi,\nwith internal clarity and mind at one, without directed verbal thoughts and pondering them.", "They drench, steep, fill, and spread their body with mental joy and physical pleasure born of samādhi.\nThere's no part of the body that's not spread with mental joy and physical pleasure born of samādhi.", "It’s like a deep lake fed by spring water.\nThere’s no inlet to the east, west, north, or south,\nand the heavens would not properly bestow showers from time to time.\nBut the stream of cool water welling up in the lake drenches, steeps, fills, and spreads throughout the lake.\nThere’s no part of the lake that’s not spread through with cool water.", "In the same way, a mendicant drenches, steeps, fills,\nand spreads their body with mental joy and physical pleasure born of samādhi.\nThere's no part of the body that's not spread with mental joy and physical pleasure born of samādhi.", "", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, with the fading away of mental joy, a mendicant enters and remains in the third jhāna.\nThey meditate with equanimity, mindful and lucidly-discerning,\npersonally experiencing the physical pleasure of which the noble ones declare,\n'Equanimous and mindful, one meditates in physical pleasure.'", "They drench, steep, fill, and spread their body with physical pleasure free of mental joy.\nThere's no part of the body that's not spread with physical pleasure free of mental joy.", "It’s like a pool with blue water lilies, or pink or white lotuses.\nSome of them sprout and grow in the water without rising above it, thriving underwater.\nFrom the tip to the root they’re drenched, steeped, filled, and soaked with cool water.\nThere’s no part of them that’s not soaked with cool water.", "In the same way, a mendicant drenches, steeps, fills, and spreads their body with physical pleasure free of mental joy.\nThere's no part of the body that's not spread with physical pleasure free of mental joy.", "", "That too is how a mendicant develops mindfulness of the body.", "Furthermore, a mendicant, with the giving up of pleasure and pain and the disappearance of former happiness and sadness,\nenters and remains in the fourth jhāna, without pleasure or pain, with pure equanimity and mindfulness.", "They sit spreading their body through with pure bright mind.\nThere’s no part of the body that’s not filled with pure bright mind.", "It’s like someone sitting wrapped from head to foot with white cloth.\nThere’s no part of the body that’s not spread over with white cloth.", "In the same way, they sit spreading their body through with pure bright mind.\nThere’s no part of the body that’s not filled with pure bright mind.", "As they meditate like this—diligent, keen, and resolute—memories and thoughts tied to domestic life are given up.", "Their mind becomes stilled internally;\nit settles, unifies, and becomes immersed in samādhi.", "That too is how a mendicant develops mindfulness of the body.", "Anyone who has developed and cultivated mindfulness of the body\nincludes all of the skillful qualities that play a part in realization.", "Anyone who brings into their mind the great ocean includes all of the streams that run down into it.", "In the same way, anyone who has developed and cultivated mindfulness of the\nbody includes all of the skillful qualities that play a part in realization.", "When a mendicant has not developed or cultivated mindfulness of the body,\nMāra finds a vulnerability and gets an opportunity.", "Suppose a person were to throw a heavy stone ball at a mound of wet clay.", "What do you think, mendicants?", "Would that heavy stone ball find an entry into that mound of wet clay?”", "“Yes, sir.”", "“In the same way, when a mendicant has not developed or cultivated mindfulness of the body,\nMāra finds a vulnerability and gets an opportunity.", "Suppose there was a dried up, withered log.", "Then a person comes along with a drill-stick, thinking", "to light a fire and produce heat.", "What do you think, mendicants?", "By drilling the stick against that dried up, withered log, could they light a fire and produce heat?”", "“Yes, sir.”", "“In the same way, when a mendicant has not developed or cultivated mindfulness of the body,\nMāra finds a vulnerability and gets an opportunity.", "Suppose a water jar was placed on a stand, empty and hollow.", "Then a person comes along with a load of water.", "What do you think, mendicants?", "Could that person pour water into the jar?”", "“Yes, sir.”", "“In the same way, when a mendicant has not developed or cultivated mindfulness of the body,\nMāra finds a vulnerability and gets an opportunity.", "When a mendicant has developed and cultivated mindfulness of the body,\nMāra cannot find a vulnerability and doesn’t get an opportunity.", "Suppose a person were to throw a light ball of string at a door-panel made entirely of hardwood.", "What do you think, mendicants?", "Would that light ball of string find an entry into that door-panel made entirely of hardwood?”", "“No, sir.”", "“In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nMāra cannot find a vulnerability and doesn’t get an opportunity.", "Suppose there was a green, sappy log.", "Then a person comes along with a drill-stick, thinking", "to light a fire and produce heat.", "What do you think, mendicants?", "By drilling the stick against that green, sappy log on dry land far from water,\ncould they light a fire and produce heat?”", "“No, sir.”", "“In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nMāra cannot find a vulnerability and doesn’t get an opportunity.", "Suppose a water jar was placed on a stand, full to the brim so a crow could drink from it.", "Then a person comes along with a load of water.", "What do you think, mendicants?", "Could that person pour water into the jar?”", "“No, sir.”", "“In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nMāra cannot find a vulnerability and doesn’t get an opportunity.", "When a mendicant has developed and cultivated mindfulness of the body,\nthey extend the mind to realize by insight each and every thing that can be realized by insight;\nand they are capable of realizing those things, since each and every one is within range.", "Suppose a water jar was placed on a stand, full to the brim so a crow could drink from it.", "If a strong man was to pour it on any side, would water pour out?”", "“Yes, sir.”", "“In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nthey extend the mind to realize by insight each and every thing that can be realized by insight;\nand they are capable of realizing those things, since each and every one is within range.", "Suppose there was a square, walled lotus pond on level ground, full to the brim so a crow could drink from it.", "If a strong man was to open the wall on any side, would water pour out?”", "“Yes, sir.”", "“In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nthey extend the mind to realize by insight each and every thing that can be realized by insight;\nand they are capable of realizing those things, since each and every one is within range.", "Suppose a chariot stood harnessed to thoroughbreds at a level crossroads, with a goad ready.", "A deft horse trainer, a master charioteer, might mount the chariot,\ntaking the reins in his right hand and goad in the left.\nHe’d drive out and back wherever he wishes, whenever he wishes.", "In the same way, when a mendicant has developed and cultivated mindfulness of the body,\nthey extend the mind to realize by insight each and every thing that can be realized by insight;\nand they are capable of realizing those things, since each and every one is within range.", "You can expect ten benefits when mindfulness of the body has been cultivated, developed,\nand practiced, made a vehicle and a basis, kept up, consolidated, and properly implemented.", "They prevail over desire and discontent, and live having mastered desire and discontent whenever they arose.", "They prevail over fear and dread, and live having mastered fear and dread whenever they arose.", "They endure cold, heat, hunger, and thirst;\nthe touch of flies, mosquitoes, wind, sun, and reptiles;\nrude and unwelcome criticism;\nand put up with physical pain—sharp, severe, acute, unpleasant, disagreeable, and life-threatening.", "They get the four jhānas—physically pleasurable meditations in this life that belong to the higher mind—when they want,\nwithout trouble or difficulty.", "They wield the many kinds of psychic power:\nmultiplying themselves and becoming one again …\nThey control the body as far as the realm of divinity.", "With clairaudience that is purified and superhuman,\nthey hear both kinds of sounds, human and heavenly, whether near or far. …", "They understand the minds of other beings and individuals, having encompassed them with their own mind. …", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "They recollect many kinds of past lives, with features and details.", "With clairvoyance that is purified and superhuman,\nthey see sentient beings passing away and being reborn—inferior and superior,\nbeautiful and ugly, in a good place or a bad place.\nThey understand how sentient beings pass on according to their deeds.", "They realize the undefiled freedom of heart and freedom by wisdom in this very life.\nAnd they live having realized it with their own insight due to the ending of defilements.", "You can expect these ten benefits when mindfulness of the body has been cultivated, developed,\nand practiced, made a vehicle and a basis, kept up, consolidated, and properly implemented.”", "That is what the Buddha said.", "Satisfied, the mendicants approved what the Buddha said.", ""]</script>
 <script type="application/json" id="tx-pts">["", "", "THUS have I heard:", "At one time the Lord was staying near Sāvatthī in the Jeta Grove in Anāthapiṇḍika's monastery.", "Then when a number of monks had returned from the alms-gathering after\nthe meal and were sitting down gathered together in an assembly hall,\nthere arose this conversation:", "\"It is marvellous, revered sirs, it is wonderful, revered sirs,", "that mindfulness of body when developed and made much of is of great fruit, of great advantage,\nas was said by the Lord who knows, who sees, the perfected one, the fully Self-Awakened One.\"", "But this conversation between these monks was interrupted.\nFor the Lord, emerging from solitary meditation towards evening, approached the assembly hall;\nhaving approached, he sat down on the seat made ready.", "As he was sitting down, the Lord addressed the monks, saying:", "\"What were you talking about here, monks, as you were sitting down?\nAnd what was your conversation that was interrupted?\"", "\"As to this, revered sir,\nwhen we had returned from the alms-gathering after our meal and were sitting\ndown gathered together in the assembly hall this conversation arose:", "'It is marvellous, revered sirs, it is wonderful, revered sirs,", "that mindfulness of body when developed and made much of is of great fruit, of great advantage,\nas was said by the Lord who knows, who sees, the perfected one, the fully Self-Awakened One.'", "This, revered sir, was our conversation that was interrupted, for then the Lord arrived.\"", "\"And how, monks, when mindfulness of body has been developed,\nhow when it has been made much of, is it of great fruit, of great advantage?", "As to this, monks, a monk who is forest-gone or gone to the root of a tree or gone to an empty place,\nsits down cross-legged, holding his back erect, arousing mindfulness in front of him.", "Mindful he breathes in, mindful he breathes out.", "Whether he is breathing in a long (breath) he comprehends,\n'I am breathing in a long (breath)';\nor whether he is breathing out a long (breath) he comprehends,\n'I am breathing out a long (breath)';", "or whether he is breathing in a short (breath) he comprehends,\n'I am breathing in a short (breath)';\nor whether he is breathing out a short (breath) he comprehends,\n'I am breathing out a short (breath).'", "He trains himself, thinking,\n'I will breath in experiencing the whole body.'\nHe trains himself, thinking,\n'I will breath out experiencing the whole body.'", "He trains himself, thinking,\n'I will breath in tranquillising the activity of body.'\nHe trains himself, thinking,\n'I will breath out tranquillising the activity of body.'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus, monks, does a monk develop mindfulness of body.", "And again, monks, when a monk is walking he comprehends,\n'I am walking';\nor when he is standing still he comprehends,\n'I am standing still';\nor when he is sitting down he comprehends,\n'I am sitting down';\nor when he is lying down he comprehends,\n'I am lying down.'", "So that however his body is disposed he comprehends that it is like that.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk, when he is setting out or returning is one acting in a clearly conscious way;\nwhen he is looking in front or looking around is one acting in a clearly conscious way;\nwhen he has bent in or stretched out (his arm) is one acting in a clearly conscious way;\nwhen he is carrying his outer cloak, bowl and robe is one acting in a clearly conscious way;\nwhen he is eating, drinking, chewing, tasting is one acting in a clearly conscious way;\nwhen he is obeying the calls of nature is one acting in a clearly conscious way;\nwhen he is walking, standing, sitting, asleep, awake, talking, silent, he is one acting in a clearly conscious way.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk reflects precisely on this body itself,\nencased as it is in skin and full of various impurities,\nfrom the soles of the feet up and from the crown of the head down, that:", "'There is connected with this body hair of the head, hair of the body, nails,\nteeth, skin, flesh, sinews, bones, marrow, kidneys, heart, liver, membranes,\nspleen, lungs, intestines, mesentery, stomach, excrement, bile, phlegm,\npus, blood, sweat, fat, tears, serum, saliva, mucus, synovic fluid, urine.'", "Monks, it is as if there were a double mouthed provision bag that was full of various kinds of grain such as hill-paddy,", "paddy, kidney beans, peas, sesamum, rice;", "and a keen-eyed man, pouring them out, might reflect:", "'That's hill-paddy, that's paddy, that's kidney beans, that's peas, that's sesamum, that's rice.'", "Even so, monks, does a monk reflect precisely on this body itself,\nencased as it is in skin and full of various impurities,\nfrom the soles of the feet up and from the crown of the head down, that:", "'There is connected with this body hair of the head, hair of the body, nails,\nteeth, skin, flesh, sinews, bones, marrow, kidneys, heart, liver, membranes,\nspleen, lungs, intestines, mesentery, stomach, excrement, bile, phlegm,\npus, blood, sweat, fat, tears, serum, saliva, mucus, synovic fluid, urine.'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk reflects on this body itself according to\nhow it is placed or disposed in respect of the elements, thinking:", "'In this body there is the element of extension, there is the element of cohesion,\nthere is the element of radiation, there is the element of motion.'", "Monks, it is as if a skilled cattle-butcher or his apprentice,\nhaving slaughtered a cow, might sit at the crossroads displaying its carcase.", "Even so, monks, does a monk reflect on this body itself according to\nhow it is placed or disposed in respect of the elements, thinking:", "'In this body there is the element of extension, there is the element of cohesion,\nthere is the element of radiation, there is the element of motion.'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see,\nthrown aside in a cemetery a body that had been dead for one day or for two days or for three days,\nswollen, discoloured, decomposing;", "so he focuses on this body itself, thinking:", "'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery a body which was being\ndevoured by crows or ravens or vultures or wild dogs or jackals or by various small creatures;", "so he focusses on this body itself, thinking:", "'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery\na body which was a skeleton but with (some) flesh and blood, sinew-bound;\nso he focusses on this body itself, thinking:\n'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'\nWhile he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.\nThus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery a skeleton,\nwhich was fleshless but blood-bespattered, sinew-bound;\nso he focusses on this body itself, thinking:\n'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'\nWhile he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.\nThus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a\ncemetery a skeleton which was without flesh or blood, sinew-bound;\nso he focusses on this body itself, thinking:\n'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'\nWhile he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.\nThus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery the bones scattered here and there,\nno longer held together:\nhere a bone of the hand, there a foot-bone, here a leg-bone,\nthere a rib, here a hip-bone, there a back-bone, here the skull;", "so he focusses on this body itself, thinking:", "'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery\na body the bones of which were white and something like sea-shells;\nso he focusses on this body itself, thinking:\n'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'\nWhile he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.\nThus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery a heap of dried up bones more than a year old;\nso he focusses on this body itself, thinking:\n'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'\nWhile he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.\nThus too, monks, does a monk develop mindfulness of body.", "And again, monks, it is as if a monk might see thrown aside in a cemetery the bones gone rotten and reduced to powder;", "", "so he focusses on this body itself, thinking:", "'This body too is of a similar nature, a similar constitution, it has not got past that (state of things).'", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk, aloof from pleasures of the senses, aloof from unskilled states of mind,\nenters on and abides in the first meditation which is accompanied by initial thought and discursive thought,\nis born of aloofness, and is rapturous and joyful.", "He drenches, saturates, permeates, suffuses this very body with the rapture and joy that are born of aloofness;\nthere is no part of his whole body that is not suffused with the rapture and joy that are born of aloofness.", "Monks, as a skilled bath-attendant or his apprentice, having sprinkled bath-powder into a bronze vessel,\nmight knead it while repeatedly sprinkling it with water until the ball of lather had taken up moisture,\nwas drenched with moisture, suffused with moisture inside and out, but without any oozing.", "Even so, monks, does a monk drench, saturate, permeate,\nsuffuse this very body with the rapture and joy that are born of aloofness;\nthere is no part of his whole body that is not suffused with the rapture and joy that are born of aloofness.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk, by allaying initial thought and discursive thought,\nwith the mind subjectively tranquillised and fixed on one point,\nenters on and abides in the second meditation which is devoid of initial thought and discursive thought,\nis born of concentration and is rapturous and joyful.", "He drenches, saturates, permeates, suffuses this very body with the rapture and joy that are born of concentration;\nthere is no part of his whole body that is not suffused with the rapture and joy that are born of concentration.", "Monks, it is like a pool of water with water welling up within it,\nbut which has no inlet for water from the eastern side which has no inlet for water from the western side\nwhich has no inlet for water from the northern side which has no inlet for water from the southern side,\nand even if the god does not send down showers upon it from time to time,\nyet the current of cool water having welled up from that pool will drench,\nsaturate, permeate, suffuse that pool with cool water.", "Even so, monks, does a monk drench, saturate, permeate,\nsuffuse this very body with the rapture and joy that are born of concentration;\nthere is no part of his whole body that is not suffused with the rapture and joy that are born of concentration.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk, by the fading out of rapture, dwells with equanimity,\nattentive and clearly conscious and experiences in his person that joy of which the ariyans say:\n'Joyful lives he who has equanimity and is mindful,' and he enters on and abides in the third meditation.", "He drenches, saturates, permeates, suffuses this very body with the joy that has no rapture;\nthere is no part of his whole body that is not suffused with the joy that has no rapture.", "As in a pond of white lotuses, or red lotuses, or blue lotuses, some white lotuses,\nor red lotuses, or blue lotuses are born in the water, grow up in the water,\nnever rising above the surface but flourishing beneath it and from their roots to the tips are drenched,\nsaturated, permeated, suffused by cool water;", "even so, monks, does a monk drench, saturate, permeate, suffuse this very body with the joy that has no rapture;\nthere is no part of his whole body that is not suffused with the joy that has no rapture.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;\nby getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "And again, monks, a monk, by getting rid of joy and by getting rid of anguish,\nby the going down of his former pleasures and sorrows,\nenters on and abides in the fourth meditation which has neither anguish nor joy,\nand which is entirely purified by equanimity and mindfulness.", "He, having suffused this very body with a mind that is utterly pure, utterly clean, comes to be sitting down;\nthere is no part of his whole body that is not suffused by a mind that is utterly pure, utterly clean.", "Monks, it is as if a man might be sitting down who had clothed himself including his head with a white cloth;\nthere would be no part of his whole body not covered by the white cloth.", "Even so, monks, a monk, having suffused this very body with a mind that is utterly pure,\nutterly clean, comes to be sitting down;\nthere is no part of this whole body that is not suffused by a mind that is utterly pure, utterly clean.", "While he is thus diligent, ardent, self-resolute, those memories and aspirations that are worldly are got rid of;", "by getting rid of them the mind itself is inwardly settled, calmed, focussed, concentrated.", "Thus too, monks, does a monk develop mindfulness of body.", "Monks, those skilled states that are connected with knowledge are in\nanyone in whom mindfulness of body has been developed and made much of.", "As, monks, those streams that flow down to the ocean are in anyone\nin whom the great ocean has been suffused by thought, even so,", "those skilled states that are connected with knowledge are in anyone\nin whom mindfulness of body has been developed and made much of.", "Monks, Māra gains access to whatever monk there is in whom mindfulness of body has not been developed,\nnot been made much of.", "Monks, it is as though a man were to throw a heavy round stone into a mound of moist clay.", "What do you think, monks?", "Would that heavy round stone gain access to that mound of moist clay?\"", "\"Yes, revered sir.\"", "\"Even so, monks, Māra gains access to,\nMāra gets a chance over anyone in whom mindfulness of body has not been developed, not made much of.", "Monks, it is as though there were a dry sapless stick,\nand a man were to come along bringing an upper piece of fire-stick, thinking:", "", "'I will light a fire, I will get heat.'", "What do you think, monks?", "Could that man, bringing an upper piece of fire-stick and rubbing that dry sapless stick (with it),\nlight a fire, could he get heat?\"", "\"Yes, revered sir.\"", "\"Even so, monks, Māra gains access to,\nMāra gets a chance over anyone in whom mindfulness of body has not been developed, not been made much of.", "Monks, it is as though a water-pot were standing void and empty on its support,", "and a man were to come along bringing a load of water.", "What do you think, monks?", "Would that man get a chance to unload the water?\"", "\"Yes, revered sir.\"", "\"Even so, monks, Māra gains access to,\nMāra gets a chance over anyone in whom mindfulness of body has not been developed, not been made much of.", "(But), monks, Māra does not gain access to,\nMāra does not get a chance over anyone in whom mindfulness of body has been developed and made much of.", "Monks, it is as though a man were to throw a light ball of thread against a door-panel made entirely from heartwood.", "What do you think, monks?", "Would that light ball of thread gain access to a door-panel made entirely from heart-wood?\"", "\"No, revered sir.\"", "\"Even so, monks, Māra does not gain access to,\nMāra does not get a chance over anyone in whom mindfulness of body has been developed and made much of.", "It is as though, monks, there were a wet sappy stick,\nand a man were to come along bringing an upper piece of fire-stick, thinking:", "", "'I will light a fire, I will get heat.'", "What do you think, monks?", "Could that man, bringing an upper piece of fire-stick and rubbing that wet sappy stick (with it),\nlight a fire, could he get heat?\"", "\"No, revered sir.\"", "\"Even so, monks, Māra does not gain access to,\nMāra does not get a chance over anyone in whom mindfulness of body has been developed and made much of.", "Monks, it is as though a full water-pot, brimming with water so that a crow could drink from it,", "were placed in a support, and a man were to come along bringing a load of water.", "What do you think, monks?", "Would that man get a chance to unload the water?\"", "\"No, revered sir.\"", "\"Even so, monks, Māra does not gain access to,\nMāra does not get a chance over anyone in whom mindfulness of body has been developed and made much of.", "Anyone, monks, in whom mindfulness of body has been developed and made much of,\nturns his mind to this or that realisation through super-knowledge of a thing that\nmay be realized through super-knowledge and achieves ability as a witness now here,\nnow there, whatever may be the plane.", "Monks, it is as though a full water-pot, brimming with water so that a crow could drink from it,", "were placed in a support and a strong man were to rock it from side to side - would the water spill?\"", "\"Yes, revered sir.\"", "\"Even so, monks, anyone in whom mindfulness of body has been developed and made much of,\nturns his mind to this or that realisation through super-knowledge of a thing that\nmay be realized through super-knowledge and achieves ability as a witness now here,\nnow there, whatever may be the plane.", "Monks, it is as though there were a tank on a level stretch of ground,\nits four sides strengthened with dykes, full and brimming with water so that a crow could drink from it,", "and a strong man were to loosen a dyke at this side or that - would the water spill?\"", "\"Yes, revered sir.\"", "\"Even so, monks, anyone in whom mindfulness of body has been developed and made much of,\nturns his mind to this or that realisation through super-knowledge of a thing that\nmay be realized through super-knowledge and achieves ability as a witness now here,\nnow there, whatever may be the plane.", "Monks, it is as though at a cross-roads on level ground a chariot were standing harnessed with thoroughbreds,\nthe goad hanging ready;", "and a skilled groom, a charioteer of horses to be tamed, having mounted it,\nhaving taken the reins in his left hand, the goad in his right, were to drive up and down as he liked;", "even so, monks, anyone whomsoever in whom mindfulness of body has been developed and made much of,\nturns his mind to this and that realisation through super-knowledge of a thing that\nmay be realized through super-knowledge and achieves ability as a witness now here,\nnow there, whatever may be the plane.", "Monks, these ten advantages are to be expected from pursuing mindfulness of body, developing it, making much of it,\nmaking it a vehicle, making it a foundation, practising it, increasing it, and fully undertaking it.\nWhat ten?", "He is one who overcomes dislike and liking, and dislike (and liking) do not overcome him;\nhe fares along constantly conquering any dislike (and liking) that have arisen.", "He is one who overcomes fear and dread, and fear and dread do not overcome him;\nand he fares along constantly conquering any fear and dread that have arisen.", "He is one who bears cold, heat, hunger, thirst, the touch of gadfly, mosquito,\nwind and sun, creeping things, ways of speech that are irksome, unwelcome;\nhe is of a character to bear bodily feelings which, arising,\nare painful, acute, sharp, shooting, disagreeable, miserable, deadly.", "He is one who at will, without trouble, without difficulty,\nacquires the four meditations that are of the purest mentality, abidings in ease here and now.", "He experiences the various forms of psychic power:\nhaving been one he is manifold;\nhaving been manifold he is one;\nmanifest or invisible he goes unhindered through a wall, a rampart, a mountain as if through air;\nhe plunges into the ground and shoots up again as if in water;\nhe walks upon the water without parting it as if on the ground;\nsitting cross-legged he travels through the air like a bird on the wing;\nwith his hand he rubs and strokes this moon and sun although they are of such mighty power and majesty;\nand even as far as the Brahma-world he has power in respect of his person.", "By the purified deva-like hearing which surpasses that of men he\nhears both (kinds of) sounds - deva-like ones and human ones,\nwhether they be far or near.", "He comprehends by mind the minds of other beings, of other individuals,\nso that he comprehends a mind that is full of attachment, that it is full of attachment;", "he comprehends a mind that is without attachment, that it is without attachment;", "he comprehends a mind that is full of aversion, that it is full of aversion;", "he comprehends a mind that is without aversion, that it is without aversion;", "he comprehends a mind that is full of confusion, that it is full of confusion;", "he comprehends a mind that is without confusion, that it is without confusion;", "or he comprehends a mind that is contracted, that it is contracted;", "or a mind that is distracted, that it is distracted;", "or of a mind that has become great, that it has become great", "or of a mind that has not become great, that it has not become great;", "or of a mind with (some other mental state) superior to it, that it has (some other mental state) superior to it;", "or of a mind that has no (other mental state) superior to it, that it has no (other mental state) superior to it;", "or of a mind that is composed, that it is composed;", "or of a mind that is not composed, that it is not composed;", "or of a mind that is freed, that it is freed;", "or of a mind that is not freed, that it is not freed.", "", "He recollects manifold former habitations, that is to say:\nOne birth, two births, three births, four births, five births, ten births,\ntwenty births, thirty births, forty births, fifty births, a hundred births,\na thousand births, a hundred thousand births,\nand many an eon of integration and many an eon of disintegration and many an eon of integration-disintegration:\n'Such a one was I by name, having such and such a clan, such and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I came to be in another state where I was such a one by name, having such and such a clan,\nsuch and such a colour, so I was nourished,\nsuch and such pleasant and painful experiences were mine, so did the span of life end.\nPassing from this, I arose here.'\nThus he recollects divers former habitations in all their modes and detail.", "With the purified deva-vision surpassing that of men, he sees beings as they pass hence or come to be;\nhe comprehends that beings are mean, excellent, comely, ugly, well-going,\nill-going, according to the consequences of deeds, and thinks:\n'Indeed these worthy beings who were possessed of wrong conduct in body,\nspeech and thought, scoffers at the ariyans, holding a wrong view,\nincurring deeds consequent on a wrong view - these, at the breaking up of the body after dying,\nhave arisen in a sorrowful state, a bad bourn, the abyss, Niraya Hell.\nBut these worthy beings who were possessed of good conduct in body,\nspeech and thought, who did not scoff at the ariyans, holding a right view,\nincurring deeds consequent on a right view - these at the breaking up of the body after dying,\nhave arisen in a good bourn, a heaven world.'\nThus with the purified deva-vision surpassing that of men does he see beings as they pass hence, as they arise;\nhe comprehends that beings are mean, excellent, comely, ugly,\nwell-going, ill-going according to the consequences of deeds.", "By the destruction of the cankers,\nhaving realized here and now by his own super-knowledge the freedom\nof mind and the freedom through intuitive wisdom that are cankerless,\nentering thereon, he abides therein.", "Monks, these ten advantages are to be expected from pursuing mindfulness of body, developing it, making much of it,\nmaking it a vehicle, making it a foundation, practising it, increasing it and fully undertaking it.\"", "Thus spoke the Lord.", "Delighted, these monks rejoiced in what the Lord had said.", "Discourse on Mindfulness of Body"]</script>
 <script type="application/json" id="tx-bodhi-esque">["Majjhima Nikāya 119", "Discourse on Mindfulness of the Body", "Thus have I heard—", "On one occasion the Blessed One was dwelling at Sāvatthī in Jeta's Grove, Anāthapiṇḍika's park.", "Then, when a number of bhikkhus had returned from their alms round after the meal,\nthey sat together in the assembly hall, and this conversation arose among them:", "“It is wonderful, friends, it is amazing, friends!”", "“So much so that this mindfulness of the body, developed and cultivated, has been declared by the Blessed One,\nthe Arahant, the Perfectly Enlightened One, to be of great fruit and great benefit.”", "Now at that time this conversation among the bhikkhus had not yet been concluded when the Blessed One,\nhaving emerged from his seclusion in the evening,\napproached the assembly hall, sat down on the seat that had been prepared.", "Having sat down, the Blessed One addressed the bhikkhus:", "“Bhikkhus, for what discussion are you sitting together now?\nAnd what conversation has been left unfinished?”", "“Here, bhante, after our meal, when we had returned from our alms round,\nwe sat together in the assembly hall, and this conversation arose among us:", "‘It is wonderful, friends, it is amazing, friends!", "So much so that this mindfulness of the body, developed and cultivated, has been declared by the Blessed One,\nthe Arahant, the Perfectly Enlightened One, to be of great fruit and great benefit.’", "This, bhante, was our conversation that was left unfinished, and then the Blessed One arrived.”", "“And how, bhikkhus, is mindfulness of the body developed and cultivated so that it is of great fruit and great benefit?”", "Here, bhikkhus, a bhikkhu, having gone to the forest, or to the root of a tree, or to an empty hut,\nsits down, having folded his legs crosswise, set his body erect, and established mindfulness in front of him.", "Mindful, he breathes in;\nmindful, he breathes out.", "Breathing in long, he understands:\n‘I breathe in long’;\nbreathing out long, he understands:\n‘I breathe out long.’", "Breathing in short, he understands:\n‘I breathe in short’;\nbreathing out short, he understands:\n‘I breathe out short.’", "He trains thus:\n‘Experiencing the whole body, I will breathe in’;\nhe trains thus:\n‘Experiencing the whole body, I will breathe out.’", "He trains thus:\n‘Tranquilizing the bodily volitional activity, I will breathe in’;\nhe trains thus:\n‘Tranquilizing the bodily volitional activity, I will breathe out.’", "When he dwells thus heedful, ardent, and resolute,\nthose memories and intentions based on the household life are abandoned.", "With their abandonment, the mind becomes internally steadied, quieted, brought to singleness, and concentrated.", "Thus, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu, when walking, understands:\n‘I am walking’;\nwhen standing, he understands:\n‘I am standing’;\nwhen sitting, he understands:\n‘I am sitting’;\nwhen lying down, he understands:\n‘I am lying down.’", "And however his body is disposed, he understands it accordingly.", "When he dwells thus heedful, ardent, and resolute,\nthose memories and intentions based on the household life are abandoned.", "With their abandonment, the mind becomes internally steadied, quieted, brought to singleness, and concentrated.", "So too, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu is one who acts with clear comprehension when going forward and returning;\nwho acts with clear comprehension when looking ahead and looking aside;\nwho acts with clear comprehension when bending and extending his limbs;\nwho acts with clear comprehension when wearing his robes, carrying his bowl and robe;\nwho acts with clear comprehension when eating, drinking, chewing, and tasting;\nwho acts with clear comprehension when defecating and urinating;\nwho acts with clear comprehension when walking, standing,\nsitting, falling asleep, waking up, speaking, and keeping silent.", "As he dwells thus heedful, ardent, and resolute,\nthe reminiscences and intentions based on the household life are abandoned.", "With their abandonment, the mind becomes inwardly steadied, settled, unified, and concentrated.", "In this way too, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu reviews this same body, from the soles of the feet upward,\nfrom the tips of the hair downward, enclosed by skin, as full of many kinds of impurities:", "‘In this body there are head hairs, body hairs, nails, teeth, skin, flesh,\nsinews, bones, bone marrow, kidneys, heart, liver, pleura, spleen, lungs,\nintestines, mesentery, contents of the stomach, feces, bile, phlegm, pus,\nblood, sweat, fat, tears, grease, saliva, nasal mucus, synovial fluid, urine.’", "Just as, bhikkhus, if there were a bag with openings at both ends, filled with various kinds of grain, such as:", "sweet rice, ordinary rice, green grams, black grams, sesame seeds, husked rice;", "and a man with good eyesight, having opened it, were to examine it:", "‘These are sweet rice, these are ordinary rice, these are green grams,\nthese are black grams, these are sesame seeds, these are husked rice’;", "so too, bhikkhus, a bhikkhu reviews this same body, from the soles of the feet upward,\nfrom the tips of the hair downward, enclosed by skin, as full of many kinds of impurities:", "‘In this body there are head hairs, body hairs, nails, teeth, skin, flesh,\nsinews, bones, bone marrow, kidneys, heart, liver, pleura, spleen, lungs,\nintestines, mesentery, contents of the stomach, feces, bile, phlegm, pus,\nblood, sweat, fat, tears, grease, saliva, nasal mucus, synovial fluid, urine.’", "As he dwells thus heedful, ardent, and resolute,\nthe reminiscences and intentions based on the household life are abandoned.", "With their abandonment, the mind becomes inwardly steadied, settled, unified, and concentrated.", "In this way too, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu reviews this same body, however it is placed, however disposed, as consisting of elements:", "‘There are in this body the earth element, the water element, the fire element, the air element.’", "Just as, bhikkhus, a skilled butcher or a butcher’s apprentice,\nhaving killed a cow, might sit at a crossroads cutting it up into portions;", "so too, bhikkhus, a bhikkhu reviews this very body, however it is placed or disposed, in terms of the elements:", "‘There are in this body the earth element, the water element, the fire element, the air element.’", "As he dwells thus diligent, ardent, and resolute,\nthose memories and intentions based on the household life are abandoned.", "With their abandoning, the mind becomes inwardly steadied, quieted, brought to singleness, and concentrated.", "In this way, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu might see a body discarded in a charnel ground,\ndead for one day, or two days, or three days, bloated, livid, and oozing with matter.", "He applies this to his own body thus:", "‘This body, too, is of the same nature, it will become like that, it is not exempt from that fate.’", "As he dwells thus diligent, ardent, and resolute,\nthose memories and intentions based on the household life are abandoned.", "With their abandoning, the mind becomes inwardly steadied, quieted, brought to singleness, and concentrated.", "In this way, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, a bhikkhu might see a body discarded in a charnel ground, being eaten by crows,\nor being eaten by hawks, or being eaten by vultures, or being eaten by kites,\nor being eaten by dogs, or being eaten by tigers, or being eaten by leopards,\nor being eaten by jackals, or being eaten by various kinds of creatures.", "He applies this to his own body thus:", "'This body too is thus by nature, thus in future state, thus in having not passed away.'", "For him, thus heedful …", "Thus too, bhikkhus, a bhikkhu develops mindfulness directed on the body.", "Again, bhikkhus, a bhikkhu might see a corpse discarded in a charnel ground:\na skeleton with flesh and blood still on it, connected by sinews …", "a skeleton with the flesh removed and smeared with blood, connected by sinews …", "a skeleton with flesh and blood removed, connected by sinews …", "bones disconnected, scattered in all directions — a hand bone here,\na foot bone there, an ankle bone here, a shin bone there, a thigh bone here,\na hip bone there, a rib bone here, a spine bone here, a shoulder bone here,\na neck bone here, a jaw bone here, a tooth here, and a skull here.", "He compares this very body:", "'This body too is thus by nature, thus in future state, thus in having not passed away.'", "For him, thus heedful …", "Thus too, bhikkhus, a bhikkhu develops mindfulness directed on the body.", "Again, bhikkhus, a bhikkhu might see a corpse discarded in a charnel ground:", "bones white, resembling the color of a conch shell …", "bones heaped up, three years old …", "bones rotten, turned to powder.", "He directs attention to this very body:", "‘This body too is of such a nature, of such a constitution, that it has not gone beyond [that].’", "For him thus heedful …", "…", "Thus too, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, quite secluded from sensual pleasures … he enters and dwells in the first jhāna.", "He steeps, drenches, fills, and suffuses this very body with the rapture and bliss born of seclusion,\nso that there is no part of his entire body that is not suffused with the rapture and bliss born of seclusion.", "Just as, bhikkhus, a skilled bath attendant or a bath attendant’s apprentice,\nhaving poured bath powder into a bronze basin, would sprinkle it with water again and again, and then knead it;\nso that the ball of bath powder — being imbued with moisture,\nsaturated with moisture, pervaded with moisture inside and out — does not drip;", "So too, bhikkhus, a bhikkhu steeps, drenches, fills,\nand suffuses this very body with the rapture and bliss born of seclusion,\nso that there is no part of his entire body that is not suffused with the rapture and bliss born of seclusion.", "For him thus heedful …", "…", "Thus too, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, with the subsiding of thought and examination … he enters and dwells in the second jhāna.", "He steeps, drenches, fills, and suffuses this very body with the rapture and bliss born of concentration,\nso that there is no part of his entire body that is not suffused with the rapture and bliss born of concentration.", "Just as, bhikkhus, a deep lake with clear water, with no inlet for water from the east, no inlet from the west,\nno inlet from the north, no inlet from the south, and the sky does not pour down a proper rain-shower from time to time;\nbut then cool streams of water well up from that very lake and steep, drench, fill,\nand suffuse that same lake with cool water,\nso that there is no part of the entire lake that is not suffused with cool water;", "So too, bhikkhus, a bhikkhu drenches, steeps, fills,\nand pervades this very body with the rapture and happiness born of concentration,\nso that there is no part of his whole body unpervaded by the rapture and happiness born of concentration.", "When he dwells thus heedful …", "Thus, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, with the fading away of rapture … a bhikkhu enters and dwells in the third jhāna.", "He drenches, steeps, fills, and pervades this very body with the happiness devoid of rapture,\nso that there is no part of his whole body unpervaded by the happiness devoid of rapture.", "Just as, bhikkhus, in a pond of blue lotuses, or a pond of red lotuses, or a pond of white lotuses,\nsome lotuses that are born and grow in the water, immersed in the water,\nnourished from below, are drenched, steeped, filled, and pervaded by cool water from their tips to their roots,\nso that no part of all those lotuses is unpervaded by cool water;", "So too, bhikkhus, a bhikkhu drenches, steeps, fills, and pervades this very body with the happiness devoid of rapture,\nso that there is no part of his whole body unpervaded by the happiness devoid of rapture.", "When he dwells thus heedful …", "Thus, bhikkhus, a bhikkhu develops mindfulness directed to the body.", "Again, bhikkhus, with the abandoning of pleasure and pain … a bhikkhu enters and dwells in the fourth jhāna.", "He sits pervading this very body with a pure, bright mind,\nso that there is no part of his whole body unpervaded by the pure, bright mind.", "Just as, bhikkhus, a man sitting wrapped from head to foot in a white cloth,\nso that no part of his whole body is unpervaded by the white cloth;", "So too, bhikkhus, a bhikkhu sits pervading this very body with a pure, bright mind,\nso that there is no part of his whole body unpervaded by the pure, bright mind.", "When he dwells thus heedful, ardent, and resolute,\nwhatever memories and intentions connected with the household life are abandoned.", "With their abandoning, the mind becomes internally steadied, quieted, unified, and concentrated.", "Thus too, bhikkhus, a bhikkhu develops mindfulness of the body.", "For whomever, bhikkhus, mindfulness of the body has been developed and cultivated,\nall wholesome states that partake of true knowledge are included within it.", "Just as, bhikkhus, for whomever the great ocean is suffused with mind,\nall the streams that flow into the ocean are included within it;", "so too, bhikkhus, for whomever mindfulness of the body has been developed and cultivated,\nall wholesome states that partake of true knowledge are included within it.", "For whomever, bhikkhus, mindfulness of the body has not been developed and cultivated,\nMāra gains an opportunity, Māra gains a support.", "Just as, bhikkhus, a man might throw a heavy stone ball onto a mound of wet clay.", "What do you think, bhikkhus,", "would that heavy stone ball find an opening in the mound of wet clay?”", "“Yes, bhante.”", "“So too, bhikkhus, for whomever mindfulness of the body has not been developed and cultivated,\nMāra gains an opportunity, Māra gains a support.", "Just as, bhikkhus, a dry piece of timber,", "then a man might come taking an upper fire-stick, thinking:", "‘I will produce fire, I will make heat appear.’", "What do you think, bhikkhus,", "could that man, by taking that dry piece of timber and the upper fire-stick and rubbing vigorously,\nproduce fire and make heat appear?”", "“Yes, bhante.”", "“So too, bhikkhus, when mindfulness directed to the body has not been developed and not been cultivated,\nMāra gains access to him, Māra gains a foothold in him.”", "Suppose, bhikkhus, a water pot was empty and hollow, placed on a stand;", "then a man might come carrying a load of water.", "What do you think, bhikkhus,", "could that man pour out the water?”", "“Yes, bhante.”", "“So too, bhikkhus, when mindfulness directed to the body has not been developed and not been cultivated,\nMāra gains access to him, Māra gains a foothold in him.”", "When, bhikkhus, mindfulness directed to the body has been developed and cultivated,\nMāra does not gain access to him, Māra does not gain a foothold in him.", "Suppose, bhikkhus, a man were to throw a light ball of string against a door panel made entirely of heartwood.", "What do you think, bhikkhus,", "could that man gain entry with that light ball of string against a door panel made entirely of heartwood?”", "“No, bhante.”", "“So too, bhikkhus, when mindfulness directed to the body has been developed and cultivated,\nMāra does not gain access to him, Māra does not gain a foothold in him.”", "Suppose, bhikkhus, a wet piece of wood full of sap;", "Then a man might come, taking an upper fire-stick:", "'I will generate fire, I will produce heat.'", "What do you think, bhikkhus,", "Could that man, taking that wet stick with sap and rubbing it with the upper fire-stick, generate fire and produce heat?", "\"No, bhante.\"", "\"So too, bhikkhus, for whomever mindfulness directed to the body has been developed and cultivated,\nMāra does not find an opportunity in him, Māra does not find a basis in him.\"", "Just as if, bhikkhus, a water pot full of water,\nfilled to the brim so that a crow can drink from it, is placed on a stand;", "then a man might come carrying a load of water.", "What do you think, bhikkhus,", "Could that man obtain a place to pour out the water?", "\"No, bhante.\"", "\"So too, bhikkhus, for whomever mindfulness directed to the body has been developed and cultivated,\nMāra does not find an opportunity in him, Māra does not find a basis in him.\"", "For whomever, bhikkhus, mindfulness directed to the body has been developed and cultivated,\nwhatever state realizable by direct knowledge he inclines his mind to for realizing by direct knowledge,\nhe attains the capacity of bearing witness to it, there being a basis for that.", "Just as if, bhikkhus, a water pot full of water,\nfilled to the brim so that a crow can drink from it, is placed on a stand.", "If a strong man were to pull it from whatever side, would water come?", "“Yes, bhante.”", "Just so, bhikkhus, when mindfulness directed to the body has been developed and cultivated for anyone,\nthen for whatever state realizable by direct knowledge he directs his mind to realize by direct knowledge,\nhe becomes capable of realizing it in each case, there being the basis for mindfulness.", "Suppose, bhikkhus, on level ground there is a square pond, embanked,\nfull of water up to the brim so that crows can drink from it.", "If a strong man were to loosen the embankment from wherever, would water come out?”", "“Yes, bhante.”", "Just so, bhikkhus, when mindfulness directed to the body has been developed and cultivated for anyone,\nthen for whatever state realizable by direct knowledge he directs his mind to realize by direct knowledge,\nhe becomes capable of realizing it in each case, there being the basis for mindfulness.", "Suppose, bhikkhus, on good ground at a four-way crossroads there is a thoroughbred chariot harnessed and waiting,\nwith the goad placed down;", "then a skilled trainer, a charioteer of horses to be tamed, having mounted it,\ntaking the reins in his left hand and the goad in his right hand, might drive it forward and back wherever he wishes;", "just so, bhikkhus, when mindfulness directed to the body has been developed and cultivated for anyone,\nthen for whatever state realizable by direct knowledge he directs his mind to realize by direct knowledge,\nhe becomes capable of realizing it in each case, there being the basis for mindfulness.", "Bhikkhus, when mindfulness directed to the body has been repeatedly practiced, developed, cultivated,\nmade a vehicle, made a basis, established, consolidated, and properly undertaken, ten benefits may be expected.", "He becomes a conqueror of discontent and delight, and discontent does not conquer him;\nhe abides having overcome any arisen discontent.", "He becomes a conqueror of fear and dread, and fear and dread do not conquer him;\nhe abides having overcome any arisen fear and dread.", "He becomes one who endures cold, heat, hunger, thirst, contact with flies, mosquitoes, wind, sun, and creeping things;\nill-spoken, unwelcome words;\nand arisen bodily feelings that are painful, racking, sharp, piercing, disagreeable, unpleasant, life-threatening.", "He gains at will, without trouble or difficulty,\nthe four jhānas that are superior mental states and pleasant dwellings here and now.", "He experiences the various kinds of supernormal power:\nhaving been one, he becomes many;\nhaving been many, he becomes one;\nhe appears and disappears;\n… he exercises mastery with the body even as far as the Brahmā world.", "With the divine ear element, purified and surpassing the human, he hears both kinds of sounds:\ndivine and human, those that are far and near …", "He understands the minds of other beings and other persons, having encompassed them with his own mind.", "He understands a mind with lust as 'mind with lust'.", "a mind without lust …", "a mind with hate …", "a mind without hate …", "a mind with delusion …", "a mind without delusion …", "a contracted mind …", "a distracted mind …", "a great mind …", "a not great mind …", "a mind with something superior …", "a mind without superiority …", "a concentrated mind …", "or an unconcentrated mind …", "or a liberated mind …", "or he understands an unliberated mind as ‘unliberated mind’.", "He recollects his many kinds of past abodes,\nthat is, one birth, two births …\n—\nthus he recollects his many kinds of past abodes together with their features and details.", "With the divine eye, purified and surpassing the human,\nhe sees beings\npassing away and being reborn, inferior and superior,\nbeautiful and ugly,\nin fortunate and unfortunate destinations,\nand he understands how beings fare in accordance with their kamma.", "With the destruction of the taints,\nhe dwells having in this very life himself realized by direct\nknowledge the taintless liberation of mind and liberation by wisdom,\nand having entered upon them.", "Bhikkhus, when mindfulness of the body has been cultivated, developed, made much of, made a vehicle,\nmade a foundation, established, consolidated, and properly undertaken, these ten benefits may be expected.", "This is what the Blessed One said.", "Those bhikkhus were glad and rejoiced in the Blessed One’s statement.", "The discourse on mindfulness of the body, the ninth, is finished."]</script>
-<script type="application/json" id="tx-ru_dhammagift">["Мадджхима Никая 119 — пер.\nSV theravada.ru с Англ, ред. o", "Памятование о теле", "Так мной услышано.", "Одно время Благословенный располагается в Саваттхи, в роще Джеты, в парке Анатхапиндики.", "И в то время группа монахов сидела в зале для собраний,\nгде они собрались вместе после принятия пищи, вернувшись с хождения за подаяниями.\nИ тогда следующая беседа случилась между ними:", "“Удивительно, друзья, поразительно то,", "как было сказано Благословенным, который знает и видит, достойным и Правильно Пробуждённым,\nчто памятование о теле, будучи развитым и взращенным, приносит великий плод и великое благо”.", "Однако эта их беседа была прервана,\nТак как Благословенный вечером вышел из медитации и отправился в зал для собраний, где сел на подготовленное сиденье.", "Там он обратился к монахам:", "“Ради какой беседы вы сидите сейчас здесь, монахи?\nВ чём состояла незавершённая вами беседа?”", "“Почтенный, мы сидели в зале для собраний,\nгде собрались вместе после принятия пищи, вернувшись с хождения за подаяниями.\nИ тогда следующая беседа случилась между нами:\n“Удивительно, друзья, поразительно то, как было сказано Благословенным, который знает и видит,\nдостойным и Правильно Пробуждённым, что памятование о теле,\nбудучи развитым и взращенным, приносит великий плод и великое благо”.\nВот в чём состояла наша беседа, которая была прервана, когда Благословенный прибыл”.  Благословенный сказал:", "", "", "", "“И как, монахи, памятование о теле развито и взращено, что это приносит великий плод и великое благо?", "Вот монах, уйдя в лес, к подножью дерева или в пустое жилище, садится.\nСкрестив ноги, выпрямив тело, он устанавливает памятование впереди.", "Будучи постоянно памятующим, он вдыхает.\nБудучи постоянно памятующим, он выдыхает.", "Делая долгий вдох, он знает:\n“Я делаю долгий вдох”;\nили, делая долгий выдох, он знает:\n“Я делаю долгий выдох”.", "Делая короткий вдох, он знает:\n“Я делаю короткий вдох”;\nили, делая короткий выдох, он знает:\n“Я делаю короткий выдох”.", "Он тренируется так:\n“Ощущая всё тело, я буду вдыхать”;\nон тренируется так:\n“Ощущая всё тело, я буду выдыхать”.", "Он тренируется так:\n“Успокаивая телесную составляющую, я буду вдыхать”;\nон тренируется так:\n“Успокаивая телесную составляющую, я буду выдыхать”.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "Вот каким образом монах развивает памятование о теле.", "Далее, монахи, когда он идёт, монах понимает:\n“Я иду”.  Когда стоит, он понимает:\n“Я стою”.  Когда сидит, он понимает:\n“Я сижу”.  Когда лежит, он понимает:\n“Я лежу”.", "Или же он понимает соответствующе, когда его тело [определённым образом] расположено.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, монах является тем, кто действует сознательно, когда идёт вперёд и возвращается;\nкто действует сознательно, когда смотрит вперёд и по сторонам;\nкто действует сознательно, когда сгибает и разгибает свои члены тела,\nкто действует сознательно, когда несёт своё одеяние, внешнее одеяние и чашу;\nкто действует сознательно, когда ест, пьёт, потребляет пищу, пробует на вкус;\nкто действует сознательно, когда испражняется и мочится;\nкто действует сознательно, когда идёт, стоит, сидит, засыпает, просыпается, разговаривает и молчит.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, монах пересматривает это самое тело снизу вверх, с подошв ступней,\nи сверху вниз с кончиков волос [головы], обёрнутое кожей, полное разнообразных нечистот:", "“В этом самом теле есть волосы на голове, волосы на теле, ногти, зубы, кожа, плоть,\nсухожилия, кости, костный мозг, почки, сердце, печень, диафрагма, селезёнка, лёгкие,\nтолстые кишки, тонкие кишки, содержимое желудка, испражнения, желчь, мокрота, гной,\nкровь, пот, жир, слёзы, кожное масло, слюна, слизь, суставная жидкость, моча”.", "Это как если был бы открытый с обеих сторон мешок, полный разных видов зерна:", "горного риса, бурого риса, бобов, гороха, проса, белого риса –", "и человек с хорошим зрением открыл бы его и пересматривал так:", "“Вот горный рис, вот бурый рис, вот бобы, вот горох, вот просо, вот белый рис”.", "Точно так же монах пересматривает это самое тело снизу вверх, с подошв ступней,\nи сверху вниз с кончиков волос [головы], обёрнутое кожей, полное разнообразных нечистот…", "", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, монах пересматривает это самое тело, как бы оно ни было размещено,\nв каком бы положении ни находилось, посредством элементов так:", "“В этом теле есть элемент земли, элемент воды, элемент огня, элемент воздуха”.", "Это как умелый мясник или его ученик, убивший корову, разрезав её на куски, сидел бы на перекрёстке дорог, –", "точно так же монах пересматривает это самое тело, как бы оно ни было размещено,\nв каком бы положении ни находилось, посредством элементов так:", "“В этом теле есть элемент земли, элемент воды, элемент огня, элемент воздуха”.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, как если бы он увидел труп, брошенный на кладбище день, два,\nтри тому назад, – мёртвый, раздувшийся, бледный, истекающий [нечистотами],", "Так и монах сравнивает с ним это самое тело так:", "“Это тело имеет ту же природу, оно будет таким же, оно не избежит этой участи”.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, как если бы он увидел труп, брошенный на кладбище, пожираемый воронами,\nястребами, грифами, собаками, шакалами, различными видами червей,", "Так и монах сравнивает с ним это самое тело так:", "“Это тело имеет ту же природу, оно будет таким же, оно не избежит этой участи”.", "", "И таким образом тоже монах развивает памятование о теле.", "Далее, как если бы он увидел труп, брошенный на кладбище:\nскелет с плотью и кровью, стянутый сухожилиями…", "скелет без плоти, измазанный кровью, стянутый сухожилиями…", "скелет без плоти, стянутый сухожилиями…", "разъединённые кости, разбросанные повсюду –  там кость руки, там кость ноги, там берцовая кость, там бедренная кость,\nтам тазовая кость, там позвоночник, там рёбра, там грудная кость, там плечевая кость, там челюсть, там зуб, там череп…", "", "", "", "", "", "труп, брошенный на кладбище, с побелевшими костями, цвета морской раковины…", "кости, собранные в кучу…", "кости, которым больше года, сгнившие и стёршиеся в пыль,", "Так и монах сравнивает с ним это самое тело так:", "“Это тело имеет ту же природу, оно будет таким же, оно не избежит этой участи”.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, отбросив эти пять помех, изъянов ума, которые ослабляют понимание,\nбудучи отстранённым от желаний, отстранённым от неблагих состояний [ума],\nмонах входит и пребывает в первой джхане, которая сопровождается направлением и удержанием [ума на объекте медитации],\nс озарённостью и приятным, что возникли из-за [этой] отстранённости.", "Он делает озарённость и приятное, что возникли из-за [этой] отстранённости,\nпропитывающими, промачивающими, заливающими, наполняющими это тело,\nтак что во всём его теле нет ни единой части,\nкоторая не была бы наполнена озарённостью и приятным, что возникли из-за [этой] отстранённости.", "Это как умелый банщик или ученик банщика насыпал бы банный порошок в железный таз и,\nпостепенно опрыскивая его водой, замешивал бы его,\nпока влага не пропитала [этот] его ком банного порошка,\nне промочила его и не наполнила внутри и снаружи, но всё же сам [этот] ком не сочился бы [от воды], –", "точно так же монах делает озарённость и приятное, что возникли из-за [этой] отстранённости,\nпромачивающими, пропитывающими, заливающими, наполняющими это тело,\n так что во всём его теле нет ни единой части,\nкоторая не была бы наполнена озарённостью и приятным, что возникли из-за [этой] отстранённости.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, с угасанием направления и удержания [ума на объекте],\nмонах входит и пребывает во второй джхане, в которой наличествуют уверенность в себе и единение ума,\nв которой нет направления и удержания, но есть озарённость и приятное, что возникли посредством сосредоточения.", "Он делает озарённость и приятное, что возникли из-за [этого] сосредоточения,\nпропитывающими, промачивающими, заливающими, наполняющими это тело,\nтак что во всём его теле нет ни единой части,\nкоторая не была бы наполнена озарённостью и приятным, что возникли из-за [этого] сосредоточения.", "Это подобно озеру, чьи воды били бы ключами со дна, не имеющему притока с востока, запада, севера или юга.\n[Озеро] не пополнялось бы время от времени проливным дождём.\nИ тогда прохладные источники, бьющие [на дне] озера, сделали бы так,\nчто прохладная вода пропитывала, промачивала, заливала,\nнаполняла бы озеро,  так что не было бы ни единой части во всём озере, которая не была бы наполнена прохладной водой.", "Точно так же монах делает озарённость и приятное, что возникли из-за [этого] сосредоточения,\nпропитывающими, промачивающими, заливающими, наполняющими это тело,\nтак что во всём его теле нет ни единой части,\nкоторая не была бы наполнена озарённостью и приятным, что возникли из-за [этого] сосредоточения.", "", "И таким образом тоже монах развивает памятование о теле.", "Далее, монахи, с угасанием озарённости монах входит и пребывает в третьей джхане.\nОн пребывает напрямую-видящим, памятующим, сознательным, всё ещё ощущая приятное телом.\nОн входит и пребывает в третьей джхане, о которой благородные говорят так:\n“Он напрямую-видящий, памятующий, в приятном пребывающий”.", "Он делает приятное, отделённое от озарённости, пропитывающим, промачивающим, заливающим, наполняющим это тело,\n так что во всём его теле нет ни единой части, которая не была бы наполнена приятным, отделённым от озарённости.", "Это как в озере с голубыми, или красными, или белыми лотосами  некоторые лотосы,\nкоторые родились и выросли в воде, расцветают, будучи погружёнными в воду, так и не взойдя над поверхностью воды,\nа прохладные воды пропитывают, промачивают, заливают, наполняют их от кончиков до корней,\nтак что не остаётся ни одной части лотосов, не наполненной прохладной водой,", "точно так же монах делает приятное, отделённое от озарённости,\nпромачивающим, пропитывающим, заливающим, наполняющим это тело,\n так что во всём его теле нет ни единой части, которая не была бы наполнена приятным, отделённое от озарённости.", "", "И таким образом тоже монах развивает памятование о теле.", "Далее, с оставлением приятного и боли, равно как и с предыдущим угасанием радости и грусти,\nмонах входит и пребывает в четвёртой джхане,\nкоторая является ни-болезненной-ни-приятной, характеризуется чистым памятованием из-за невозмутимости.", "Он сидит, наполняя это тело чистым ярким умом,  так что во всём его теле нет ни единой части,\nкоторая не была бы наполнена чистым и ярким умом.", "Подобно сидящему человеку, укрытому с ног до головы белой тканью так,\nчто не было бы ни одной части его тела, не покрытой белой тканью, –", "точно так же монах сидит, наполняя это тело чистым ярким умом,\n так что во всём его теле нет ни единой части, которая не была бы наполнена чистым и ярким умом.", "По мере того как он пребывает так, будучи прилежным, старательным, решительным,\nего воспоминания и устремления, связанные с домохозяйской жизнью, отбрасываются.", "С их отбрасыванием его ум становится внутренне утверждённым, успокоенным, приведённым к единству, сосредоточенным.", "И таким образом тоже монах развивает памятование о теле.", "Монахи, тот, кто развил и взрастил памятование о теле,\nвобрал в себя все те благие состояния, которые относятся к истинному знанию.", "Это как тот, кто расширил свой ум на великий океан, вобрал в него все те потоки, которые впадают в великий океан,", "точно так же, тот, кто развил и взрастил памятование о теле,\nвобрал в себя все те благие состояния, которые относятся к истинному знанию.", "Монахи, когда кто-либо не развил и не взрастил памятование о теле, Мара находит возможность и опору в нём.", "Это как если бы человек бросил тяжёлый каменный шар на кучу мокрой глины.", "Как вы думаете монахи?", "Нашёл бы этот тяжёлый каменный шар вхождение в эту кучу мокрой глины?”", "“Да, почтенный”.", "“Точно так же, монахи, когда кто-либо не развил и не взрастил памятование о теле,\nто Мара находит возможность и опору в нём.", "Это как, монахи, сухой, высохший кусок древесины,", "и пришёл бы человек с верхней палкой для розжига, думая:", "“Я зажгу огонь, я произведу тепло”.", "Как вы думаете монахи?", "Как вы думаете, монахи?\nСмог бы человек зажечь огонь и произвести тепло трением верхней палки в сухом, высохшем куске древесины?”", "“Да, почтенный”.", "“Точно так же, монахи, когда кто-либо не развил и не взрастил памятование о теле,\nто Мара находит возможность и опору в нём.", "Это как, монахи,если бы выставили полый, пустой кувшин для воды,", "и пришёл бы человек с запасом воды.", "Как вы думаете монахи?", "Мог бы человек налить воду в кувшин?”", "“Да, почтенный”.", "“Точно так же, монахи, когда кто-либо не развил и не взрастил памятование о теле,\nто Мара находит возможность и опору в нём.", "Монахи, когда кто-либо развил и взрастил памятование о теле, Мара не находит возможности и опоры в нём.", "Это как если бы человек бросил лёгкий комок ниток в дверную панель, сделанную полностью из древесной сердцевины.", "Как вы думаете монахи?", "Мог бы этот лёгкий комок ниток найти вхождение через эту дверную панель, сделанную полностью из древесной сердцевины?”", "“Нет, почтенный”.", "“Точно так же, монахи, когда кто-либо развил и взрастил памятование о теле, Мара не находит возможности и опоры в нём.", "Это как, монахи, мокрый и полный сока кусок древесины,", "и пришёл бы человек с верхней палкой для розжига, думая:", "“Я зажгу огонь, я произведу тепло”.", "Как вы думаете монахи?", "Смог бы человек зажечь огонь и произвести тепло трением верхней палки в мокром и полном сока куске древесины?”", "“Нет, почтенный”.", "“Точно так же, монахи, когда кто-либо развил и взрастил памятование о теле, Мара не находит возможности и опоры в нём.", "Это как, монахи, если бы выставили кувшин для воды, полный до самых краёв, так что вороны смогли бы отпить из него.", "и пришёл бы человек с запасом воды.", "Как вы думаете монахи?", "Мог бы человек налить воду в кувшин?”", "“Нет, почтенный”.", "“Точно так же, монахи, когда кто-либо развил и взрастил памятование о теле, Мара не находит возможности и опоры в нём.", "Монахи, когда кто-либо развил и взрастил памятование о теле,\nтогда, когда он склоняет свой ум к реализации любого состояния,\nкоторое может быть реализовано прямым знанием,\nон достигает возможности засвидетельствовать в этом любой аспект, ведь есть для этого подходящее основание.", "Это как, монахи, кувшин для воды, полный воды до самых краёв, так что вороны смогли бы отпить из него.", "Если бы сильный человек наклонил его в какую-либо сторону, вылилась бы вода?”", "“Да, почтенный”.", "Точно так же, когда кто-либо развил и взрастил памятование о теле,\nтогда, когда он склоняет свой ум к реализации любого состояния,\nкоторое может быть реализовано прямым знанием,\nон достигает возможности засвидетельствовать в этом любой аспект, ведь есть для этого подходящее основание.", "Это как, монахи, квадратный пруд на ровной поверхности земли, окружённый дамбой,\nполный воды до самых краёв, так что вороны смогли бы отпить из него.", "Если бы сильный человек ослабил дамбу, вылилась бы вода?”", "“Да, почтенный”.", "Точно так же, когда кто-либо развил и взрастил памятование о теле,\nтогда, когда он склоняет свой ум к реализации любого состояния,\nкоторое может быть реализовано прямым знанием,\nон достигает возможности засвидетельствовать в этом любой аспект, ведь есть для этого подходящее основание.", "Это как, монахи, колесница на ровной поверхности земли на пересечении дорог,\nзапряжённая чистокровными скакунами, ожидающая [погонщика] с лежащим в готовности острым прутом для подгонки,", "так чтобы умелый колесничий, объездчик приручаемых лошадей, мог бы взобраться на неё, взять поводья в свою левую руку,\nа острый прут для подгонки в правую руку,  выехать, и вернуться назад по любой дороге, по которой бы он пожелал.", "Точно так же, когда кто-либо развил и взрастил памятование о теле,\nтогда, когда он склоняет свой ум к реализации любого состояния,\nкоторое может быть реализовано прямым знанием,\nон достигает возможности засвидетельствовать в этом любой аспект, ведь есть для этого подходящее основание.", "Монахи, когда памятование о теле постоянно практиковалось, развивалось,\nвзращивалось, использовалось в качестве средства передвижения,\nиспользовалось в качестве основания, было утверждено, укреплено, хорошо предпринято, можно ожидать этих десяти благ.", "[Практикующий] становится покорителем неудовлетворённости и наслаждения, и неудовлетворённость не покоряет его.\nОн пребывает, одолевая неудовлетворённость каждый раз, как она возникает.", "Он становится покорителем страха и ужаса, и страх и ужас не покоряют его.\nОн пребывает, одолевая страх и ужас каждый раз, как они возникают.", "Он терпит холод, жару, голод и жажду, контакт с мухами, комарами, солнцем, ветром и ползучими тварями.\nОн терпит грубые и неприветливые слова и возникшие телесные чувства – болезненные,\nмучительные, острые, пронзающие, неприятные, терзающие, угрожающие жизни.", "Он обретает по желанию, без сложностей и проблем, четыре джханы,\nкоторые составляют высший ум и обеспечивают приятное пребывание здесь и сейчас.", "Он овладевает различными видами сверхъестественных сил:\nбудучи одним, становится многими;\nбудучи многими, становится одним…\nТак влияет на тело, что даже достигает мира Брахмы.", "Слышит за счёт элемента божественного уха, очищенного и превосходящего человеческое, оба вида звуков:\nбожественные и человеческие, далёкие и близкие…", "Знает умы других существ, других личностей, направив на них свой собственный ум…", "Вспоминает свои многочисленные прошлые жизни в подробностях и деталях.", "Посредством божественного видения, очищенного и превосходящего человеческое,\nон видит как существа покидают жизнь и перерождаются,\nи он распознаёт низменных и высоких, прекрасных и уродливых, удачливых и неудачливых.\nОн понимает, как существа переходят [из жизни в жизнь] в соответствии с их поступками.", "за счёт уничтожения пятен [умственных загрязнений] здесь и сейчас входит и пребывает в незапятнанном освобождении ума,\nосвобождении пониманием, реализовав эти состояния для себя посредством прямого знания.", "Монахи, когда памятование о теле постоянно практиковалось, развивалось,\nвзращивалось, использовалось в качестве средства передвижения,\nиспользовалось в качестве основания, было утверждено, укреплено, хорошо предпринято, можно ожидать этих десяти благ”.", "Так сказал Благословенный.", "Монахи были довольны и восхитились словами Благословенного.", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]</script>
+<script type="application/json" id="tx-ru_dhammagift">["Среднее Собрание 119 — пер. o с Пали", "Сутта Телесное-памятование", "Так мной услышано—", "одно время Благословенный в Саваттхи располагается, в роще Джеты, в парке Анатхапиндики.", "И тогда у группы монахов после-еды, с подаяния-сбора-вернувшиxся,\nв зале собраний севших-вместе, собравшихся, этот диалог (внутренний-разговор) возник:", "“Удивительно, товарищи, поразительно, товарищи.", "Насколько это тем Благословенным, знающим, видящим, арахантом,\nправильно-пробуждённым, телесное-памятование (памятование пришедшее к телу,\nставшее телесным) развитое, много-практикуемое (много-сделанное,\nпреумноженное), велико-плодным названо, велико-полезным”.", "И вот этот тех монахов диалог был незавершён, и тогда Благословенный,\nвечерним-временем из уединения вышедший, туда, где зал собраний, туда приблизился;\nприблизившись, на приготовленное сиденье сел.", "И сев, Благословенный к монахам обратился:", "“Для какой же здесь, монахи, сейчас беседы сидящие-вместе, и какой же у вас диалог незавершён?”", "“Вот, почтенный, у нас после-еды, с подаяния-сбора-вернувшиxся,\nв зале собраний севших-вместе, собравшихся, этот диалог возник:", "“Удивительно, товарищи, поразительно, товарищи.", "Насколько это тем Благословенным, знающим, видящим, арахантом, правильно-пробуждённым,\nтелесное-памятование развитое, много-практикуемое, велико-плодным названо, велико-полезным”.", "Вот этот у нас, почтенный, диалог незавершён, тогда Благословенный прибыл”.", "“И как развитое, монахи, телесное-памятование развитое,\nкак много-практикуемое, велико-плодным является, велико-полезным?", "Вот, монахи, монах или в дикую местность ушедший или к корням дерева ушедший или в пустое жилище ушедший,\nсадится, сидение-сидячую позу сложив, прямо тело удерживая (удержав), на весь рот-лицо памятование установив.", "Так, только памятуя выдыхает, только памятуя вдыхает;", "или длинно выдыхающий:\n“длинно выдыхаю” понимает;\nили длинно вдыхающий “длинно вдыхаю” понимает;", "или коротко выдыхающий:\n“коротко выдыхаю“ понимает;\nили коротко вдыхающий “коротко вдыхаю“ понимает;", "“Всё-тело-чувствующий буду выдыхать” тренируется,\n“всё-тело-чувствующий буду вдыхать” тренируется;", "“Умиротворяя тела-составляющую буду выдыхать” тренируется,\n“умиротворяя тела-составляющую буду вдыхать” тренируется.", "У него так, усердного (не-опьянённого), пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки (заготовки-намерения) те покидаются.", "От их покидания,\n(именно) внутри ум-состояние устанавливается, оседает (успокаивается),\nединым становится, объединяется (достигает самадхи).", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах идущий:\n‘иду’ понимает, или стоящий:\n‘я стою’ понимает, или сидящий:\n‘я сижу’ понимает, или лежащий:\n‘я лежу’ понимает.", "или как бы ни было расположено тело так то понимает.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах в поступании в отступании сознательно-делающий (является делающим сознательно);\nв осматривании в рассматривании сознательно-делающий;\nв сгибании в распрямлении сознательно-делающий;\nв сангхати-чаши-чивары-применении сознательно-делающий;\nв кусании, в питье, в жевании, в пробовании сознательно-делающий;\nв дефекации-мочеиспускания-активности сознательно-делающий;\nв хождении, в стоянии, в сидении, в лежании-сне, в бодрствовании, в разговоре, в молчании сознательно-делающий.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах именно это тело вверх от подошв ступней,\nвниз от кончиков волос головы кожей-обернутое, полное разнообразного нечистого рассматривает:", "‘в этом теле есть волосы головы, волосы тела, ногти, зубы, кожа, плоть, соединительные структуры,\nкости, костный мозг, почки, сердце, печень, телесные оболочки, селезенка, лёгкие,\nпищеварительные органы, кишечник, содержимое желудка, кал, желчь, лимфа, гной, кровь, пот,\nжир, слезы, кожное сало, слюна, слизь-сопли, спинно-мозговая и суставная жидкость, моча‘.", "Это как, монахи, с двумя отверстиями (ртами) сумка, полная различного зерна, в частности:", "горные рисинки (суходольные), неочищенные рисинки, фасолины, горошины, кунжутные зерна, очищенные рисинки.", "Ту ее зрячий человек открыв пересматривал бы:", "‘Эти – горные рисинки, эти – неочищенные рисинки, эти – фасолины,\nэти – горошины, эти – кунжутные зёрна, эти – очищенные рисинки’.", "Именно так, монахи, монах именно это тело вверх от подошв ступней,\nвниз от кончиков волос головы кожей-обернутое, полное разнообразного нечистого рассматривает:", "‘в этом теле есть волосы головы, волосы тела, ногти, зубы, кожа, плоть, соединительные структуры,\nкости, костный мозг, почки, сердце, печень, телесные оболочки, селезенка, лёгкие,\nпищеварительные органы, кишечник, содержимое желудка, кал, желчь, лимфа, гной, кровь, пот,\nжир, слезы, кожное сало, слюна, слизь-сопли, спинно-мозговая и суставная жидкость, моча‘.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах именно это тело, как-стоящее, как-(так-и)-направляющееся дхату (феноменами) рассматривает:", "‘есть в этом теле дхату твёрдого, дхату жидкости, дхату тепла, дхату ветра‘.", "Это как, монахи, опытный мясник или ученик мясника корову убив на\nперекрёстке четырёх больших дорог разделав ее на части сел бы;", "именно так, монахи, монах именно это тело, как-стоящее, так-и-направляющееся дхату рассматривает:", "‘есть в этом теле дхату твёрдого, дхату жидкости, дхату тепла, дхату ветра‘.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах как если бы,\nувидел тело (останки) на кладбище брошенное один день мертвое или\nдва дня мертвое или три дня мертвое вздутое, синюшное, гниющее.", "Он именно это тело соотносит:", "‘Это, в том числе тело, такова действительность, таким являющееся, это неминуемо‘.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах как если бы,\nувидел тело на кладбище брошенное воронами поглощаемое или падальщиками\nпоглощаемое или грифами поглощаемое или собаками поглощаемое\nили тиграми поглощаемое или леопардами поглощаемое или шакалами\nпоглощаемое или различными мелкими животными поглощаемое.", "Он именно это тело соотносит:", "‘Это, в том числе тело, такова действительность, таким являющееся, это неминуемо‘.", "У него так, усердного …", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах как если бы, увидел тело на кладбище брошенное,\nскелет с-плотью-кровью, суставами-сухожилиями-скрепленный…", "Скелет, без-плоти-кровью-измазанный, суставами-сухожилиями-скрепленный…", "Скелет, без-плоти-кровью-измазанный, суставами-сухожилиями-скрепленный…", "Кости лишенные-соединений по направлениям (кардинальным) и вне  направлений разбросанные,\nотдельно кость руки, отдельно кость стопы, отдельно кость голени, отдельно берцовая кость,\nотдельно бедренная кость, отдельно кость таза, отдельно ребро, отдельно позвонок,\nотдельно кость плеча, отдельно кость шеи, отдельно кость челюсти, отдельно зуб, отдельно череп.", "Он именно это тело соотносит:", "‘Это, в том числе тело, такова действительность, таким являющееся, это неминуемо‘.", "У него так, усердного …", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах как если бы, увидел тело на кладбище брошенное—", "кости белые, морской раковины цвету подобные…", "кости в-кучу-сваленные более-чем-годовалые…", "Кости испортившиеся (сгнившие) порошком-ставшие.", "Он именно это тело соотносит:", "‘Это, в том числе тело, такова действительность, таким являющееся, это неминуемо‘.", "У него так, усердного …", "…", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах именно отделившись от желаний … первую джхану достигнув пребывает.", "Он именно это тело уединением-рожденным упоением-приятным (телесным ощущением)  омывает (обтекает),\n пропитывает, наполняет,\nпронизывает (покрывает),\nи ничто во всем теле уединением-рожденным упоением-приятным не-пронизанным не остается (не является).", "Это как, монахи, умелый банщик или ученик банщика в бронзовую ёмкость мыльного (для-купания) порошка  насыпав,\nводой сбрызгивая-сбрызгивая (прикасаясь) сминал бы,\nтак что этот мыльный комок, пропитанный влагой, пронизанный влагой,\nизнутри-и-снаружи пропитан влагой, но не протекающий;", "именно так, монахи, монах именно это тело уединением-рожденным упоением-приятным-чувством  омывает, пропитывает,\nнаполняет, пронизывает, и ничто во всем теле уединением-рожденным упоением-приятным-чувством не-пронизанным не остаётся.", "У него так, усердного …", "…", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах рассуждений-выслеживаний от выравнивания … вторую джхану достигнув пребывает.", "Он именно это тело самадхи-рожденным упоением-приятным-чувством омывает, пропитывает, наполняет, пронизывает;\nи ничто во всем теле самадхи-рожденным упоением-приятным не-пронизанным не остаётся.", "Это как, монахи, водоём глубокий, с подземным источником.\nУ него нет (не было бы) с восточной стороны входа для воды, нет с западной стороны входа для воды,\nнет с северной стороны входа для воды, нет с южной стороны входа для воды;\nи дэва (облако) время-от-времени должным-образом струи-(дождя) не проливал бы;\nно из того самого водоёма прохладная струя воды, пробившись, тот самый водоём прохладной водой обтекла бы,\nпропитала бы, наполнила бы, пронизала бы, и ничто во всем водоёме прохладной водой не-пронизанным не осталось бы;", "именно так, монахи, монах именно это тело самадхи-рожденным упоением-приятным-чувством омывает,\nпропитывает, наполняет, пронизывает;\nи ничто во всем теле самадхи-рожденным упоением-приятным не-пронизанным не остаётся.", "У него так, усердного …", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах и от не-очарованности (бесстрастия) упоением … третью джхану достигнув пребывает.", "Он именно это тело без-упоения приятным-ощущением омывает, пропитывает, наполняет,\nпронизывает, и ничто во всем теле без-упоения приятным-чувством не-пронизанным не остаётся.", "Это как, монахи, в пруду с лилией (с лилиями), или в пруду с лотосом, или в пруду с белым лотосом, некоторые лилии,\nили лотосы, или белые лотосы, в воде рожденные, в воде выросшие, в воду погруженные, питающиеся изнутри,\nони от верхушки до корня прохладной водой окружены (обтечены), пропитаны, заполнены, пронизаны,\nи ничто во всех тех лилиях, или красных лотосах, или белых лотосах прохладной водой не-пронизанным не осталось бы;", "именно так, монахи, монах именно это тело без-упоения приятным-ощущением омывает, пропитывает,\nнаполняет, пронизывает, и ничто во всем теле без-упоения приятным-ощущением не-пронизанным не остаётся.", "У него так, усердного …", "Так, монахи, монах телесное-памятование развивает.", "И снова, монахи, монах с прекращением приятного … четвёртую джхану достигнув пребывает.", "Он именно это тело полностью чистым разумом, полностью ясным, пронизав сидит;\nи ничто во всем теле полностью чистым разумом, совершенно ясным, не-пронизанным не остаётся.", "Это как, монахи, человек белой тканью, с-головой покрывшись (обёрнувшись) сидел бы,\nи ничто во всем теле у него белой тканью не-укрытым не было бы;", "именно так, монахи, монах именно это тело полностью чистым разумом, полностью ясным, пронизав сидит;\nи ничто во всем теле полностью чистым разумом, совершенно ясным, не-пронизанным не остаётся.", "У него так, усердного, пылкого, решительно-настроенного пребывающего,\nоснованные-на-доме воспоминания-привычки те покидаются.", "От их покидания, внутри ум устанавливается, оседает, единым становится, объединяется.", "Так, монахи, монах телесное-памятование развивает.", "У любого у кого, монахи, телесное-памятование развитое, много-практикуемое, —\nу него [в-эти]-границы-входят (в эти пределы погружены,\n~включены) благотворные явления-учения, любые которые к-знанию-относящиеся.", "Это как, монахи, у любого у кого великий океан разумом покрытый,\n— [в-эти]-границы-входят речки, любые которые в-океан-впадающие;", "именно так, монахи, у любого у кого, монахи, телесное-памятование развитое, много-практикуемое,\n— [в-эти]-границы-входят благотворные явления любые которые к-знанию-относящиеся.", "У кого бы то ни было, монахи, телесное-памятование не развитое, не много-практикуемое,\n— получает к тому Мара спуск (может вдавиться), получает у того Мара основание.", "Это как, монахи, человек тяжёлый каменный шар в кучу влажной глины бросил бы.", "Как вам представляется, монахи,", "разве тот тяжёлый каменный шар в кучу влажной глины смог бы вдавиться”?", "“Так, почтенный”.", "“именно так, монахи, у кого бы то ни было телесное-памятование не развитое,\nне много-практикуемое, — получает к тому Мара спуск, получает у того Мара основание.", "Это как, монахи, сухая древесина обезвоженная;", "и человек пришёл бы (верхнюю)-палку-для-розжига взяв:", "‘огонь произведу, тепло явлю’.", "Как вам представляется, монахи,", "[смог бы] тот человек ту сухую древесину обезвоженную,\n(верхнюю)-палку-для-розжига взяв, растирая, огонь произвести, тепло явить”?", "“Так, почтенный”.", "“Именно так, монахи, у кого бы то ни было телесное-памятование не развитое,\nне много-практикуемое, — получает к тому Мара спуск, получает у того Мара основание.", "Это как, монахи, сосуд для воды опустошенный, опорожненный на подставку поставленный;", "и человек пришёл бы ношу воды взяв.", "Как вам представляется, монахи,", "разве тот человек мог бы воду  слить (обрелось бы воды сбрасывание)”?", "“Так, почтенный”.", "“Именно так, монахи, у кого бы то ни было телесное-памятование не развитое,\nне много-практикуемое, — получает к тому Мара спуск, получает у того Мара основание.", "У кого бы то ни было, монахи, телесное-памятование развитое, много-практикуемое,\n— не получает к тому Мара спуск, не получает у того Мара основание.", "Это как, монахи, человек лёгкий ниток-клубок на балку из цельной сердцевины бросил бы.", "Как вам представляется, монахи,", "разве тот человек тот лёгкий ниток-клубок в балку из цельной сердцевины смог бы вдавиться”?", "“Не так, почтенный”.", "“Именно так, монахи, у кого бы то ни было телесное-памятование развитое,\nмного-практикуемое, — не получает к тому Мара спуск, не получает у того Мара основание.", "Это как, монахи, сырая древесина, с-влагой;", "и человек пришёл бы верхнюю-палку-для-розжига взяв:", "‘огонь произведу, тепло явлю’.", "Как вам представляется, монахи,", "[смог бы] тот человек ту сырую древесину, с-влагой,\nверхнюю-палку-для-розжига взяв, растирая, огонь произвести, тепло явить”?", "“Не так, почтенный”.", "“Именно так, монахи, у кого бы то ни было телесное-памятование развитое,\nмного-практикуемое, — не получает к тому Мара спуск, не получает у того Мара основание.", "Это как, монахи, сосуд для воды полный воды, до краёв, [что] ворона-попить-могла-бы, на подставку поставленный;", "и человек пришёл бы ношу воды взяв.", "Как вам представляется, монахи,", "разве тот человек мог бы воду слить”?", "“Не так, почтенный”.", "“Именно так, монахи, у кого бы то ни было телесное-памятование развитое,\nмного-практикуемое, — не получает к тому Мара спуск, не получает у того Мара основание.", "Любой у которого, монахи, телесное-памятование развитое, много-практикуемое, к какому бы то ни было, явлению-Дхамме,\nкоторое может-быть-засвидетельствованно-прямым-знанием ум направляет для засвидетельствования-прямым-знанием он,\nв каждом случае (здесь-здесь) достигает способности засвидетельствовать в определенной области.", "Это как, монахи, сосуд для воды полный воды, до краёв, [что] ворона-попить-могла-бы, на подставку поставленный.", "Его сильный человек куда бы не наклонил, пошла бы вода (пришла бы)?”", "“Так, почтенный”.", "\"Именно так, монахи, любой у которого телесное-памятование развитое,\nмного-практикуемое, к какому бы то ни было, явлению-Дхамме,\nкоторое может-быть-засвидетельствованно-прямым-знанием ум направляет для засвидетельствования-прямым-знанием он,\nв каждом случае (здесь-здесь) достигает способности засвидетельствовать в определенной области.", "Это как, монахи, на ровном участке земли четырёхугольный лотосовый пруд был бы с дамбами,\nполный воды до краёв, такой, что ворона напьётся.", "Его сильный человек откуда бы дамбу ни отпустил, пошла бы вода?”", "“Так, почтенный”.", "\"Именно так, монахи, любой у которого телесное-памятование развитое,\nмного-практикуемое, к какому бы то ни было, явлению-Дхамме,\nкоторое может-быть-засвидетельствованно-прямым-знанием ум направляет для засвидетельствования-прямым-знанием он,\nв каждом случае (здесь-здесь) достигает способности засвидетельствовать в определенной области.", "Это как, монахи, на хорошей земле (на ровной) на перекрёстке четырёх больших дорог\nчистокровными-колесница запряжённая стояла бы с подготовленным  стрекалом (хлыстом);", "ту её опытный объездчик, лошадей-дресировщик, взобравшись, левой рукой поводья (лучи) взяв,\nправой рукой стрекало взяв, как хочет куда хочет пустился бы и назад вернулся бы (назад пустился бы);", "именно так, монахи, любой у которого телесное-памятование развитое, много-практикуемое, к какому бы то ни было явлению,\nкоторое может-быть-засвидетельствованно-прямым-знанием ум направляет для засвидетельствования-прямым-знанием он,\nв каждом случае (здесь-здесь) достигает способности засвидетельствовать в определенной области.", "От телесного-памятования, монахи, применённого развитого,\nмного-практикуемого транспортом-сделанного основой-(местом)-сделанного\nпоставленного накопленного хорошо-предпринятого десять-польз может-ожидаться.", "Не-приязнь-приязнь-покоряющим является, и его не-приязнь не покоряет, возникшую не-приязнь одолев пребывает.", "Тревогу-ужас-покоряющим является, и его тревога-ужас не покоряет, возникшую тревогу-ужас одолев пребывает.", "Стойким является к холоду, жаре, голоду, жажде, к касаниям оводов-комаров-ветра-солнца-ползучих-соприкосновениям,\nк дурно-сказанным, плохо пришедшим речевым путям,\nк возникшим телесным чувствованиям болезненным, острым, резким, жгучим, дискомфортным,\nнеприятным (эмоционально), отнимающим жизнь — переносящим-по-природе является.", "Четырёх джхан, относящихся к высшему разуму, в-видимой-действительности-приятных-пребываний,\nпо желанию обретающий (является), без затруднений обретающий, без препятствий обретающий.", "Он разнообразные сверхсил-виды проявляет.\nВ том числе одним став множественным становится, в том числе множественным став одним становится,\nпроявление… в том числе вплоть до света-(мира) Брахмы телом контроль пускает.", "Божественным уха-дхату (феноменом слуха), очищенным, превосходящим- человеческий,\nоба [вида] звуков слышит — и божественные и человеческие, которые далеко и близко…", "Других существ других личностей разумом разум охватив понимает.", "Либо с очарованностью-страстью ум ‘с очарованностью ум’ понимает,", "либо без очарованности ум…", "либо с вредностью-злобой ум…", "либо без вредности ум…", "либо с замутненностью-заблуждением ум…", "либо без замутненности ум…", "Либо зажатый ум…", "Либо вжатый ум…", "Либо просторный ум…", "Либо не просторный ум…", "Либо [уже] превзойденный ум…", "Либо [ещё] не превзойденный ум…", "Либо собранный ум…", "Либо не собранный ум…", "Либо освобожденный ум…", "Либо не освобожденный ум ‘не освобожденный ум’ понимает.", "Он многообразное прошлое-пребывание вспоминает, в частности — и одно рождение,\nи два рождения … так с деталями, с ?указателями  многообразное прошлое-пребывание вспоминает.", "Божественным глазом очищеным, превосходящим-человеческий, существ видит умирающих, возникающих, низких,\nвозвышенных, красивых, некрасивых, с-благим-уделом, с-неблагим-уделом, согласно-активности-идущих существ понимает.", "Истечений исчерпание без истечений разума-высвобождение,\nпонимания-высвобождение в видимой действительности самолично познав, засвидетельствовав, достигнув пребывает.", "От телесного-памятования, монахи, применённого развитого,\nмного-практикуемого транспортом-сделанного основой-(местом)-сделанного\nпоставленного накопленного хорошо-предпринятого десять-польз может-ожидаться”.", "Это сказал Благословенный.", "Довольные те монахи Благословенного речи обрадовались.", "Сутта Телесное-памятование завершена девятая."]</script>
 
 
 
@@ -1189,6 +1393,14 @@ function refFromKey(key){
 // page's sutta id — which matches no TREE node (the nodes are that sutta's sections), so the
 // button is attached to the title node via PAGE_EBT below instead.
 const EBT_PARALLELS = {"mn119": {"full": [{"uid": "ma81", "href": "../../ma/ma81/index.html"}], "resembling": [{"uid": "ea12.1", "href": "../../ea/ea12/index.html#ea12.1"}, {"uid": "sht-sutta11", "href": null}, {"uid": "mn10", "href": "../../mn/mn10/index.html"}, {"uid": "dn22", "href": "../../dn/dn22/index.html"}, {"uid": "ma98", "href": "../../ma/ma98/index.html"}]}};
+// ⇄ cross-layer payload (crosslink.py). XLINK: {tree-node-id: record} for every unit on
+// this page that has another layer. XLINK_SEGS: {segment-key: {p, mula|a|t}} — the
+// line-for-line map, only for texts whose granularity supports it (empty elsewhere).
+// PAGE_XLINK_NODE: on a single-unit page the unit id matches no tree node, so its pill
+// rides the first top-level node — the same trick PAGE_EBT_NODE uses.
+const XLINK = {"mn119": {"here": "mula", "rows": [{"layer": "mula", "btn": "Mūla", "work": "Majjhima-nikāya", "what": "the root text — the canonical text itself", "ref": "mn119", "here": true}, {"layer": "a", "btn": "Aṭṭhakathā", "work": "Papañcasūdanī", "what": "the commentary on it", "lbt": true, "ref": "mn-a119"}, {"layer": "t", "btn": "Ṭīkā", "work": "Papañcasūdanī-purāṇaṭīkā", "what": "the subcommentary — a commentary on the commentary", "lbt": true, "ref": "mn-t119"}]}};
+const XLINK_SEGS = {};
+const PAGE_XLINK_SID = "mn119";
 // Per-sutta reference numbers from other canonical editions ({nodeId:{edition:ref}}) —
 // e.g. {"an3.1":{"Siam":"20.127–128"}}. Rendered as a tinted refs cluster leading the
 // sutta header's controls (Siam populated today; other Pāli editions slot in when they
@@ -1200,6 +1412,9 @@ const EDITION_REFS = {};
 // ⋮ More menu and the prev/next popover (see render.py's _more_ebt_row / _cur_nav_html).
 const PAGE_EBT = {"ref": "MN 119", "sid": "mn119"};
 const PAGE_EBT_NODE = (PAGE_EBT && TREE.length) ? TREE[0].id : null;
+// Same trick for the ⇄ pill: a one-unit page's id matches no TREE node, so it rides the
+// first top-level node. Computed here (not in render.py) because it needs TREE.
+const PAGE_XLINK_NODE = (PAGE_XLINK_SID && TREE.length) ? TREE[0].id : null;
 const MAX_COLS = 6;   // single source of truth, injected by render.py
 const FS_MIN = 11, FS_MAX = 22, FS_STEP = 1;
 const TOC_MIN = 0.85, TOC_MAX = 1.6, TOC_STEP = 0.1;
@@ -1216,7 +1431,7 @@ let currentTocScale = 1;
 let currentSidebarW = SW_DEFAULT;   // resizable left TOC width (px), persisted globally
 let fnSplit = 0.4;   // footnote region as a fraction of available sidebar height (persisted)
 let fnScale = 1;     // footnote text-size multiplier, independent A−/A+ (persisted)
-let segMode = 'off';   // SC segment refs: 'off' | 'subtle' (gutter glyph) | 'explicit' (inline number)
+let segMode = 'subtle';   // Line Seg #: 'off' | 'subtle' (gutter 🔗) | 'explicit' (inline number)
 let granOn = true;     // granular Pāli: show the middle-dot (·) compound separators (persisted)
 
 // ── PERSISTED SETTINGS (one localStorage key, shared by every page on this site) ──
@@ -1888,23 +2103,187 @@ document.addEventListener('keydown', function(e){
 // shows. Emits BOTH text/html (each level an indented <p>, and each entry a deep link
 // to its #<ref> anchor on this page) and a tab-indented text/plain fallback — so it
 // pastes as a formatted, linked TOC in rich editors and a clean outline in plain ones.
+// ── ONE place that turns a TREE node id into a citable ref ──────────────────
+// Used by BOTH copy-contents (for its links) and the per-line 🔗 menu (for its L24
+// column), so the two can never disagree about what a section's address is.
+// Returns {ref, q} — `ref` as the outline shows it, `q` as the 🐇 router takes it — or
+// null when the id has no jumpable form.
+//
+// The id shapes a builder emits, all of which must land correctly:
+//   125.2.3           bare dotted, tail carries this sutta's number (mn125 → mn125.2.3)
+//   2                 bare dotted WITHOUT it (mn10/dn16 number their sections 1,2,3…) —
+//                     must compose through the page's own ref (mn10 → mn10.2). Gluing the
+//                     nikāya on gave "mn"+"2" = mn2, a link to a DIFFERENT SUTTA.
+//   an3.1             prefixed — a sutta on a grouped book page
+//   an3.156-162       a ranged sutta — the router accepts the range as a sub-ref
+//   an3.1/3.1.1       namespaced, tail carries the unit's own address → a real L24 section
+//   sn22.13/1         namespaced, tail is a bare ordinal → NOT a section: an unlabelled
+//                     content chunk (sn22.13/1 is the line "Sāvatthi·nidānaṁ."), which
+//                     exists on suttas that have no L24 outline. It has no address of its
+//                     own, so it is cited as its UNIT and flagged chunk:true — the 🔗
+//                     menu skips these as outline levels rather than showing a reader the
+//                     invented section address "sn22.13.1".
+//   an3-balavagga     a vagga slug: no citable ref exists, so this returns null
+//   an3.1/an3.1:0.1   a content row (has a colon) — not a heading at all
+// A namespaced id must be composed through its unit, not by gluing the nikāya onto the
+// tail: "sn22.13/1" that way became "sn" + "1" = sn1, a real but COMPLETELY WRONG
+// destination (book 1 instead of section 1 of sn22.13). And the nikāya for a bare-dotted
+// id comes from the unit when there is one, because PAGE_EBT is null on a grouped book
+// page — relying on it alone yielded a bare "3.1.1" the router cannot parse, silently
+// sending every AN/SN section row back to a hardcoded #anchor.
+function smRefOf(id){
+  id = String(id || '');
+  if(!id || id.includes(':')) return null;
+  let cand, ref, chunk = false;
+  const slash = id.indexOf('/');
+  if(slash >= 0){
+    const unit = id.slice(0, slash);                    // "sn22.13"  /  "an3.1"
+    const tail = id.slice(slash + 1);                   // "1"        /  "3.1.1"
+    // A unit with no letters of its own (arv's "1/0", vimt's "1.1/0") takes the book's.
+    const nik  = (unit.match(/^[a-z-]+/)||[''])[0] || smPageNik();
+    const num  = unit.replace(/^[a-z-]+/, '');          // "22.13"    /  "3.1"
+    if(!nik || !num) return null;
+    if(tail === num || tail.indexOf(num + '.') === 0){
+      cand = nik + tail; ref = tail;                    // a real section: an3.1.1
+    } else {
+      cand = nik + num;  ref = num;  chunk = true;      // a chunk: cite its unit, sn22.13
+    }
+  } else if(/^[0-9]/.test(id)){
+    // Bare section number on a single-sutta page. Three cases, because the router's grammar
+    // is <nik><suttaNo>.<sub> and pages don't agree on whether an id embeds the sutta number:
+    //   mn125 → "125.2.3"  embeds it      → mn125.2.3
+    //   mn100 → "2.3"      doesn't, but resolveAnchor recovers a MULTI-component address by
+    //                      dropping the leading component  → mn100.2.3
+    //   mn10  → "1", dn16 → "16"          single component: NOT recoverable. resolveAnchor
+    //                      returns null for mn10's "10.1", and on dn16 it widens "16.1" to
+    //                      the page's OWN section 16 — a wrong destination inside the right
+    //                      page. These keep their #anchor rather than get a pretty wrong link.
+    const nik = smPageNik();
+    if(!nik) return null;
+    // A flat single-file book (arv, vimt) IS the page: its ids are already whole addresses
+    // ("1.1" → vimt1.1), so there is no sutta number to compose through. A bare-anchored KN
+    // book (JUMP_KN_BARE — Dhp) is the same shape: its unit ids are the SuttaCentral numbers
+    // themselves ("21" → dhp21) and its vagga ids the dotted chapter address ("2." → dhp2.).
+    // It MUST take this path, because smPageRef() is null there — the folder is "dhp", which
+    // carries no number to compose with — so the else branch would refuse every row on the
+    // page.
+    // A one-page TREATISE (vism, khs, bmc — JUMP_CMY_TREATISE) has the same property, and
+    // for the same reason: the router's treatise branch answers with `hash: '#' + dot`, so
+    // the page's dotted ids ARE whole addresses and `nik + id` is the citation. It has to
+    // take this path too, because smPageRef() is null for every one of them — the folder is
+    // "vism" / "bmc", which carries no number to compose with — so the else branch refused
+    // every row on the page and the 🔗 menu's outline column came up empty.
+    let flat = false;
+    try{ flat = !!((JUMP_FLAT && JUMP_FLAT[nik]) || (JUMP_KN_BARE && JUMP_KN_BARE[nik])
+                   || (JUMP_CMY_TREATISE && JUMP_CMY_TREATISE[nik])); }catch(e){}
+    if(flat){
+      cand = nik + id;
+    } else {
+      const pref = smPageRef();
+      if(!pref) return null;
+      const pnum = pref.replace(/^[a-z-]+/, '');        // "10" / "125"
+      if(pnum && (id === pnum || id.indexOf(pnum + '.') === 0)) cand = nik + id;
+      else if(id.indexOf('.') > 0)                      cand = pref + '.' + id;
+      else {
+        // Single component (mn10's "1", a Taishō juan's "12"). Recoverable only when the
+        // router hands the id straight back as the hash — i.e. this page's anchors are
+        // whole addresses in their own right, so `<page>.<id>` lands exactly here. Where
+        // the router prefixes the page number instead (mn10 → #10.1), the citation would
+        // open the right page at the WRONG section, so it is still refused.
+        const probe = pref + '.' + id, pr = parseJumpRef(probe);
+        if(!pr || pr.err || pr.hash !== '#' + id) return null;
+        cand = probe;
+      }
+    }
+    ref = id;
+  } else {
+    cand = id; ref = id;
+  }
+  if(typeof parseJumpRef !== 'function') return null;
+  const r = parseJumpRef(cand);
+  if(!r || r.err) return null;
+  // O(1) guard against a citation that silently navigates AWAY: r.page is the folder the
+  // router would open, so anything naming another page is not a citation of this node.
+  if(r.page && r.page !== smPageFolder()) return null;
+  return {ref: ref, q: cand, chunk: chunk};
+}
+// Nikāya/book prefix for a bare-dotted id: this page's own sutta if it has one, else the
+// injected collection code (grouped book pages carry NIKAYA but no PAGE_EBT).
+// This page's own ref prefix, read from its SEGMENT KEYS — the only place that always
+// tells the truth. The FOLDER does not: a commentary page lives at cmy/mn/mn125/ but its
+// ref is "mn-a125", so a folder-derived "mn125" cited the ROOT SUTTA instead of the
+// commentary you were reading. Keys there are "mn-a125:2.1" → "mn-a".
+let SM_KEY_NIK = null;
+function smKeyNik(){
+  if(SM_KEY_NIK !== null) return SM_KEY_NIK;
+  let pref = '';
+  (function scan(nodes){
+    for(const n of nodes){
+      if(pref) return;
+      if(n.rows && n.rows.length){
+        const k = n.rows[0].key || '', i = k.indexOf(':');
+        if(i > 0){ pref = (k.slice(0, i).match(/^[a-z-]+/)||[''])[0]; return; }
+      }
+      if(n.children) scan(n.children);
+    }
+  })(TREE);
+  SM_KEY_NIK = pref;
+  return pref;
+}
+function smPageNik(){
+  const fromKeys = smKeyNik();
+  if(fromKeys) return fromKeys;
+  const sid = (typeof PAGE_EBT!=='undefined' && PAGE_EBT && PAGE_EBT.sid) ? PAGE_EBT.sid : '';
+  const fromSid = (sid.match(/^[a-z-]+/)||[''])[0];
+  if(fromSid) return fromSid;
+  try{ if(NIKAYA) return NIKAYA; }catch(e){}
+  return (smPageFolder().match(/^[a-z-]+/)||[''])[0];
+}
+function smPageFolder(){
+  return location.pathname.replace(/\/[^/]*\.html?$/,'').split('/').filter(Boolean).pop() || '';
+}
+// The whole page as a ref, for copy-contents' root row: this page's own prefix plus the
+// folder's number (mn125, an3, mn-a125), and only if the router agrees it opens THIS page.
+function smPageRef(){
+  const nik = smPageNik(), folder = smPageFolder();
+  const num = folder.replace(/^[a-z-]+/, '');
+  const cand = num ? nik + num : nik;
+  if(!cand || typeof parseJumpRef !== 'function') return null;
+  const r = parseJumpRef(cand);
+  if(!r || r.err) return null;
+  if(r.page && r.page !== folder) return null;
+  return cand;
+}
+// A node id → a "<site root>/?q=<ref>" citation, so a pasted outline names no page path
+// and survives a sutta being relocated. null → the caller keeps the plain #anchor rather
+// than emitting a link that won't open.
+function smQLink(id){
+  const c = smRefOf(id);
+  return c ? smSite() + '?q=' + c.q : null;
+}
+// Resolved lazily, at click time: JUMP_ROOT is a const declared further down this same
+// script, and `typeof` does NOT protect a temporal-dead-zone binding — reading it at
+// definition time throws and takes the rest of the script with it.
+function smSite(){
+  try{ return new URL(JUMP_ROOT + '/', location.href).href; }
+  catch(e){ return location.href.split('#')[0].split('?')[0]; }
+}
 function buildTocData(){
   const base=location.href.split('#')[0];
   const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const escAttr=s=>esc(s).replace(/"/g,'&quot;');
-  // An L24 section heading is any node whose id is a pure numeric/dotted ref (1, 2.3,
-  // 125.2.3). This is BOTH group headings (with sub-sections) and leaf headings (a
-  // section with no sub-sections, e.g. mn125's 125.2.3) — the earlier "has children"
-  // test dropped the leaf ones. Content-row chunks are excluded: their ids are SC
-  // segment keys with a colon (mn125:12.1), never bare numeric. Depth follows tree
-  // nesting (the outline the sidebar shows), incremented only when a heading is emitted.
-  // A heading node = anything that is NOT a content-row chunk. Content chunks carry an SC
-  // segment-key id (always contains a colon: "mn125:12.1", "an3.65/an3.65:1.1"); every
-  // structural/heading node does not — bare refs on single-sutta pages ("2.3", "125.2.3")
-  // AND the sid-namespaced group/section ids on grouped nikāya pages ("an3-bala" vagga,
-  // "an3.65" sutta, "an3.65/3.65.4" section). The old bare-numeric test emitted nothing on
-  // grouped pages, so Copy-TOC produced only the root line there.
-  const isHeading=id=>!String(id).includes(':');
+  // A heading node = anything that is NOT a content-row chunk, and a content-row chunk is
+  // exactly a node that CARRIES ROWS. Nothing else distinguishes them: across all 1222 built
+  // pages no node has both `rows` and `children`, and no heading carries `rows` — while id
+  // SHAPE does not separate them at all. The earlier "id has no colon" test was right only
+  // for chunks keyed by an SC segment ("mn125:12.1"); a chunk keyed by its ordinal within a
+  // unit is colon-free ("pli-tv-kd1/0", "sa20/1", cmy/dn's "3", "vism-fm/prose"), and 64,785
+  // of those were emitted as copy-TOC rows and counted as outline coverage. They are not
+  // sections: each pastes as a citation of its whole UNIT, so a page of them is the same link
+  // repeated, not a table of contents.
+  // Kept as one `const isHeading = …;` statement so runners/l24/_l24_audit.py can lift it and
+  // measure exactly what the browser emits.
+  const isHeading=n=>!(n.rows && n.rows.length);
   const htmlRows=[], textRows=[];
   // Root line: the sutta itself, linking to the page (no #fragment). Its name is the
   // browser-tab title minus the " — Parallel Translation" suffix (ref + native name,
@@ -1915,16 +2294,18 @@ function buildTocData(){
   const eng=ptEl && ptEl.getAttribute('title');
   const suttaLabel=(titleMain || (ptEl && ptEl.textContent) || 'Contents')
     + (eng && titleMain && titleMain.indexOf(eng)<0 ? ' — ' + eng : '');
-  htmlRows.push('<p style="margin:0"><strong><a href="'+escAttr(base)+'">'+esc(suttaLabel)+'</a></strong></p>');
+  const smRootRef = smPageRef();     // "mn125" / "an3" / "mn-a125" — never the folder alone
+  const smRootHref = smRootRef ? (smSite() + '?q=' + smRootRef) : base;
+  htmlRows.push('<p style="margin:0"><strong><a href="'+escAttr(smRootHref)+'">'+esc(suttaLabel)+'</a></strong></p>');
   textRows.push(suttaLabel);
   (function walk(nodes, depth){
     nodes.forEach(n=>{
       let childDepth=depth;
-      if(isHeading(n.id)){
+      if(isHeading(n)){
         const label=n.label||n.id;
         // Keep the id intact (sid-namespaced ids contain '/', which encodeURIComponent
         // would turn into %2F and break the #anchor match); ids carry no spaces.
-        const href=base+'#'+n.id;
+        const href=smQLink(n.id) || (base+'#'+n.id);
         htmlRows.push(
           '<p style="margin:0 0 0 '+(depth*2)+'em">'+
           '<a href="'+escAttr(href)+'">'+esc(label)+'</a></p>'
@@ -2051,6 +2432,10 @@ function adjustFont(delta){
   // Scale rem-based header chrome by setting html font-size proportionally.
   // (The TOC tracks --fs via the .sidebar font base, so it scales too.)
   document.documentElement.style.fontSize = currentFs + 'px';
+  // The 🔗 copy-link card is rem-based, so it resizes with this. Re-clamp it, or one
+  // sitting near an edge grows off-screen.
+  const smM = document.getElementById('segMenu');
+  if(SM && smM && !smM.hidden) smPlace(smM, parseFloat(smM.style.left)||4, parseFloat(smM.style.top)||4);
   saveSettings();
 }
 
@@ -2075,7 +2460,7 @@ function adjustFnScale(delta){
   saveSettings();
 }
 
-// ── SC SEGMENT REFS — three modes, off by default ──
+// ── LINE SEG # (SC segment refs) — three modes, SUBTLE by default ──
 //   off      : no segment references shown
 //   subtle   : a faint 🔗 glyph in the first column's right gutter; hover reveals it,
 //              its tooltip is the full SC ref, and clicking copies a deep link.
@@ -2104,7 +2489,7 @@ function toggleGran(){ granOn = !granOn; applyGranBtn(); saveSettings(); withScr
 // to defaults. Column layouts are left alone (they have their own Default-columns
 // control, and clearing them site-wide would be destructive). ──
 function resetSettings(){
-  currentFs=15; currentTocScale=1; fnScale=1; currentTheme='light'; segMode='off'; granOn=true;
+  currentFs=15; currentTocScale=1; fnScale=1; currentTheme='light'; segMode='subtle'; granOn=true;
   document.documentElement.setAttribute('data-theme', currentTheme);
   document.getElementById('themeBtn').textContent = themeLabel();
   document.documentElement.style.setProperty('--fs', currentFs+'px');
@@ -2114,13 +2499,294 @@ function resetSettings(){
   withScrollAnchor(()=>renderMain());   // re-render in case granular changed
 }
 
-// Copy a shareable deep link to a segment (current page URL + #tr-<segkey>); the
-// existing jumpToHash handler resolves it on open (opens collapsed ancestors + scrolls).
-function copySegLink(key, btn){
-  const url = location.href.split('#')[0] + '#tr-' + key;
-  try{ if(navigator.clipboard) navigator.clipboard.writeText(url); }catch(e){}
-  if(btn){ btn.classList.add('copied'); setTimeout(()=>btn.classList.remove('copied'), 900); }
+// ══ PER-LINE 🔗 "COPY A LINK" MENU ═════════════════════════════════════════
+// (Replaces the old one-shot copySegLink, which copied a hardcoded "<page URL>#tr-<key>"
+// deep link. Every form this menu offers goes through ?q= / the 🐇 router instead, so a
+// shared reference survives the sutta's page moving.)
+// The L24 address of a line isn't in the row data — it's the chain of outline nodes above
+// the leaf that holds it, so index it once, lazily, on first open. Levels are decided by
+// smRefOf, the same resolver copy-contents uses, so this works on single-sutta pages
+// (125.2.3) AND grouped book pages (an3.1, an3.1/3.1.1) alike. A level with no citable
+// ref (a vagga slug) is skipped rather than offered as an uncopyable crumb.
+let SM_L24 = null;
+function smIndexL24(){
+  if(SM_L24) return SM_L24;
+  SM_L24 = {};
+  (function walk(nodes, chain){
+    nodes.forEach(n=>{
+      // cite.chunk = an unlabelled content chunk, not an outline level — skip it (its unit
+      // is already a crumb, so the reader loses nothing and gains no invented address)
+      const cite = smRefOf(n.id);
+      const next = (cite && !cite.chunk)
+        ? chain.concat([{ref:cite.ref, q:cite.q, title:smCrumbTitle(n, cite.ref)}])
+        : chain;
+      if(n.rows){ n.rows.forEach(r=>{ if(r.key && !SM_L24[r.key]) SM_L24[r.key]=next; }); }
+      if(n.children) walk(n.children, next);
+    });
+  })(TREE, []);
+  return SM_L24;
 }
+// Labels are baked as "<ref> <title>" — strip the ref so a crumb isn't "125.2 125.2 …".
+// Tries the DISPLAY ref too: a namespaced node's label starts with its bare tail
+// ("3.1.1 …"), not with its full id ("an3.1/3.1.1").
+function smCrumbTitle(n, ref){
+  const l = (n.label||'').trim();
+  for(const p of [ref, n.id]){
+    if(p && l.startsWith(p)) return l.slice(p.length).trim();
+  }
+  return l;
+}
+let SM = null;          // {key, chain, pick} — pick indexes the armed outline level
+function openSegMenu(key, btn){
+  const chain = smIndexL24()[key] || [];
+  SM = {key: key, chain: chain, pick: chain.length-1};
+  const m = document.getElementById('segMenu');
+  smBuildCrumbs();
+  smPaint();
+  m.hidden = false;
+  // anchor to the 🔗, flipping up when it would fall off the bottom
+  const r = btn.getBoundingClientRect(), b = m.getBoundingClientRect();
+  let top = r.bottom + 6;
+  if(top + b.height > innerHeight - 8) top = r.top - b.height - 6;
+  smPlace(m, r.right - b.width, top);
+  document.getElementById('smClose').focus();
+}
+function closeSegMenu(){ const m=document.getElementById('segMenu'); if(m) m.hidden=true; SM=null; }
+// Single placement path for opening, dragging and rescaling — always clamped inside the
+// viewport, so a card that grows under A+ (or is dragged at the edge) can't strand itself.
+function smPlace(m, left, top){
+  const b = m.getBoundingClientRect();
+  const maxL = Math.max(4, innerWidth  - b.width  - 4);
+  const maxT = Math.max(4, innerHeight - b.height - 4);
+  m.style.left = Math.min(Math.max(4, left), maxL) + 'px';
+  m.style.top  = Math.min(Math.max(4, top ), maxT) + 'px';
+}
+// ── drag the card by its title bar ──
+let smDrag = null;
+function smDragStart(e){
+  if(e.target.closest('.sm-close')) return;      // ✕ is a button, not a handle
+  const m = document.getElementById('segMenu');
+  const r = m.getBoundingClientRect();
+  smDrag = {dx: e.clientX - r.left, dy: e.clientY - r.top};
+  m.classList.add('dragging');
+  e.preventDefault();                            // don't start a text selection
+  window.addEventListener('pointermove', smDragMove);
+  window.addEventListener('pointerup', smDragEnd, {once:true});
+}
+function smDragMove(e){
+  if(!smDrag) return;
+  smPlace(document.getElementById('segMenu'), e.clientX - smDrag.dx, e.clientY - smDrag.dy);
+}
+function smDragEnd(){
+  smDrag = null;
+  window.removeEventListener('pointermove', smDragMove);
+  const m = document.getElementById('segMenu');
+  if(m) m.classList.remove('dragging');
+}
+// Crumbs are built ONCE per open; smPaint then only moves the .on class. Rebuilding them
+// inside smPaint detached the very button being clicked, so the document-level
+// close-on-outside-click handler saw an orphaned e.target, decided the click was outside
+// the menu, and shut it — clicking a level appeared to close the window and copy nothing.
+function smBuildCrumbs(){
+  const cr = document.getElementById('smCrumbs');
+  cr.innerHTML = '';
+  if(!SM.chain.length){
+    cr.innerHTML = '<span class="sm-sep">no L24 outline section covers this line</span>';
+    return;
+  }
+  // A single level means there is nothing to choose between: render it as plain text
+  // rather than a button that looks clickable and does nothing.
+  const only = SM.chain.length === 1;
+  SM.chain.forEach((c,i)=>{
+    if(i){ const sp=document.createElement('span'); sp.className='sm-sep'; sp.textContent='›'; cr.appendChild(sp); }
+    const el = document.createElement(only ? 'span' : 'button');
+    el.className = 'sm-crumb' + (i===SM.pick ? ' on' : '') + (only ? ' sm-crumb-static' : '');
+    el.textContent = c.ref + (c.title ? ' ' + c.title : '');
+    el.title = c.title || c.ref;
+    if(!only){
+      el.type = 'button';
+      el.onclick = (e)=>{ e.stopPropagation(); SM.pick = i; smPaint(); };
+    }
+    cr.appendChild(el);
+  });
+}
+function smPaint(){
+  const key = SM.key;
+  const page = location.href.split('#')[0].split('?')[0];
+  const segRef = refFromKey(key);                                  // mn125:12.20
+  const l24 = SM.chain.length ? SM.chain[SM.pick].q : null;         // mn125.2.4 / an3.1.1
+
+  document.querySelectorAll('#smCrumbs .sm-crumb').forEach((el,i)=>
+    el.classList.toggle('on', i===SM.pick));
+  // only advertise the level picker when there is more than one level to pick
+  document.getElementById('smFootLvl').textContent =
+    SM.chain.length > 1 ? ' · click a crumb to change the L24 level' : '';
+
+  const set = (id, val, shown)=>{
+    const el = document.getElementById(id);
+    el.classList.remove('copied');
+    if(!val){ el.textContent='—'; el.disabled=true; el.style.opacity=.4; return; }
+    el.disabled=false; el.style.opacity='';
+    el.innerHTML = shown || smEsc(val);
+    el.title = 'Copy  ' + val;
+    el.onclick = ()=>smCopy(val, el);
+  };
+  const dim = t => '<span class="sm-dim">'+smEsc(t)+'</span>';
+  set('smUrlL24', l24 && page+'?q='+l24, l24 && dim(smTail(page)+'?q=')+smEsc(l24));
+  set('smUrlSeg', page+'?q='+segRef,     dim(smTail(page)+'?q=')+smEsc(segRef));
+  set('smQjL24', l24);
+  set('smQjSeg', segRef);
+}
+// keep the URL cells readable: show the last path bit, not the whole origin
+function smTail(url){ const m=url.match(/[^/]*\/[^/]*\/?$/); return m? '…/'+m[0].replace(/^\//,'') : url; }
+function smEsc(t){ return String(t).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function smCopy(text, el){
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(text); }catch(e){}
+  el.classList.add('copied');
+  setTimeout(()=>el.classList.remove('copied'), 1100);
+}
+document.getElementById('smClose').onclick = closeSegMenu;
+document.querySelector('#segMenu .sm-head').addEventListener('pointerdown', smDragStart);
+document.addEventListener('click', e=>{
+  if(!SM) return;
+  if(e.target.closest('#segMenu') || e.target.closest('.seg-link')) return;
+  closeSegMenu();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && SM) closeSegMenu(); });
+addEventListener('resize', closeSegMenu);
+
+// ══ "⇄ Cmy" CROSS-LAYER CARD ═══════════════════════════════════════════════════════════
+// One component for every Theravāda text with later layers, both directions: the record
+// (crosslink.py → XLINK, keyed by TREE node id) says which layer this page IS and what this
+// unit's address is in each of the three, so nothing is derived here. Every address is
+// handed out as a ?q= form, which the 🐇 router resolves — a shared link survives a page
+// moving, and this card needs no URL table of its own.
+// The record (crosslink.py → XLINK) arrives as ORDERED ROWS, root first, each already
+// carrying its button label, the work's name, what that layer is, and either a ref or the
+// reason it has none. Nothing is derived here; this only draws it.
+let XL = null;                  // {node, rec, line}  line = a segment key, or null
+// XLINK_SEGS is keyed by the segment that OPENS a commented paragraph, because that is the
+// pairing the source gives us (the commentary block quotes the mūla paragraph number). A
+// reader is rarely on that exact line, so forward-fill it across the rest of the paragraph:
+// every line inherits the last mapping seen, and the run STOPS at a unit boundary (a rule's
+// last paragraph must not bleed into the next rule). One walk of TREE, built on first use,
+// so the page's payload stays 1,403 entries instead of 70,000.
+let XL_FILL = null;
+function xlFill(){
+  if(XL_FILL) return XL_FILL;
+  XL_FILL = {};
+  let cur = null, unit = null;
+  (function walk(nodes){
+    (nodes || []).forEach(n=>{
+      (n.rows || []).forEach(r=>{
+        if(!r.key) return;
+        const u = r.key.split(':')[0];
+        if(u !== unit){ unit = u; cur = null; }
+        if(XLINK_SEGS[r.key]) cur = XLINK_SEGS[r.key];
+        if(cur) XL_FILL[r.key] = cur;
+      });
+      walk(n.children);
+    });
+  })(TREE);
+  return XL_FILL;
+}
+
+function xlOpen(node, btn, segKey){
+  const rec = XLINK[node];
+  if(!rec || !rec.rows) return;      // no record, or a page rendered before `rows` existed
+  XL = {node: node, rec: rec, line: segKey || null};
+  xlPaint();
+  const card = document.getElementById('xlCard');
+  card.hidden = false;
+  const r = btn.getBoundingClientRect(), b = card.getBoundingClientRect();
+  let top = r.bottom + 6;
+  if(top + b.height > innerHeight - 8) top = Math.max(6, r.top - b.height - 6);
+  smPlace(card, r.right - b.width, top);          // shared clamp-inside-viewport placer
+  document.getElementById('xlClose').focus();
+}
+function xlClose(){ const c = document.getElementById('xlCard'); if(c) c.hidden = true; XL = null; }
+// The address to hand out for one row: the LINE-level one when the card was opened from a
+// line's gutter and that layer has one, else the unit's — jumping to the unit beats a dead
+// button when only some layers map line-for-line.
+function xlRefFor(row){
+  const seg = XL.line ? xlFill()[XL.line] : null;
+  return (seg && seg[row.layer]) || row.ref || null;
+}
+function xlPaint(){
+  const rec = XL.rec, list = document.getElementById('xlList');
+  const seg = XL.line ? xlFill()[XL.line] : null;
+  const here = (rec.rows.find(r=>r.here) || {});
+  // "this paragraph", not "this line": a filled marker points at the paragraph's opening
+  // segment in the other layer, which is where the commentary on it starts.
+  document.getElementById('xlTitle').innerHTML = 'switch layer — <b>' +
+    smEsc(seg && seg.p ? '¶ ' + seg.p : (here.ref || '')) + '</b>' +
+    (seg ? ' this paragraph' : '');
+  list.innerHTML = '';
+  rec.rows.forEach(row=>{
+    const ref = row.here ? null : xlRefFor(row);
+    if(row.group){
+      const g = mk('div', 'xl-grp');
+      g.textContent = row.group;
+      list.appendChild(g);
+    }
+    const line = mk('div', 'xl-row' + (row.here || !ref ? ' dim' : ''));
+    let b;
+    if(row.here || !ref){
+      b = mk('span', 'xl-btn ' + (row.here ? 'here' : 'off') + (row.sub ? ' sub' : ''));
+      b.title = row.here ? 'the layer you are reading now' : (row.why || 'not available');
+    } else {
+      b = mk('a', 'xl-btn' + (row.sub ? ' sub' : ''));
+      // ?q= on THIS page's URL — the router resolves it, so no URL table is needed here and
+      // the link works from a local copy too.
+      b.href = location.href.split('#')[0].split('?')[0] + '?q=' + ref;
+      b.title = 'go to ' + ref;
+    }
+    b.textContent = row.btn;
+    const d = mk('div', 'xl-desc');
+    const lbt = row.lbt ? ' <span class="xl-lbt">⛔ LBT</span>' : '';
+    const sub = row.here ? 'you are reading this'
+              : (ref ? null : (row.why || 'not available'));
+    d.innerHTML = '<span class="wk">' + smEsc(row.work) + '</span> — <span class="what">' +
+      smEsc(row.what) + '</span>' + lbt +
+      (sub ? '<span class="st">' + smEsc(sub) + '</span>'
+           : '<span class="st"><span class="ref">' + smEsc(ref) + '</span></span>');
+    line.append(b, d);
+    list.appendChild(line);
+  });
+}
+function xlButtonFor(node){
+  const btn = mk('button','ix-ebt-btn'); btn.type = 'button';
+  btn.textContent = '⇄ Cmy';
+  btn.title = 'switch between root text, commentary, sub-commentary';
+  btn.onclick = ev=>{ ev.stopPropagation(); xlOpen(node, btn); };
+  return btn;
+}
+(function(){
+  const head = document.querySelector('#xlCard .sm-head');
+  let drag = null;
+  head.addEventListener('pointerdown', e=>{
+    if(e.target.closest('.sm-close')) return;
+    const m = document.getElementById('xlCard'), r = m.getBoundingClientRect();
+    drag = {dx: e.clientX - r.left, dy: e.clientY - r.top};
+    m.classList.add('dragging');
+    e.preventDefault();
+    const move = ev=>{ if(drag) smPlace(m, ev.clientX - drag.dx, ev.clientY - drag.dy); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', ()=>{
+      drag = null; m.classList.remove('dragging');
+      window.removeEventListener('pointermove', move);
+    }, {once:true});
+  });
+  document.getElementById('xlClose').onclick = xlClose;
+  document.addEventListener('click', e=>{
+    if(!XL) return;
+    if(e.target.closest('#xlCard') || e.target.closest('.ix-ebt-btn')
+       || e.target.closest('.seg-xl')) return;
+    xlClose();
+  });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && XL) xlClose(); });
+  addEventListener('resize', xlClose);
+})();
 
 // ── SIDEBAR ──
 function toggleSidebar(){
@@ -2887,6 +3553,11 @@ function renderGroupMain(node, parent){
   // Single-sutta page: the page's own sutta id matches no tree node, so its button rides
   // the first top-level node (the title row) instead — see PAGE_EBT / PAGE_EBT_NODE.
   else if(PAGE_EBT && node.id===PAGE_EBT_NODE) gh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid], EDITION_REFS[PAGE_EBT.sid]));
+  // "⇄ Cmy" — this unit in the mūla / aṭṭhakathā / ṭīkā. On a single-unit page the unit id
+  // matches no tree node, so the pill rides the first top-level node (PAGE_XLINK_NODE).
+  if(XLINK[node.id]) gh.appendChild(xlButtonFor(node.id));
+  else if(PAGE_XLINK_NODE && node.id===PAGE_XLINK_NODE)
+    gh.appendChild(xlButtonFor(PAGE_XLINK_SID));
   gh.append(gc);
   gh.onclick=()=>{SO[node.id]=!SO[node.id];rerenderNode(node.id);};
   g.appendChild(gh);
@@ -2919,6 +3590,10 @@ function buildLeafTable(sec){
       sec.rows.forEach(row=>{
         const tr=mk('tr','');
         tr.id='tr-'+row.key;
+        // What this LINE is, when the text ships per-line kinds: a canonical passage the
+        // author quotes, the training rule itself, untranslated Pāli, verse (see the
+        // tr.k-* CSS). Absent on every text that ships none.
+        if(row.k) tr.classList.add('k-'+row.k);
         // Empty gutter cell — keeps row alignment with the column bar's .bar-gutter.
         // Individual segments are leaves: no per-segment collapse toggle.
         const rtc=mk('td','rtc'); tr.appendChild(rtc);
@@ -2933,9 +3608,26 @@ function buildLeafTable(sec){
             td.classList.add('seg-host');
             const lk=mk('button','seg-link'); lk.type='button'; lk.textContent='🔗';
             lk.title=refFromKey(row.key);   // full SC ref, e.g. mn10:2.5
-            lk.setAttribute('aria-label','Copy link to '+refFromKey(row.key));
-            lk.onclick=(e)=>{ e.stopPropagation(); copySegLink(row.key, lk); };
+            lk.setAttribute('aria-label','Copy a link to '+refFromKey(row.key));
+            lk.onclick=(e)=>{ e.stopPropagation(); openSegMenu(row.key, lk); };
             td.appendChild(lk);
+          }
+          // Line-level "⇄": this LINE in the other layers. Only for texts that map
+          // line-for-line (XLINK_SEGS) — the unit that owns the line is its segment key's
+          // own prefix, which is exactly the tree-node id XLINK is keyed by.
+          const xlSeg = row.key ? xlFill()[row.key] : null;
+          if(ci===0 && xlSeg){
+            const unit = row.key.split(':')[0];
+            if(XLINK[unit]){
+              td.classList.add('seg-host');
+              const xb=mk('button','seg-xl'); xb.type='button'; xb.textContent='⇄';
+              const p=xlSeg.p;
+              xb.title='switch between root text, commentary, sub-commentary'
+                       +(p?' (¶ '+p+')':'');
+              xb.setAttribute('aria-label', xb.title);
+              xb.onclick=(e)=>{ e.stopPropagation(); xlOpen(unit, xb, row.key); };
+              td.appendChild(xb);
+            }
           }
           let langCls = /(pali|san|lzh|zh)/.test(key) ? ' pli-lang' : ' eng-lang';
                         const ct=mk('span','ct grw' + langCls);
@@ -2997,6 +3689,9 @@ function renderLeafMain(sec, parent){
   // Single-sutta page: attach the page-own "∥ EBT" button to the title leaf (the first
   // top-level node), mirroring the per-sutta tree button on grouped pages (renderGroupMain).
   if(PAGE_EBT && sec.id===PAGE_EBT_NODE) sh.appendChild(ebtButtonFor(PAGE_EBT.ref, EBT_PARALLELS[PAGE_EBT.sid], EDITION_REFS[PAGE_EBT.sid]));
+  if(XLINK[sec.id]) sh.appendChild(xlButtonFor(sec.id));
+  else if(PAGE_XLINK_NODE && sec.id===PAGE_XLINK_NODE)
+    sh.appendChild(xlButtonFor(PAGE_XLINK_SID));
   sh.append(sc);
   sh.onclick=()=>{SO[sec.id]=!SO[sec.id];rerenderNode(sec.id);};
   sb.appendChild(sh);
@@ -3068,17 +3763,19 @@ const JUMP_ROOT = '../..';
 // ── 🐇 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
-const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "ds": 2, "vb": 18, "dt": 2, "pp": 2, "kv": 23, "ya": 10, "patthana": 24, "arv": 28, "vimt": 12, "mn-a": 152, "mn-t": 152, "dn-a": 34, "dn-t": 34, "an-a": 11, "sn-a": 56, "an-t": 11, "sn-t": 56, "kp-a": 9, "dhp-a": 423, "ud-a": 80, "iti-a": 112, "snp-a": 70, "vv-a": 85, "pv-a": 51, "thag-a": 264, "thig-a": 67, "cp-a": 35, "bv-a": 27, "tha-ap-a": 237, "vism": 23, "ja-a": 547};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "ds": 2, "vb": 18, "dt": 2, "pp": 2, "kv": 23, "ya": 10, "patthana": 24, "arv": 28, "vimt": 12, "mn-a": 152, "mn-t": 152, "dn-a": 34, "dn-t": 34, "an-a": 11, "sn-a": 56, "an-t": 11, "sn-t": 56, "kp-a": 9, "dhp-a": 423, "ud-a": 80, "iti-a": 112, "snp-a": 70, "vv-a": 85, "pv-a": 51, "thag-a": 264, "thig-a": 67, "cp-a": 35, "bv-a": 27, "tha-ap-a": 237, "vism": 23, "vism-t": 23, "vsg": 258, "vsg-t": 256, "vnv": 3183, "vnv-t": 3183, "uv": 970, "uv-t": 965, "khs": 476, "khs-pt": 473, "khs-at": 475, "mls": 128, "mls-t": 116, "bmc": 2, "ja-a": 547};   // supported collections (single source: quickjump.LIMITS)
 const JUMP_GROUPED = {"an": 1, "ea": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
 const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
+const JUMP_KN_BARE = {"dhp": 1, "iti": 1}; // …except these, whose anchors are bare addresses (dhp21 → #21)
 const JUMP_AB = {"ds": 1, "dt": 1, "kv": 1, "patthana": 1, "pp": 1, "vb": 1, "ya": 1};           // Abhidhamma books → one page per book at tv_ab/<abbr>/
 const JUMP_RANGE = {"sa": 100};     // flat ref → numeric-range unit page (sa)
 const JUMP_FLAT = {"arv": 1, "vimt": 1};       // single-file whole-collection books (arv) → <nik>/index.html
 const JUMP_CMY = {"mn-a": {"dir": "cmy/mn", "bound": 152}, "mn-t": {"dir": "scmy/mn", "bound": 152}, "dn-a": {"dir": "cmy/dn", "bound": 34}, "dn-t": {"dir": "scmy/dn", "bound": 34}};         // commentary/ṭīkā: mn-a1 → cmy/mn/mn1/, mn-t1 → scmy/mn/mn1/
 const JUMP_CMY_GROUPED = {"an-a": {"dir": "cmy/an", "bound": 11}, "sn-a": {"dir": "cmy/sn", "bound": 56}, "an-t": {"dir": "scmy/an", "bound": 11}, "sn-t": {"dir": "scmy/sn", "bound": 56}};  // grouped commentary: an-a3.65 → cmy/an/an3/#an-a3.65
 const JUMP_CMY_KN = {"kp-a": {"dir": "cmy/kn", "bound": 9}, "dhp-a": {"dir": "cmy/kn", "bound": 423}, "ud-a": {"dir": "cmy/kn", "bound": 80}, "iti-a": {"dir": "cmy/kn", "bound": 112}, "snp-a": {"dir": "cmy/kn", "bound": 70}, "vv-a": {"dir": "cmy/kn", "bound": 85}, "pv-a": {"dir": "cmy/kn", "bound": 51}, "thag-a": {"dir": "cmy/kn", "bound": 264}, "thig-a": {"dir": "cmy/kn", "bound": 67}, "cp-a": {"dir": "cmy/kn", "bound": 35}, "bv-a": {"dir": "cmy/kn", "bound": 27}, "tha-ap-a": {"dir": "cmy/kn", "bound": 237}};    // KN per-book commentary: kp-a5 → cmy/kn/kp/index.html#kp-a5
-const JUMP_CMY_TREATISE = {"vism": {"dir": "cmy/vism", "bound": 23}};  // treatise: vism17 → cmy/vism/index.html#vism17
+const JUMP_CMY_TREATISE = {"vism": {"dir": "cmy/vism", "bound": 23}, "vism-t": {"dir": "scmy/vism", "bound": 23}, "vsg": {"dir": "cmy/vsg", "bound": 258}, "vsg-t": {"dir": "scmy/vsg-t", "bound": 256}, "vnv": {"dir": "cmy/vnv", "bound": 3183}, "vnv-t": {"dir": "scmy/vnv-t", "bound": 3183}, "uv": {"dir": "cmy/uv", "bound": 970}, "uv-t": {"dir": "scmy/uv-t", "bound": 965}, "khs": {"dir": "cmy/khs", "bound": 476}, "khs-pt": {"dir": "scmy/khs-pt", "bound": 473}, "khs-at": {"dir": "scmy/khs-at", "bound": 475}, "mls": {"dir": "cmy/mls", "bound": 128}, "mls-t": {"dir": "scmy/mls-t", "bound": 116}, "bmc": {"dir": "misc/bmc", "bound": 2}};  // treatise: vism17 → cmy/vism/index.html#vism17
 const JUMP_JA_RANGES = [[1,1,150], [2,151,250], [3,251,300], [4,301,350], [5,351,375], [6,376,395], [7,396,416], [8,417,426], [9,427,438], [10,439,454], [11,455,463], [12,464,473], [13,474,483], [14,484,496], [15,497,510], [16,511,520], [17,521,525], [18,526,528], [19,529,530], [20,531,532], [21,533,537], [22,538,547]];  // Jātaka: ja-a265 → cmy/kn/ja/ja{nip}/index.html#ja-a265
+const JUMP_TAISHO = {"t0613": 1, "t0614": 1, "t0615": 1, "t0616": 1, "t0617": 1, "t1536": 1, "t1537": 1, "t1538": 1, "t1539": 1, "t1540": 1, "t1542": 1, "t1544": 1, "t1545": 1, "t1548": 1, "t1579": 1};    // Taishō texts: t0613 → taisho/t0613/index.html#<section>
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
@@ -3111,10 +3808,60 @@ function parseJumpRef(raw){
   // Taishō alias: taisho614 / taisho0614 → the t<4-digit> page
   // (T0614 → dist/taisho/t0614/, nested under the sub-index — taisho_texts.DIST_PARENT).
   // Accepts the number with or without leading zeros; the folder is zero-padded to 4.
+  // A dotted tail is an L24 section on that page (taisho614.1.6.3 → …#1.6.3) — the same
+  // destination the canonical `t0614.1.6.3` form below reaches, so a reader who thinks in
+  // "Taishō 614" and one who pastes a citation land in the same place. The hash is appended
+  // to the url here rather than returned separately: jumpToRef's `r.url` branch navigates
+  // straight to it and never looks at r.hash.
   let tm;
-  if(tm = /^taisho\s*0*(\d+)$/.exec(kw)){
-    return {url: '/taisho/t' + tm[1].padStart(4, '0') + '/index.html',
-            ref: 'taisho' + tm[1]};
+  if(tm = /^taisho\s*0*(\d+)((?:\.\d+[a-z]?)*)$/.exec(kw)){
+    return {url: '/taisho/t' + tm[1].padStart(4, '0') + '/index.html'
+                 + (tm[2] ? '#' + tm[2].slice(1) : ''),
+            ref: 'taisho' + tm[1] + tm[2]};
+  }
+  // Taishō text page (taisho_texts.TEXTS): t0613 → taisho/t0613/index.html;
+  //   t0613.1.19.1 → …#1.19.1 (L24 section — a Taishō page's anchors are BARE dotted
+  //   addresses whose leading component is the juan, or the 品 chapter for a `pin` text,
+  //   0 being the injected front matter);
+  //   t0613:0.1 → …#tr-t0613:0.1 (segment).
+  // Its OWN regex rather than the general nik+number one below, for two reasons: "t" is a
+  // page-id prefix, not a collection with a numeric bound (the published numbers are a set,
+  // so an absent one must say so rather than be measured against a ceiling), and a 品 id
+  // may carry a LETTER — T1548's 序 appendix is section "0a" and its subsections "0a.1",
+  // which no purely numeric grammar can express.
+  const tt = /^\s*t\s*0*(\d+)(?:\.(\d+[a-z]?(?:\.\d+)*))?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i
+             .exec(raw||'');
+  if(tt){
+    const page = 't' + tt[1].padStart(4, '0');
+    const tsub = tt[2] ? tt[2].toLowerCase() : null, tseg = tt[3] || null;
+    if(!(page in JUMP_TAISHO))
+      return {err: 'Taishō ' + parseInt(tt[1], 10) + ' is not available yet'};
+    return {nik: 'taisho', page, suttaId: page, seg: tseg,
+            ref: page + (tsub ? '.' + tsub : '') + (tseg ? ':' + tseg : ''),
+            hash: tseg ? undefined : (tsub ? '#' + tsub : '')};
+  }
+  // Vinaya COMMENTARY (cmy/vin) / SUBCOMMENTARY (scmy/vin): the root's own address with
+  // "-a" / "-t" appended — the commentary is laid out page for page against the root, so
+  //   pli-tv-bu-vb-np1-a → cmy/vin/pli-tv-bu-vb-np/index.html#pli-tv-bu-vb-np1-a
+  //   pli-tv-kd1-a       → cmy/vin/pli-tv-kd1/index.html (the page itself)
+  //   pli-tv-bu-vb-np1-a:3.2 → …#tr-pli-tv-bu-vb-np1-a:3.2 (segment)
+  //   pli-tv-vi-a-pre    → cmy/vin/preface/index.html (the Bāhiranidāna, which comments on
+  //                        no rule and so has no root page of its own)
+  // Must precede the root-Vinaya branch: its `[a-z-]*` would swallow the "-a" and route a
+  // commentary ref to the root page.
+  // `-a` the Samantapāsādikā, `-t` the Sāratthadīpanī, and one suffix per further
+  // subcommentary — each in its own directory (see build_vin_cmy.LAYERS).
+  const VIN_LAYER_DIR = {a: 'cmy/vin', t: 'scmy/vin', vjb: 'scmy/vin_vjb',
+                         vmv: 'scmy/vin_vmv', pcy: 'scmy/vin_pcy'};
+  const vc = /^\s*(pli-tv-[a-z][a-z-]*?(?:\d[\d.-]*)?)-(a|t|vjb|vmv|pcy)(-pre)?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i
+             .exec(raw||'');
+  if(vc){
+    const fid = vc[1].toLowerCase(), layer = vc[2].toLowerCase();
+    const pre = !!vc[3], seg = vc[4] || null;
+    const unit = fid + '-' + layer + (pre ? '-pre' : '');
+    return {nik: VIN_LAYER_DIR[layer],
+            page: pre ? 'preface' : vinPage(fid), suttaId: unit, seg,
+            ref: unit + (seg ? ':' + seg : '')};
   }
   // Vinaya (vin/tv): pli-tv-bu-vb-pj1 → vin/tv/pli-tv-bu-vb-pj/index.html#pli-tv-bu-vb-pj1
   //                  pli-tv-kd1 → that page top; pli-tv-pvr1.5 → …/pli-tv-pvr1/#pli-tv-pvr1.5
@@ -3129,8 +3876,9 @@ function parseJumpRef(raw){
   //                  sn22.59:3.2      → …/sn/sn22/index.html#tr-sn22.59:3.2
   //                  an1.1-10         → …/an/an1/index.html#an1.1-10 (ranged sutta)
   //                  an3              → the nipāta page top (bare book ref)
-  // KN (per-book):   dhp1             → kn/dhp/index.html#dhp1 (the abbr IS the page)
-  //                  ud1.1            → kn/ud/index.html#ud1.1
+  // KN (per-book):   ud1.1            → kn/ud/index.html#ud1.1 (the abbr IS the page)
+  //                  dhp21            → kn/dhp/index.html#21 (bare — JUMP_KN_BARE)
+  //                  dhp2.            → kn/dhp/index.html#2. (its 2nd vagga, not its 2nd verse)
   //                  ud1.1:2.3        → kn/ud/index.html#tr-ud1.1:2.3
   //                  mil3.1.1         → kn/mil/index.html#mil3.1.1 (deep, multi-level)
   // Abhidhamma:      vb1              → tv_ab/vb/index.html#vb1 (section anchor)
@@ -3140,6 +3888,24 @@ function parseJumpRef(raw){
   //                  arv12:3          → arv/index.html#tr-arv:12.3 (row — underlying key is
   //                                     "<nik>:<topic>.<row>", a dot not a colon before the
   //                                     row, unlike every other category — hence its own hash)
+  // NUMBERED CHAPTER (vagga) on a KN book page: a number with a TRAILING DOT — `dhp2.` is
+  // Dhp's second vagga, `kn/dhp/index.html#2.`. The dot is the whole point. On a book whose
+  // units are bare SuttaCentral numbers (JUMP_KN_BARE — Dhp's verses are 1…423) the chapters
+  // cannot also be 1…26, because `dhp2` already means verse 2; the dot says "the chapter",
+  // and it stays in the address so one ref names one thing. Routed for EVERY KN book rather
+  // than only the ones that have a chapter layer today, for the same reason dotted L24 refs
+  // are: a book that gains vagga groups should need no edit here, and a book without them
+  // resolves nothing and lands on its page top. See build_kn._group_by_vagga.
+  const cm = /^\s*([a-z]+(?:-[a-z]+)*)\s*(\d+)\.\s*$/i.exec(raw||'');
+  if(cm){
+    const cnik = cm[1].toLowerCase(), cn = parseInt(cm[2], 10);
+    if(!(cnik in JUMP_LIMITS)) return {err: cnik.toUpperCase()+' is not available yet'};
+    if(!JUMP_KN[cnik]) return {err: cnik.toUpperCase()+' has no numbered vaggas'};
+    if(cn < 1 || cn > JUMP_LIMITS[cnik])
+      return {err: cnik.toUpperCase()+' goes from 1 to '+JUMP_LIMITS[cnik]};
+    return {nik: 'kn', page: cnik, suttaId: cn + '.', seg: null,
+            ref: cnik + cn + '.', hash: '#' + cn + '.'};
+  }
   const m = /^\s*([a-z]+(?:-[a-z]+)*)\s*(\d+)(?:\.(\d+(?:\.\d+)*(?:-\d+)?))?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i.exec(raw||'');
   if(!m) return null;
   const nik = m[1].toLowerCase(), n = parseInt(m[2], 10), sub = m[3] || null, seg = m[4] || null;
@@ -3221,7 +3987,12 @@ function parseJumpRef(raw){
     return {err: nik.toUpperCase()+(JUMP_GROUPED[nik]?' book':'')+' goes from 1 to '+JUMP_LIMITS[nik]};
   if(JUMP_KN[nik]){
     const suttaId = nik + n + (sub ? '.' + sub : '');   // dhp1 / ud1.1 / mil3.1.1
-    return {nik: 'kn', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : '')};
+    // A BARE-anchored book (JUMP_KN_BARE — Dhp) numbers its units as SuttaCentral does and
+    // anchors them by that number alone: dhp21 → #21, dhp21.2 → #21.2. Every other KN book
+    // anchors the prefixed ref itself (#ud1.1), which is the default below. The SEGMENT form
+    // is unaffected either way — row keys keep the book prefix (#tr-dhp21:1.1).
+    const hash = (JUMP_KN_BARE[nik] && !seg) ? '#' + n + (sub ? '.' + sub : '') : undefined;
+    return {nik: 'kn', page: nik, suttaId, seg, ref: suttaId + (seg ? ':' + seg : ''), hash};
   }
   if(JUMP_AB[nik]){
     const suttaId = nik + n + (sub ? '.' + sub : '');   // vb1 (Abhidhamma book section anchor)
@@ -3276,7 +4047,10 @@ function jumpToRef(ref, opts){
   if(typeof SO !== 'undefined'){
     let hash = null;
     const r2l = (typeof ROW2LEAF !== 'undefined') ? ROW2LEAF : {};
-    if(/^\d+(\.\d+)*$/.test(ref)){
+    // A TRAILING dot is allowed because it is part of a vagga address (`2.` = Dhp's second
+    // vagga, distinct from verse `2` — see parseJumpRef's chapter branch), and resolveAnchor
+    // matches it exactly, being a real node id.
+    if(/^\d+(\.\d+)*\.?$/.test(ref)){
       // 8.4.16 → #8.4.16 (L24 anchor). Resolve through the viewer's resolveAnchor rather
       // than a bare `ref in SO`: a KN book glues its abbreviation onto unit anchors
       // (cnd's units are cnd0.1 … cnd5.2), so `5.2` typed ON the cnd page is not itself an
@@ -3437,11 +4211,28 @@ document.addEventListener('DOMContentLoaded', ()=>{
 // a boundary guess could not choose. parseJumpRef's grammar still assumes a numeric address,
 // so extending the alphabet means changing it and jumpToRef's in-page branch too.
 function idParts(k){
+  const va=vinAddr(k);
+  if(va!==null) return {ns: '', addr: va};
   const i=k.lastIndexOf('/');
   const m=/^([a-z][a-z0-9-]*?)?(\d+(?:\.\d+)*)$/.exec(k.slice(i+1));
   if(!m) return null;
   if(m[1] && !(typeof JUMP_LIMITS !== 'undefined' && m[1] in JUMP_LIMITS)) return null;
   return {ns: i<0 ? '' : k.slice(0,i), addr: m[2]};
+}
+// The Vinaya names its sections by their whole unit id (pli-tv-bu-vb-pj4.1), because that is
+// what the router jumps to. Its PAGE prefixes are a closed set — the same four vinPage maps —
+// so a Vinaya id's address is the id minus its page name: the short form the page displays and
+// the reader types. Without this every Vinaya heading was address-less (the prefix is not a
+// JUMP_LIMITS key), so `4` and `#4` resolved to nothing on the collection whose ids are the
+// longest — 610 of 610 headings on the pārājika page. An id that reduces to nothing IS the
+// page (pli-tv-kd1), which has no address of its own; see the single-component note above.
+// Declared AFTER idParts on purpose: the tests and runners/l24/_l24_audit.py lift this file
+// from `function idParts(k){` onwards, so a helper placed above it would be left behind.
+function vinAddr(k){
+  const m=/^(pli-tv-b[iu]-pm|pli-tv-b[iu]-vb-[a-z]+|pli-tv-pvr\d+|pli-tv-kd\d+)(.*)$/.exec(k);
+  if(!m) return null;
+  const tail=m[2].replace(/^\./,'');
+  return /^\d+(\.\d+)*$/.test(tail) ? tail : null;
 }
 // The single id-matching primitive: the id whose ADDRESS equals `addr` and whose namespace
 // passes `nsOk`. Exact compare, never a suffix scan — a tail match is ambiguous where
@@ -3509,6 +4300,11 @@ function resolveAnchor(raw){
   // demanding a dot here silently made `33` unresolvable while `33.2` worked. A hyphen
   // immediately before it means a merged range (an1.1-10), not an address — leave those to
   // the range tolerance below rather than reading "10" out of the middle of one.
+  // A Vinaya PAGE id is not an address and must not be mined for its trailing digits:
+  // "pli-tv-kd1" is khandhaka 1, the whole page, so it stays at the top rather than scrolling
+  // to that page's section 1. (vinAddr returns null for exactly the page ids; a unit or
+  // section under one — pli-tv-bu-vb-pj4, …4.1 — gets a real address and falls through.)
+  if(/^pli-tv-/.test(raw) && vinAddr(raw)===null) return null;
   const dm=/(\d+(?:\.\d+)*)$/.exec(raw);
   if(dm && raw[dm.index-1]!=='-'){
     const dots=dm[1];                        // mn125.2.3 arrives as the hash #125.2.3
