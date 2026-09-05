@@ -60,6 +60,245 @@
 .jump-hist.show{display:block}
 .jump-hist div{padding:.3rem .5rem;font-family:monospace;font-size:.85rem;cursor:pointer;border-radius:4px}
 .jump-hist div:hover{background:var(--hover)}
+/* The viewer defines --sec-border/--sec-bg/--toc-hover/--toc-act; the light pages
+   (sitebar.py) define only --border/--card/--hover/--head. Rather than teach every
+   page a second palette, alias the four here with a var() fallback chain: on the
+   viewer the first name resolves and the widget looks exactly as it did, on a light
+   page it falls through to that page's own token. */
+:root{
+  --dblf-line:var(--sec-border, var(--bar-border, var(--border)));
+  --dblf-field:var(--sec-bg, var(--card, var(--bg)));
+  --dblf-hover:var(--toc-hover, var(--hover, var(--head)));
+  --dblf-act:var(--toc-act, var(--hover, var(--head)));
+}
+/* 🔍 in-page search — highlights via the CSS Custom Highlight API (no DOM mutation,
+   so segment refs / footnote markers / word spans are untouched). Theme-aware,
+   high-contrast: near-black text on a bright fill; current match a hotter hue. */
+::highlight(dblFind){ background:#ffe14d; color:#171200; }
+::highlight(dblFindCur){ background:#ff7a18; color:#170c00; }
+html[data-theme="dark"] ::highlight(dblFind){ background:#f3c623; color:#140f00; }
+html[data-theme="dark"] ::highlight(dblFindCur){ background:#ff8c1a; color:#140a00; }
+.find-wrap{position:relative;display:flex;align-items:center}
+.find-pop{position:absolute;top:115%;right:0;z-index:500;display:none;
+  padding:.45rem .5rem;background:var(--bg);color:var(--text);
+  border:1px solid var(--dblf-line);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.find-pop.show{display:block}
+.find-bar{display:flex;align-items:center;gap:.3rem}
+.find-input{width:12rem;padding:.34rem .5rem;border:1px solid var(--dblf-line);
+  border-radius:5px;background:var(--dblf-field);color:var(--text);font-family:sans-serif;font-size:.85rem}
+.find-input:focus{outline:none;border-color:var(--accent)}
+.find-input.bad{border-color:#c0392b;background:rgba(192,57,43,.12)}
+.find-count{min-width:4.2rem;text-align:center;font-size:.75rem;color:var(--muted);white-space:nowrap}
+.find-bar button{width:27px;height:27px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--dblf-line);border-radius:5px;background:var(--dblf-field);
+  color:var(--text);cursor:pointer;font-size:1rem;line-height:1;flex:none}
+.find-bar button:hover{background:var(--dblf-hover)}
+.find-bar button:disabled{opacity:.35;cursor:default}
+.find-bar button.on{background:var(--accent);color:var(--bg)}
+.find-opts{display:none;margin-top:.5rem;border-top:1px solid var(--border);
+  padding-top:.45rem;flex-direction:column;gap:.32rem}
+.find-opts.show{display:flex}
+/* align-self keeps each option box only as wide as its own text. As a stretched flex
+   child the label spanned the whole popover, so a click on empty space beside "Regex"
+   toggled it — and re-folding every selected column for a mode you never meant to pick
+   is a ten-second detour. */
+.find-opts label{display:flex;align-self:flex-start;align-items:center;gap:.4rem;
+  font-size:.78rem;cursor:pointer;font-family:sans-serif}
+.find-opts label.dim{opacity:.4;cursor:default}
+.find-opts .hint{color:var(--muted)}
+.find-opt-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);margin-bottom:.1rem;font-family:sans-serif}
+.find-cols{display:flex;flex-wrap:wrap;gap:.55rem}
+.find-cols label{gap:.3rem}
+/* Site-wide scope. The whole block stays [hidden] unless a local `debabel serve`
+   answers the search probe — the deployed static site has no backend, so the tab
+   simply isn't there rather than being there and dead. */
+.find-scope{display:flex;align-items:center;gap:.3rem;margin-top:.45rem}
+.find-scope[hidden]{display:none}
+.find-tab{padding:.2rem .55rem;font-family:sans-serif;font-size:.75rem;cursor:pointer;
+  border:1px solid var(--dblf-line);border-radius:5px;background:var(--dblf-field);color:var(--text)}
+.find-tab:hover{background:var(--dblf-hover)}
+.find-tab.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.find-scope-note{margin-left:auto;font-size:.66rem;color:var(--muted);font-family:sans-serif;cursor:help}
+/* Site scope is its OWN WINDOW, not the header dropdown. The dropdown is anchored
+   `right:0` to the 🔍 button, which sits mid-header — a results panel wide enough to read
+   a sutta line in therefore hangs ~340px off the LEFT edge of the viewport and chops
+   every hit. So in site scope the popover is re-parented to <body> (escaping the header's
+   z-index:300 stacking context) and becomes a centred modal over a backdrop. Flex `order`
+   re-sequences the same markup into window order — title, tabs, search bar, options,
+   results — with no DOM shuffling. */
+.find-pop.site{
+  position:fixed;top:50%;left:50%;right:auto;transform:translate(-50%,-50%);
+  /* Fills the browser window and grows with it. Capping this in rem left it small on a
+     wide monitor, which is the whole reason the results were cramped. */
+  width:94vw;height:90vh;z-index:1001;
+  flex-direction:column;gap:.1rem;padding:.75rem .85rem .85rem;
+  box-shadow:0 18px 50px rgba(0,0,0,.45)
+}
+/* display lives on its own rule so `.site` alone can't out-specify `.find-pop{display:none}`
+   and leave the window standing open after ✕. */
+.find-pop.site.show{display:flex}
+.find-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);
+  backdrop-filter:blur(1.5px)}
+.find-title{display:none;font-family:sans-serif;font-size:.95rem;font-weight:600;
+  padding-bottom:.4rem;border-bottom:1px solid var(--border)}
+.find-title span{font-weight:400;font-size:.75rem;color:var(--muted);margin-left:.5rem}
+.find-pop.site .find-scope-note{display:none}   /* the window title already says it */
+.find-pop.site .find-title{display:block;order:1}
+.find-pop.site .find-scope{order:2}
+.find-pop.site .find-bar{order:3;margin-top:.4rem}
+.find-pop.site .find-opts{order:4}
+.find-pop.site .find-site{order:6;flex:1;min-height:0;display:flex;flex-direction:column}
+.find-pop.site .find-input{width:100%;flex:1}
+.find-pop.site .find-cols{max-height:7rem;overflow-y:auto}   /* ~38 columns site-wide */
+.find-site{display:none;margin-top:.5rem;border-top:1px solid var(--border);padding-top:.45rem}
+/* In the window the results area is two panes: the division rail and the hit list. */
+.find-pop.site .find-site{display:flex;flex-direction:row;gap:.8rem}
+.find-side{width:16rem;flex:none;min-height:0;overflow-y:auto;
+  border-right:1px solid var(--border);padding-right:.6rem}
+.find-side-head{display:flex;align-items:baseline;gap:.4rem;margin-bottom:.25rem}
+.find-mini{font-family:sans-serif;font-size:.66rem;padding:0 .3rem;cursor:pointer;
+  border:1px solid var(--dblf-line);border-radius:4px;background:var(--dblf-field);color:var(--text)}
+.find-mini:hover{background:var(--dblf-hover)}
+.find-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+.find-divs label{display:flex;align-items:baseline;gap:.35rem;font-size:.75rem;
+  font-family:sans-serif;cursor:pointer;padding:.05rem 0;line-height:1.25}
+.find-divs .dv-g{font-weight:600;margin-top:.45rem}
+.find-divs .dv-d{padding-left:1rem}
+.find-divs .dv-n{margin-left:auto;color:var(--muted);font-size:.66rem;flex:none}
+/* ── the second filter: "also contains" / "but not" ─────────────────────────────
+   Site scope only — page scope highlights in place and has no result list to refine.
+   A committed term is a CHIP rather than a line of query syntax: the model is a list
+   (nobody stops at one term), each term has two states worth flipping without retyping
+   it, and a filter you cannot see is a search box that lies about the corpus. */
+.find-refine{display:none;align-items:center;gap:.4rem;flex-wrap:wrap;
+  margin-top:.4rem;padding-top:.4rem;border-top:1px solid var(--border)}
+.find-pop.site .find-refine{display:flex;order:5}
+.rf-in{flex:0 1 20rem;min-width:9rem;padding:.2rem .4rem;font-size:.78rem;
+  font-family:sans-serif;border:1px solid var(--dblf-line);border-radius:5px;
+  background:var(--dblf-field);color:var(--text)}
+.rf-scope{padding:.15rem .3rem;font-size:.72rem;font-family:sans-serif;
+  border:1px solid var(--dblf-line);border-radius:4px;background:var(--dblf-field);color:var(--text)}
+.rf-list{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.rf{display:inline-flex;align-items:center;font-family:sans-serif;font-size:.72rem;
+  border:1px solid var(--accent);border-radius:999px;background:var(--dblf-field);overflow:hidden}
+.rf.ex{border-color:#c0392b}
+.rf button{border:0;background:none;color:var(--text);cursor:pointer;font:inherit;padding:.1rem .3rem}
+.rf button:hover{background:var(--dblf-hover)}
+.rf .rf-sign{font-weight:700;color:var(--accent);padding-left:.45rem}
+.rf.ex .rf-sign{color:#c0392b}
+.rf .rf-t{padding:.1rem .15rem;color:var(--text)}
+.rf.ex .rf-t{text-decoration:line-through;opacity:.75}
+.rf .rf-sel{border:0;background:none;color:var(--muted);font:inherit;font-size:.66rem;
+  cursor:pointer;padding:.1rem 0 .1rem .15rem;max-width:9rem}
+.rf .rf-n{width:2.7rem;font:inherit;font-size:.66rem;text-align:center;padding:0 .1rem;
+  margin:0 .12rem;border:1px solid var(--dblf-line);border-radius:4px;
+  background:var(--bg);color:var(--text)}
+.rf .rf-u{color:var(--muted);font-size:.66rem;margin-right:.2rem}
+.rf .rf-x{color:var(--muted);padding-right:.4rem;padding-left:.2rem}
+.rf-num{width:3.4rem;padding:.15rem .2rem;font-size:.72rem;font-family:sans-serif;
+  text-align:center;border:1px solid var(--dblf-line);border-radius:4px;
+  background:var(--dblf-field);color:var(--text)}
+.rf-num[hidden]{display:none}
+.find-chips{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem}
+.find-chips:empty{display:none}
+.find-chips .chip-lbl{font-size:.66rem;color:var(--muted);font-family:sans-serif;align-self:center}
+.chip{font-family:sans-serif;font-size:.7rem;padding:.1rem .45rem;cursor:pointer;
+  border:1px solid var(--dblf-line);border-radius:999px;background:var(--dblf-field);
+  color:var(--muted);opacity:.55}
+.chip.on{opacity:1;color:var(--text);border-color:var(--accent)}
+.chip.pick{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.chip.pick span,.chip.pick b{color:inherit}
+.chip-act{opacity:1;color:var(--muted);border-style:dashed}
+.chip b{font-weight:600}
+.chip span{color:var(--muted);margin-left:.3rem}
+.find-site-msg{font-size:.76rem;color:var(--muted);font-family:sans-serif;
+  display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;min-height:1.4rem}
+.find-site-msg button{padding:.2rem .55rem;font-size:.74rem;font-family:sans-serif;cursor:pointer;
+  border:1px solid var(--dblf-line);border-radius:5px;background:var(--dblf-field);color:var(--text)}
+.find-site-msg button:hover{background:var(--dblf-hover)}
+.find-bar-note{font-size:.7rem;color:#c0392b}
+/* 📋 copy the results. Site scope only: page scope highlights in place and has no result
+   list to copy. Its menu reuses .hit-menu, the same chrome a ref chip's menu wears. */
+.find-copy-wrap{display:none;position:relative}
+.find-pop.site .find-copy-wrap{display:flex;align-items:center}
+.find-copy-note{position:absolute;top:120%;right:0;z-index:1100;white-space:nowrap;
+  font-family:sans-serif;font-size:.7rem;padding:.2rem .45rem;border-radius:4px;
+  background:var(--accent);color:var(--bg)}
+.find-prog{flex:1;min-width:6rem;height:6px;border-radius:3px;background:var(--dblf-field);
+  border:1px solid var(--dblf-line);overflow:hidden}
+.find-prog i{display:block;height:100%;background:var(--accent);transition:width .2s}
+/* Something moving, so a 15-second column fold doesn't read as a hang. */
+.spin{display:inline-block;width:.85em;height:.85em;flex:none;border-radius:50%;
+  border:2px solid var(--dblf-line);border-top-color:var(--accent);
+  animation:dblspin .7s linear infinite;vertical-align:-.12em}
+@keyframes dblspin{to{transform:rotate(360deg)}}
+.find-pop.busy .find-input,.find-pop.busy .find-hits{cursor:progress}
+.find-hits.stale{opacity:.45;transition:opacity .2s}
+.find-hits{margin-top:.4rem;max-height:56vh;overflow-y:auto}
+.find-hits:empty{margin-top:0}
+/* In the window the list fills whatever is left, rather than a fixed slice of the page. */
+.find-pop.site .find-hits{flex:1;min-height:0;max-height:none}
+.hit-page{position:sticky;top:0;z-index:1;background:var(--bg);
+  padding:.3rem .2rem .2rem;font-size:.72rem;font-family:sans-serif;color:var(--muted);
+  border-bottom:1px solid var(--border)}
+.hit-page b{color:var(--text);font-weight:600}
+/* A result is NOT a link. A site search can take a minute to compute, and when the whole
+   row navigated, any stray click — or a dictionary extension's click-a-word — threw the
+   results away. Only the ref chip navigates now; the text is ordinary selectable prose. */
+.hit{display:block;padding:.3rem .45rem;border-radius:5px;color:inherit;cursor:default}
+.hit:hover{background:var(--dblf-hover)}
+.hit.sel{background:var(--dblf-act);outline:1px solid var(--accent)}
+.hit-h{display:flex;gap:.45rem;align-items:baseline;font-family:sans-serif;font-size:.66rem;color:var(--muted)}
+.hit-col{color:var(--accent)}
+.hit-rows,.hit-cell{user-select:text;-webkit-user-select:text}
+/* The one control in a result row. Reads as a button, but it IS an <a target="_blank">, so
+   the browser's own ctrl/middle-click and "copy link address" keep working; press-and-hold
+   or right-click opens the same choices as a menu. */
+.hit-go{display:inline-flex;align-items:center;gap:.25rem;padding:.02rem .4rem;
+  border:1px solid var(--dblf-line);border-radius:999px;background:var(--bg);
+  color:var(--accent);text-decoration:none;white-space:nowrap;cursor:pointer;
+  user-select:none;-webkit-user-select:none;-webkit-user-drag:none;touch-action:manipulation;
+  -webkit-touch-callout:none}   /* or a touch long-press raises iOS's own link sheet instead */
+.hit-go:hover,.hit-go:focus-visible{background:var(--dblf-act);border-color:var(--accent)}
+.hit-go-i{font-size:.72rem;opacity:.7}
+/* Above the search window (z-index:1001), or the menu opens behind the thing it belongs to. */
+.hit-menu{position:fixed;z-index:1100;display:flex;flex-direction:column;min-width:15rem;
+  padding:.2rem;background:var(--bg);border:1px solid var(--dblf-line);border-radius:6px;
+  box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.hit-menu button{text-align:left;background:none;border:0;border-radius:4px;
+  padding:.32rem .5rem;color:var(--text);font-family:sans-serif;font-size:.74rem;cursor:pointer}
+.hit-menu button:hover,.hit-menu button:focus-visible{background:var(--dblf-hover)}
+.hit-menu button small{display:block;color:var(--muted);font-size:.66rem}
+.hit-t{display:block;font-size:.83rem;line-height:1.35;margin-top:.05rem}
+.hit-t mark,.hit-cell mark{background:#ffe14d;color:#171200;border-radius:2px}
+html[data-theme="dark"] .hit-t mark,html[data-theme="dark"] .hit-cell mark{background:#f3c623;color:#140f00}
+/* A filter term gets its OWN colour. You added it to see where it lands, and painting it
+   the query's yellow would hide the one thing you asked about. Both themes are spelled
+   out because the generic dark rule above out-specifies a bare `.rf` one. */
+.hit-t mark.rf-mark,.hit-cell mark.rf-mark{background:#9ad9b4;color:#08301c}
+html[data-theme="dark"] .hit-t mark.rf-mark,
+html[data-theme="dark"] .hit-cell mark.rf-mark{background:#3f9e73;color:#04170d}
+/* A hit is a little parallel table of its own: one grid ROW per segment, the searched
+   column on the left and the gloss (the bodhi-esque column by default — it covers the
+   whole corpus)
+   on the right, so a Pāli hit is readable without opening the page. Context segments are
+   dimmed so the matched line still reads as the hit. */
+.hit-rows{display:block;margin-top:.05rem}
+.hit-rows.two{display:grid;grid-template-columns:1fr 1fr;column-gap:.9rem;align-items:start}
+.hit-rows.three{display:grid;grid-template-columns:1fr 1fr 1fr;column-gap:.9rem;align-items:start}
+.hit-cell{display:block;font-size:.83rem;line-height:1.35;padding:.06rem 0}
+.hit-cell.ctx{opacity:.5}
+.hit-rows.two .hit-cell.g,.hit-rows.three .hit-cell.g,
+.hit-rows.two .hit-cell.p,.hit-rows.three .hit-cell.p{
+  border-left:1px solid var(--border);padding-left:.7rem}
+.find-site-opts{display:none;gap:1rem;flex-wrap:wrap}
+.find-pop.site .find-site-opts{display:flex}
+.fo-inline{gap:.4rem !important;align-self:center !important}
+.fo-inline select,.fo-inline input[type=number]{padding:.15rem .3rem;font-size:.76rem;
+  font-family:sans-serif;border:1px solid var(--dblf-line);border-radius:4px;
+  background:var(--dblf-field);color:var(--text)}
+.fo-inline input[type=number]{width:3.4rem}
 
 body{font-family:Georgia,serif;background:var(--bg);color:var(--text);line-height:1.55;padding:0 1.5rem 1.5rem;font-size:1rem;transition:background .2s,color .2s}
 .navbar{margin:0 -1.5rem 1.2rem}
@@ -77,6 +316,14 @@ a{color:var(--accent)}
 /* greyed-out, non-clickable row (an untranslated text); tooltip explains why */
 .ix-row.off{opacity:.5;cursor:help}
 .ix-row.off:hover{background:var(--card);border-color:var(--border)}
+/* height-fixed, width auto — a book cover is portrait, cropping it to a square loses
+   most of the art; no max-width cap either, so it keeps its real proportions instead of
+   being squeezed. `object-fit:contain` guards any decorative image that isn't portrait.
+   `:has()` centers JUST a row that carries a thumbnail — baseline (the row default) reads
+   fine for plain text but looks off next to a tall image. */
+.ix-row:has(.ix-thumb){align-items:center}
+.ix-thumb{flex-shrink:0;height:64px;width:auto;object-fit:contain;
+  border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 .ix-ref{font-family:monospace;font-weight:700;color:var(--accent);flex-shrink:0;min-width:3.6rem}
 .ix-title{flex:1;min-width:0}
 .ix-badges{display:flex;gap:.45rem;flex-shrink:0;align-items:baseline}
@@ -232,6 +479,85 @@ a.ebt-item:hover{background:var(--hover);border-color:var(--accent)}
       <div class="jump-hist" id="jumpHist"></div>
     </div>
   </div>
+    <!-- 🔍 in-page search -->
+    <div class="find-wrap" id="findWrap">
+      <button class="nav-btn" id="findBtn" title="Search — or press s (highlights every match, jump prev/next). In the local preview you can also search the whole site.">🔍</button>
+      <div class="find-pop" id="findPop">
+        <!-- Shown only in the site-scope window (see .find-pop.site) -->
+        <div class="find-title">Search every page<span>local preview only — the published site can search just the page you are on</span></div>
+        <div class="find-bar">
+          <input class="find-input" id="findInput" placeholder="search…" autocomplete="off" spellcheck="false">
+          <button id="findPrev" title="Previous match (Shift+Enter)">‹</button>
+          <button id="findNext" title="Next match (Enter)">›</button>
+          <span class="find-count" id="findCount">—</span>
+          <!-- Copies what is ON SCREEN, so a division chip narrows the copy the same way
+               it narrows the list. -->
+          <div class="find-copy-wrap" id="findCopyWrap">
+            <button id="findCopy" title="Copy these results to the clipboard">📋</button>
+          </div>
+          <button id="findOptsBtn" title="Search options">⚙</button>
+          <button id="findClose" title="Close (Esc)">✕</button>
+        </div>
+        <!-- Revealed by the JS only when a local `debabel serve` answers the search
+             probe; on the deployed static site this row stays hidden. -->
+        <div class="find-scope" id="findScope" hidden="">
+          <button class="find-tab on" id="findTabPage" title="Search only the text open on this page">This page</button>
+          <button class="find-tab" id="findTabSite" title="Search every page of the site">Whole site</button>
+          <span class="find-scope-note" title="Site-wide search needs a process behind the files, so it only exists in the local preview (serve.bat) — the published site can only search the page you are on.">local preview</span>
+        </div>
+        <div class="find-opts" id="findOpts">
+          <label id="findFoldL"><input type="checkbox" id="findFold" checked=""> Fold diacritics <span class="hint">(ā→a, ī→i, ū→u)</span></label>
+          <label><input type="checkbox" id="findFuzzy"> Fuzzy Pāli <span class="hint">(also ṭḍṇṅñṃḷ→tdnnnml, ignore quotes/punct)</span></label>
+          <label id="findWordL"><input type="checkbox" id="findWord"> Whole word <span class="hint">(deva, not devatā — a compound counts as one word)</span></label>
+          <label><input type="checkbox" id="findRe"> Regex <span class="hint">(matches the normalized text)</span></label>
+          <!-- Site scope only: what to show beside each hit, and how much around it. -->
+          <div class="find-site-opts">
+            <label class="fo-inline">Show alongside
+              <select id="findGloss"></select>
+            </label>
+            <label class="fo-inline">Lines around each hit
+              <input type="number" id="findCtx" min="0" max="10" step="1" value="1">
+            </label>
+          </div>
+          <div id="findColsWrap">
+            <div class="find-opt-lbl">Columns</div>
+            <div class="find-cols" id="findCols"></div>
+          </div>
+        </div>
+        <!-- The second filter: narrow these results by another string, or push the
+             matches for it out. Revealed with the site window (see .find-refine). -->
+        <div class="find-refine" id="findRefine">
+          <span class="find-opt-lbl">Also</span>
+          <input class="rf-in" id="findRfIn" placeholder="another word — Enter to add it, −word to exclude" autocomplete="off" spellcheck="false">
+          <select class="rf-scope" id="findRfScope" title="How far from the match a new filter is allowed to be. Each chip carries its own, changeable in place.">
+            <option value="s">on the matched line</option>
+            <option value="r">within ± lines</option>
+            <option value="u">in the same sutta / section</option>
+            <option value="p">anywhere on the page</option>
+          </select>
+          <input class="rf-num" id="findRfN" type="number" min="1" max="500" step="1" value="5" hidden="" title="How many segments either side">
+          <div class="rf-list" id="findRfList"></div>
+        </div>
+        <div class="find-site" id="findSite">
+          <!-- Left rail: WHERE to search. Right: the results, with chips narrowing which
+               of the divisions that matched are listed. -->
+          <aside class="find-side" id="findSide">
+            <div class="find-side-head">
+              <span class="find-opt-lbl">Search in</span>
+              <button class="find-mini" id="findDivsAll">all</button>
+              <button class="find-mini" id="findDivsNone">none</button>
+            </div>
+            <div class="find-divs" id="findDivs"></div>
+          </aside>
+          <div class="find-main">
+            <div class="find-site-msg" id="findSiteMsg"></div>
+            <div class="find-chips" id="findChips"></div>
+            <div class="find-hits" id="findHits"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <button class="nav-btn" id="topBtn" title="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})" style="display: none;">🔝</button>
   <span>  </span>
   
@@ -264,6 +590,10 @@ a.ebt-item:hover{background:var(--hover);border-color:var(--accent)}
       <div class="set-row">
         <span class="set-lbl">Help</span>
         <a class="nav-btn set-help" href="../../help.html" title="Open the reading guide">❔ Guide</a>
+      </div>
+      <div class="set-row">
+        <span class="set-lbl">Glossary</span>
+        <a class="nav-btn set-help" href="../../glossary/index.html" title="Frank's Pāli-English translation glossary">📖 Glossary</a>
       </div>
     </div>
   </div>
@@ -366,13 +696,13 @@ spine, one page per big unit (vagga → sutta). Every row is ⛔ LBT.</p>
   <div class="ebt-body" id="ebtBody"></div>
 </div>
 
-<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="/assets/img/logo4nt.png" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Aug 06, 2026 at 06:12 AM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
+<footer class="site-footer" id="siteFooter"><a class="ft-logo" href="../../index.html" title="s.4nt.org — home"><img src="/assets/img/logo4nt.png" alt="s.4nt.org — Suttas, Side by Side"></a><div class="ft-text"><p class="ft-tagline"><strong>s.4nt.org</strong> — Suttas, Side by Side — a project of the Early Buddhism Meditation Preservation Society</p><nav class="ft-links"><a href="../../help.html">Help</a><a href="../../help.html#about">About</a><a href="../../help.html#legal">Legal</a></nav><p class="ft-copy" title="Page built: Aug 29, 2026 at 09:46 PM Pacific Daylight Time">© 2026 Early Buddhism Meditation Preservation Society</p></div><a class="ft-logo ft-right" href="https://4nt.org" title="Early Buddhism Meditation Preservation Society (4nt.org)"><img src="../../4nt-footer-logo.png" alt="EBMPS — 4nt.org"></a></footer>
 <script>
 const JUMP_ROOT = '../..';
 // ── 🐇 QUICK-JUMP (shared source: quickjump.py) ──
 const JUMP_KEY = 'debabel.jump.v1';
 const JUMP_MAX = 20;
-const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "ds": 2, "vb": 18, "dt": 2, "pp": 2, "kv": 23, "ya": 10, "patthana": 24, "arv": 28, "vimt": 12, "mn-a": 152, "mn-t": 152, "dn-a": 34, "dn-t": 34, "an-a": 11, "sn-a": 56, "an-t": 11, "sn-t": 56, "kp-a": 9, "dhp-a": 423, "ud-a": 80, "iti-a": 112, "snp-a": 70, "vv-a": 85, "pv-a": 51, "thag-a": 264, "thig-a": 67, "cp-a": 35, "bv-a": 27, "tha-ap-a": 237, "vism": 23, "vism-t": 23, "vsg": 258, "vsg-t": 256, "vnv": 3183, "vnv-t": 3183, "uv": 970, "uv-t": 965, "khs": 476, "khs-pt": 473, "khs-at": 475, "mls": 128, "mls-t": 116, "bmc": 2, "ja-a": 547};   // supported collections (single source: quickjump.LIMITS)
+const JUMP_LIMITS = {"mn": 152, "dn": 34, "an": 11, "sn": 56, "ma": 222, "da": 30, "sa": 1362, "ea": 52, "kp": 9, "dhp": 423, "ud": 8, "iti": 112, "snp": 5, "vv": 85, "pv": 51, "thag": 21, "thig": 16, "tha-ap": 563, "thi-ap": 40, "bv": 29, "cp": 35, "ja": 547, "mnd": 16, "cnd": 23, "ps": 3, "ne": 37, "pe": 9, "mil": 8, "ds": 2, "vb": 18, "dt": 2, "pp": 2, "kv": 23, "ya": 10, "patthana": 24, "arv": 28, "vimt": 12, "mn-a": 152, "mn-t": 152, "dn-a": 34, "dn-t": 34, "an-a": 11, "sn-a": 56, "an-t": 11, "sn-t": 56, "kp-a": 9, "dhp-a": 423, "ud-a": 80, "iti-a": 112, "snp-a": 70, "vv-a": 85, "pv-a": 51, "thag-a": 264, "thig-a": 67, "cp-a": 35, "bv-a": 27, "tha-ap-a": 237, "vism": 23, "vism-t": 23, "vsg": 258, "vsg-t": 256, "vnv": 3183, "vnv-t": 3183, "uv": 970, "uv-t": 965, "khs": 476, "khs-pt": 473, "khs-at": 475, "mls": 128, "mls-t": 116, "bmc": 2, "chah-stlfl": 18, "mun-bio": 11, "mun-ppada": 22, "than-breath": 8, "alee-breath": 5, "than-sati": 14, "fuang-aware": 17, "kee-unent": 9, "than-perf": 4, "than-brahma": 4, "than-wings": 4, "than-shape": 5, "than-becoming": 10, "chah-ilt": 108, "chah-ist": 108, "chah-sfw": 9, "chah-coll": 59, "alee-auto": 7, "alee-themes": 6, "alee-craft": 4, "alee-food": 18, "alee-frames": 4, "alee-handbook": 3, "alee-mind": 17, "alee-inner": 3, "alee-release": 13, "alee-small": 4, "aebt": 8, "ja-a": 547};   // supported collections (single source: quickjump.LIMITS)
 const JUMP_GROUPED = {"an": 1, "ea": 1, "sn": 1}; // niks addressed two-level (an3.65) → one page per book
 const JUMP_KN = {"bv": 1, "cnd": 1, "cp": 1, "dhp": 1, "iti": 1, "ja": 1, "kp": 1, "mil": 1, "mnd": 1, "ne": 1, "pe": 1, "ps": 1, "pv": 1, "snp": 1, "tha-ap": 1, "thag": 1, "thi-ap": 1, "thig": 1, "ud": 1, "vv": 1};           // KN books → one page per book at kn/<abbr>/ (full ref = anchor)
 const JUMP_KN_BARE = {"dhp": 1, "iti": 1}; // …except these, whose anchors are bare addresses (dhp21 → #21)
@@ -382,9 +712,23 @@ const JUMP_FLAT = {"arv": 1, "vimt": 1};       // single-file whole-collection b
 const JUMP_CMY = {"mn-a": {"dir": "cmy/mn", "bound": 152}, "mn-t": {"dir": "scmy/mn", "bound": 152}, "dn-a": {"dir": "cmy/dn", "bound": 34}, "dn-t": {"dir": "scmy/dn", "bound": 34}};         // commentary/ṭīkā: mn-a1 → cmy/mn/mn1/, mn-t1 → scmy/mn/mn1/
 const JUMP_CMY_GROUPED = {"an-a": {"dir": "cmy/an", "bound": 11}, "sn-a": {"dir": "cmy/sn", "bound": 56}, "an-t": {"dir": "scmy/an", "bound": 11}, "sn-t": {"dir": "scmy/sn", "bound": 56}};  // grouped commentary: an-a3.65 → cmy/an/an3/#an-a3.65
 const JUMP_CMY_KN = {"kp-a": {"dir": "cmy/kn", "bound": 9}, "dhp-a": {"dir": "cmy/kn", "bound": 423}, "ud-a": {"dir": "cmy/kn", "bound": 80}, "iti-a": {"dir": "cmy/kn", "bound": 112}, "snp-a": {"dir": "cmy/kn", "bound": 70}, "vv-a": {"dir": "cmy/kn", "bound": 85}, "pv-a": {"dir": "cmy/kn", "bound": 51}, "thag-a": {"dir": "cmy/kn", "bound": 264}, "thig-a": {"dir": "cmy/kn", "bound": 67}, "cp-a": {"dir": "cmy/kn", "bound": 35}, "bv-a": {"dir": "cmy/kn", "bound": 27}, "tha-ap-a": {"dir": "cmy/kn", "bound": 237}};    // KN per-book commentary: kp-a5 → cmy/kn/kp/index.html#kp-a5
-const JUMP_CMY_TREATISE = {"vism": {"dir": "cmy/vism", "bound": 23}, "vism-t": {"dir": "scmy/vism", "bound": 23}, "vsg": {"dir": "cmy/vsg", "bound": 258}, "vsg-t": {"dir": "scmy/vsg-t", "bound": 256}, "vnv": {"dir": "cmy/vnv", "bound": 3183}, "vnv-t": {"dir": "scmy/vnv-t", "bound": 3183}, "uv": {"dir": "cmy/uv", "bound": 970}, "uv-t": {"dir": "scmy/uv-t", "bound": 965}, "khs": {"dir": "cmy/khs", "bound": 476}, "khs-pt": {"dir": "scmy/khs-pt", "bound": 473}, "khs-at": {"dir": "scmy/khs-at", "bound": 475}, "mls": {"dir": "cmy/mls", "bound": 128}, "mls-t": {"dir": "scmy/mls-t", "bound": 116}, "bmc": {"dir": "misc/bmc", "bound": 2}};  // treatise: vism17 → cmy/vism/index.html#vism17
+const JUMP_CMY_TREATISE = {"vism": {"dir": "cmy/vism", "bound": 23}, "vism-t": {"dir": "scmy/vism", "bound": 23}, "vsg": {"dir": "cmy/vsg", "bound": 258}, "vsg-t": {"dir": "scmy/vsg-t", "bound": 256}, "vnv": {"dir": "cmy/vnv", "bound": 3183}, "vnv-t": {"dir": "scmy/vnv-t", "bound": 3183}, "uv": {"dir": "cmy/uv", "bound": 970}, "uv-t": {"dir": "scmy/uv-t", "bound": 965}, "khs": {"dir": "cmy/khs", "bound": 476}, "khs-pt": {"dir": "scmy/khs-pt", "bound": 473}, "khs-at": {"dir": "scmy/khs-at", "bound": 475}, "mls": {"dir": "cmy/mls", "bound": 128}, "mls-t": {"dir": "scmy/mls-t", "bound": 116}, "bmc": {"dir": "misc/bmc", "bound": 2}, "chah-stlfl": {"dir": "misc/chah-stlfl", "bound": 18}, "mun-bio": {"dir": "misc/mun-bio", "bound": 11}, "mun-ppada": {"dir": "misc/mun-ppada", "bound": 22}, "than-breath": {"dir": "misc/than-breath", "bound": 8}, "alee-breath": {"dir": "misc/alee-breath", "bound": 5}, "than-sati": {"dir": "misc/than-sati", "bound": 14}, "fuang-aware": {"dir": "misc/fuang-aware", "bound": 17}, "kee-unent": {"dir": "misc/kee-unent", "bound": 9}, "than-perf": {"dir": "misc/than-perf", "bound": 4}, "than-brahma": {"dir": "misc/than-brahma", "bound": 4}, "than-wings": {"dir": "misc/than-wings", "bound": 4}, "than-shape": {"dir": "misc/than-shape", "bound": 5}, "than-becoming": {"dir": "misc/than-becoming", "bound": 10}, "chah-ilt": {"dir": "misc/chah-ilt", "bound": 108}, "chah-ist": {"dir": "misc/chah-ist", "bound": 108}, "chah-sfw": {"dir": "misc/chah-sfw", "bound": 9}, "chah-coll": {"dir": "misc/chah-coll", "bound": 59}, "alee-auto": {"dir": "misc/alee-auto", "bound": 7}, "alee-themes": {"dir": "misc/alee-themes", "bound": 6}, "alee-craft": {"dir": "misc/alee-craft", "bound": 4}, "alee-food": {"dir": "misc/alee-food", "bound": 18}, "alee-frames": {"dir": "misc/alee-frames", "bound": 4}, "alee-handbook": {"dir": "misc/alee-handbook", "bound": 3}, "alee-mind": {"dir": "misc/alee-mind", "bound": 17}, "alee-inner": {"dir": "misc/alee-inner", "bound": 3}, "alee-release": {"dir": "misc/alee-release", "bound": 13}, "alee-small": {"dir": "misc/alee-small", "bound": 4}, "aebt": {"dir": "misc/aebt", "bound": 8}};  // treatise: vism17 → cmy/vism/index.html#vism17
 const JUMP_JA_RANGES = [[1,1,150], [2,151,250], [3,251,300], [4,301,350], [5,351,375], [6,376,395], [7,396,416], [8,417,426], [9,427,438], [10,439,454], [11,455,463], [12,464,473], [13,474,483], [14,484,496], [15,497,510], [16,511,520], [17,521,525], [18,526,528], [19,529,530], [20,531,532], [21,533,537], [22,538,547]];  // Jātaka: ja-a265 → cmy/kn/ja/ja{nip}/index.html#ja-a265
 const JUMP_TAISHO = {"t0613": 1, "t0614": 1, "t0615": 1, "t0616": 1, "t0617": 1, "t1536": 1, "t1537": 1, "t1538": 1, "t1539": 1, "t1540": 1, "t1542": 1, "t1544": 1, "t1545": 1, "t1548": 1, "t1579": 1};    // Taishō texts: t0613 → taisho/t0613/index.html#<section>
+const JUMP_TAISHO_PAGED = {"t1545": 10};  // split texts: t1545 → juan per page (10)
+// The juan-range folder holding `juan`, for a paginated Taishō text — 137 at 10/page →
+// "juan131-140". Mirrors taisho_texts.TaishoText.page_slug EXACTLY, including the clamp
+// that puts juan 0 (front matter) on the first page; the two must agree or a jump 404s.
+function taishoPageDir(juan, per){
+  const first = Math.floor((Math.max(1, juan) - 1)/per)*per + 1;
+  return 'juan' + first + '-' + (first + per - 1);
+}
+// The juan a Taishō address points at, or NaN when it names no juan (a bare `t1545`).
+// Both forms lead with it: the L24 tail `t1545.137.2` and the segment key `t1545:137.2`
+// (keys are "<nik>:<juan>.<n>" — see build_taisho_text._section_of).
+function taishoJuanOf(sub, seg){
+  return parseInt(String(sub || seg || '').split('.')[0], 10);
+}
 const jumpInputEl = document.getElementById('jumpInput');
 const jumpMsgEl = document.getElementById('jumpMsg');
 const jumpHistEl = document.getElementById('jumpHist');
@@ -411,8 +755,7 @@ function parseJumpRef(raw){
   // that returns a ready-made URL (r.url, relative to JUMP_ROOT) instead of the
   // nik/page form. Site landing pages, not texts.
   const kw = (raw||'').trim().toLowerCase().replace(/^\//, '');
-  const NAMED = {home: '/index.html', major: '/major/index.html', taisho: '/taisho/index.html',
-                 abhi: '/tv_ab/index.html'};
+  const NAMED = {home: '/index.html', major: '/major/index.html', taisho: '/taisho/index.html', abhi: '/tv_ab/index.html', benign: '/major/lbt-benign/index.html'};
   if(kw in NAMED) return {url: NAMED[kw], ref: kw};
   // Taishō alias: taisho614 / taisho0614 → the t<4-digit> page
   // (T0614 → dist/taisho/t0614/, nested under the sub-index — taisho_texts.DIST_PARENT).
@@ -424,8 +767,17 @@ function parseJumpRef(raw){
   // straight to it and never looks at r.hash.
   let tm;
   if(tm = /^taisho\s*0*(\d+)((?:\.\d+[a-z]?)*)$/.exec(kw)){
-    return {url: '/taisho/t' + tm[1].padStart(4, '0') + '/index.html'
-                 + (tm[2] ? '#' + tm[2].slice(1) : ''),
+    const tpg = 't' + tm[1].padStart(4, '0');
+    const tsec = tm[2] ? tm[2].slice(1) : '';
+    // Same juan-range step the canonical `t1545.137.2` form takes below — this alias has to
+    // reach the same page, or "Taishō 1545" and the citation form would disagree.
+    const tperk = JUMP_TAISHO_PAGED[tpg];
+    let tdirk = tpg;
+    if(tperk && tsec){
+      const tjk = taishoJuanOf(tsec, null);
+      if(!isNaN(tjk)) tdirk = tpg + '/' + taishoPageDir(tjk, tperk);
+    }
+    return {url: '/taisho/' + tdirk + '/index.html' + (tsec ? '#' + tsec : ''),
             ref: 'taisho' + tm[1] + tm[2]};
   }
   // Taishō text page (taisho_texts.TEXTS): t0613 → taisho/t0613/index.html;
@@ -445,7 +797,17 @@ function parseJumpRef(raw){
     const tsub = tt[2] ? tt[2].toLowerCase() : null, tseg = tt[3] || null;
     if(!(page in JUMP_TAISHO))
       return {err: 'Taishō ' + parseInt(tt[1], 10) + ' is not available yet'};
-    return {nik: 'taisho', page, suttaId: page, seg: tseg,
+    // A PAGINATED text (JUMP_TAISHO_PAGED) adds the juan-range folder under its own dir.
+    // `page` itself stays the text id: it is also the suttaId, so row anchors keep reading
+    // "#tr-t1545:137.2" wherever the juan happens to be rendered. A ref naming no juan
+    // lands on the text's index — the list of its ranges, which is the right answer.
+    const tper = JUMP_TAISHO_PAGED[page];
+    let tdir = page;
+    if(tper){
+      const tjuan = taishoJuanOf(tsub, tseg);
+      if(!isNaN(tjuan)) tdir = page + '/' + taishoPageDir(tjuan, tper);
+    }
+    return {nik: 'taisho', page: tdir, suttaId: page, seg: tseg,
             ref: page + (tsub ? '.' + tsub : '') + (tseg ? ':' + tseg : ''),
             hash: tseg ? undefined : (tsub ? '#' + tsub : '')};
   }
@@ -461,8 +823,9 @@ function parseJumpRef(raw){
   // `-a` the Samantapāsādikā, `-t` the Sāratthadīpanī, and one suffix per further
   // subcommentary — each in its own directory (see build_vin_cmy.LAYERS).
   const VIN_LAYER_DIR = {a: 'cmy/vin', t: 'scmy/vin', vjb: 'scmy/vin_vjb',
-                         vmv: 'scmy/vin_vmv', pcy: 'scmy/vin_pcy'};
-  const vc = /^\s*(pli-tv-[a-z][a-z-]*?(?:\d[\d.-]*)?)-(a|t|vjb|vmv|pcy)(-pre)?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i
+                         vmv: 'scmy/vin_vmv', pcy: 'scmy/vin_pcy',
+                         'kkh-pt': 'scmy/vin_kkh_pt', 'kkh-at': 'scmy/vin_kkh_at'};
+  const vc = /^\s*(pli-tv-[a-z][a-z-]*?(?:\d[\d.-]*)?)-(a|t|vjb|vmv|pcy|kkh-pt|kkh-at)(-pre)?\s*(?::\s*(\d+(?:\.\d+)*)\s*)?$/i
              .exec(raw||'');
   if(vc){
     const fid = vc[1].toLowerCase(), layer = vc[2].toLowerCase();
@@ -570,7 +933,11 @@ function parseJumpRef(raw){
     // section ref drops the nik prefix: vism8 → #8 (chapter), vism8.4.16 → #8.4.16. A
     // SEGMENT ref keeps the prefixed SC row key: vism8:216.1 → #tr-vism8:216.1.
     const c = JUMP_CMY_TREATISE[nik];
-    if(n < 1 || n > c.bound) return {err: nik.toUpperCase()+' goes from 1 to '+c.bound};
+    // FROM 0, not 1 — for a one-page book unit 0 is the front matter, a real unit with a
+    // real `#0` anchor (the chah-stlfl comment in quickjump.py has the whole story). A
+    // work that has no unit 0 asks for an anchor that isn't there and lands at the top of
+    // its page, which is what a reader expects of `vism0`.
+    if(n < 0 || n > c.bound) return {err: nik.toUpperCase()+' goes from 0 to '+c.bound};
     const dot = n + (sub ? '.' + sub : '');             // bare L24 anchor (8 / 8.4.16)
     const suttaId = nik + dot;                            // vism8.4.16 (row-key base for a seg)
     return {nik: c.dir, page: '', suttaId, seg, ref: suttaId + (seg ? ':' + seg : ''),
@@ -856,6 +1223,1335 @@ document.addEventListener('keydown', function(e){
   }
 });
 loadPrefs(); applyPrefs();
+
+// ── 🔍 IN-PAGE SEARCH ──
+// Walks the visible column cells, highlights matches via the CSS Custom Highlight
+// API (no DOM mutation), and jumps prev/next. Pāli-aware normalization: always
+// ignores compound-dots (·) and hyphens; Fold folds long-vowel macrons (ā/ī/ū);
+// Fuzzy folds ALL diacritics + ignores quotes/punct; Regex runs over the normalized text.
+(function(){
+  // No markup on this page means it simply has no search box -- a no-op, not an error.
+  // Worth a guard rather than a crash: on the light pages this JS shares ONE <script>
+  // block with the page's own code, so throwing on a missing #findBtn would take the
+  // rest of that page's script down with it (theme toggle, quick-jump, everything).
+  if(!document.getElementById('findBtn') || !document.getElementById('findPop')) return;
+  const supported=(typeof Highlight!=='undefined' && window.CSS && CSS.highlights);
+  // -- the page seam ---------------------------------------------------------------
+  // Everything below this line is identical on every page of the site. The five hooks
+  // are the only things a page type gets to decide, and each has a working default, so
+  // a plain page (the homepage, an index, help.html) sets none of them:
+  //   columns() -> [{key,label}] for the page-scope "Columns" filter. [] (the default)
+  //               hides that filter: a page with no parallel columns has nothing to pick.
+  //   reveal()  -> force lazily-built content into the DOM before a page-scope pass, so
+  //               search sees the whole document and not just what has been scrolled to.
+  //   nodes(keys) -> the text nodes page scope walks. Defaults to everything under
+  //               `root` that is not chrome.
+  //   target(el)  -> what to scroll into view for a match inside `el`.
+  const PAGE = (typeof window!=='undefined' && window.DBL_FIND) || {};
+  const pgColumns = PAGE.columns || (()=>[]);
+  const pgReveal  = PAGE.reveal  || (()=>{});
+  const pgTarget  = PAGE.target  || (el=>el);
+  // Chrome must never be searchable: without this the box matches its OWN option labels
+  // and the nav bar, so every query starts at "3 / 12" before you have read anything.
+  const SKIP = '#findPop,#mainHeader,header,.navbar,nav,script,style,noscript,'
+             + '.site-footer,footer,.sidebar,#colBar';
+  function defaultNodes(){
+    const root=document.querySelector(PAGE.root||'main')||document.body, out=[];
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode(n){
+      if(!n.nodeValue||!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      const p=n.parentElement;
+      if(!p||p.closest(SKIP)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+    let n; while(n=w.nextNode()) out.push(n);
+    return out;
+  }
+  const pgNodes = PAGE.nodes || defaultNodes;
+  // A page that matches rows rather than text ranges. When present it OWNS page scope:
+  // the Highlight-API walk is skipped, because on a tree page most of the document is
+  // not rendered and there would be nothing to walk.
+  const pgSearch = PAGE.pageSearch || null;
+  const sel=s=>document.querySelector(s);
+  const btn=sel('#findBtn'), pop=sel('#findPop'), input=sel('#findInput'), countEl=sel('#findCount'),
+        prevBtn=sel('#findPrev'), nextBtn=sel('#findNext'), optsBtn=sel('#findOptsBtn'),
+        closeBtn=sel('#findClose'), optsBox=sel('#findOpts'), colsBox=sel('#findCols'),
+        foldCb=sel('#findFold'), foldL=sel('#findFoldL'), fuzzyCb=sel('#findFuzzy'),
+        reCb=sel('#findRe'), wordCb=sel('#findWord'), wordL=sel('#findWordL');
+
+  let matches=[], cur=-1;
+  const hlAll=supported?new Highlight():null, hlCur=supported?new Highlight():null;
+  if(supported){ CSS.highlights.set('dblFind',hlAll); CSS.highlights.set('dblFindCur',hlCur); }
+
+  // --- normalization ---
+  const STRIP_WORD=/[·‧‐‑\-​‌‍﻿]/g;                       // always: compound dot, hyphens, zero-width
+  const FUZZY_STRIP=/['’‘‛`´ʼ‵"“”„.,;:!?()\[\]{}«»]/g;      // fuzzy: quotes/apostrophes/punct
+  const COMBINING=/[̀-ͯ]/g;                                 // diacritic combining marks
+  const VOWEL_FOLD={'ā':'a','ī':'i','ū':'u'};              // fold (vowel length only)
+  function normChar(ch,o){
+    let s=ch.toLowerCase().replace(STRIP_WORD,'');
+    if(!s) return '';
+    if(o.fuzzy){ s=s.replace(FUZZY_STRIP,''); if(!s) return ''; s=s.normalize('NFD').replace(COMBINING,''); }
+    else if(o.fold){ s=VOWEL_FOLD[s]||s; }
+    return s;
+  }
+  function normStr(str,o){ let out='',map=[],oi=0;
+    for(const ch of str){ const n=normChar(ch,o); for(const c of n){ out+=c; map.push([oi,oi+ch.length]); } oi+=ch.length; }
+    return {out,map};
+  }
+  // Whole word, over the NORMALIZED text — which is the only place it can be asked, and
+  // has a consequence worth knowing: normalization has already dropped compound dots and
+  // hyphens, so `deva·putta` arrives here as the one word `devaputta` and whole-word
+  // `deva` does not find it. Correct for a compound, and the same answer the server
+  // gives (site_search._find_word), which is the point.
+  const WORDCH=/[\p{L}\p{N}_]/u;
+  const wordAt=(s2,i,n)=>(i===0||!WORDCH.test(s2[i-1]))
+                       &&(i+n>=s2.length||!WORDCH.test(s2[i+n]));
+  const opts=()=>({fold:foldCb.checked, fuzzy:fuzzyCb.checked});
+
+  // In page scope: this page's visible columns, all on. In site scope: every column the
+  // whole site has, with only the first two of THIS page's pre-ticked — the server folds
+  // a column the first time it is searched (a few seconds for the 100 MB ones), so
+  // opening with eight of them ticked would make the first site search look hung.
+  function buildColChecks(){
+    colsBox.textContent='';
+    const site = scope==='site' && info && info.columns && info.columns.length;
+    const pcols = pgColumns(), pkeys = pcols.map(c=>c.key);
+    // A page with no columns of its own has nothing to offer the page-scope filter, so
+    // the whole block goes away rather than standing there empty. It comes back in site
+    // scope, where the columns are the SITE's, not this page's.
+    const wrap = sel('#findColsWrap');
+    if(wrap) wrap.hidden = !site && !pcols.length;
+    const list = site ? info.columns : pcols;
+    let seed = new Set(pkeys.filter(k=>!site || info.columns.some(c=>c.key===k)).slice(0,2));
+    // Site scope on a page with no columns of its own: nothing seeds the selection, so
+    // fall back to the first two the site has -- otherwise the first search reports
+    // "Pick at least one column" on a box the reader never touched.
+    if(site && !seed.size) seed=new Set(info.columns.slice(0,2).map(c=>c.key));
+    // A remembered selection wins over the 2-column seed — but only in site scope, and
+    // only for columns this index still has, so a stale key cannot tick nothing at all.
+    if(site){
+      try{ const saved=JSON.parse(localStorage.getItem(COLS_LS));
+        if(Array.isArray(saved)){
+          const keep=saved.filter(k=>info.columns.some(c=>c.key===k));
+          if(keep.length) seed=new Set(keep);
+        } }catch(e){}
+    }
+    list.forEach(c=>{
+      const l=document.createElement('label'), box=document.createElement('input');
+      box.type='checkbox'; box.dataset.col=c.key; box.checked = site ? seed.has(c.key) : true;
+      l.append(box, ' ' + (c.label||c.key));
+      if(site){ const n=document.createElement('span');
+        n.className='hint'; n.textContent=' '+c.segments.toLocaleString(); l.append(n); }
+      colsBox.appendChild(l);
+    });
+  }
+  function collectNodes(){
+    const keys=[...colsBox.querySelectorAll('input:checked')].map(c=>c.dataset.col);
+    return pgNodes(keys);
+  }
+  function addMatch(node,s,e){ const r=document.createRange(); r.setStart(node,s); r.setEnd(node,e);
+    matches.push(r); if(supported) hlAll.add(r); }
+
+  function run(){
+    const o=opts(), useRe=reCb.checked, useWord=wordCb.checked&&!useRe;
+    matches=[]; cur=-1; let badRe=false, re=null, plain=null;
+    if(supported){ hlAll.clear(); hlCur.clear(); }
+    // The page matches for itself. It still gets the box's own options, and a bad regex
+    // is still reported here rather than by every page that accepts one.
+    if(pgSearch){
+      if(useRe && input.value){ try{ new RegExp(input.value,'i'); }catch(e){ badRe=true; } }
+      try{ matches = badRe ? [] : (pgSearch.run(input.value,
+                                    {fold:o.fold, fuzzy:o.fuzzy, regex:useRe, word:useWord}) || []); }
+      catch(e){ matches=[]; }
+      // NOT cur=0: landing on a match must be something you asked for. On a tree page
+      // focusing one expands its whole ancestor chain and re-renders, so doing that on
+      // every keystroke would fight you as you typed.
+      input.classList.toggle('bad',badRe);
+      updateCount(badRe);
+      return;
+    }
+    if(useRe){ if(input.value){ try{ re=new RegExp(input.value,'gi'); }catch(e){ badRe=true; } } }
+    else { const nq=normStr(input.value,o).out; if(nq) plain=nq; }
+    if(!badRe && (re||plain)){
+      for(const node of collectNodes()){
+        const {out,map}=normStr(node.nodeValue,o);
+        if(re){ re.lastIndex=0; let m;
+          while((m=re.exec(out))!==null){ if(!m[0].length){ re.lastIndex++; continue; }
+            addMatch(node, map[m.index][0], map[m.index+m[0].length-1][1]); } }
+        else { let i=out.indexOf(plain);
+          // The boundary is tested inside ONE text node, which is all this walk ever sees
+          // — a match has never been able to span nodes either, so `<b>deva</b>tā` reads
+          // as a boundary here. Rare enough in the viewer's own markup to leave stated
+          // rather than worked around.
+          while(i!==-1){ if(!useWord || wordAt(out,i,plain.length))
+                           addMatch(node, map[i][0], map[i+plain.length-1][1]);
+                         i=out.indexOf(plain,i+plain.length); } }
+      }
+    }
+    if(matches.length) cur=0;
+    input.classList.toggle('bad',badRe);
+    updateCount(badRe);
+    focusCur(false);
+  }
+  function focusCur(scroll){
+    if(pgSearch){
+      if(cur>=0 && matches[cur]!==undefined) pgSearch.focus(matches[cur], !!scroll);
+      return;
+    }
+    if(supported){ hlCur.clear(); if(cur>=0&&matches[cur]) hlCur.add(matches[cur]); }
+    if(scroll && cur>=0 && matches[cur]){
+      const el=matches[cur].startContainer.parentElement;
+      const t=pgTarget(el)||el;
+      t.scrollIntoView({block:'start',behavior:'smooth'});   // scroll-margin-top clears the sticky bars
+    }
+  }
+  function updateCount(badRe){
+    countEl.textContent = badRe ? 'bad regex'
+      : matches.length ? (cur<0 ? matches.length+(matches.length>1?' found':' match')
+                                : (cur+1)+' / '+matches.length)
+      // "no API" names the missing CSS Custom Highlight API, which only the text-range
+      // path needs -- a pgSearch page highlights nothing and is not degraded without it.
+      : (input.value ? '0 / 0' : ((supported||pgSearch)?'—':'no API'));
+    prevBtn.disabled=nextBtn.disabled=!matches.length;
+  }
+
+  // ── WHOLE-SITE SCOPE ──
+  // The same box, searching every page instead of this one. It needs something that can
+  // read 1,500 files, so it exists ONLY behind the local preview server (serve.bat →
+  // debabel serve), which answers /__dbl/search/* — see src/debabel/site_search.py. The
+  // deployed site is plain static files: the probe below 404s there and the scope row is
+  // never revealed, so this markup is inert rather than broken. Normalization is the
+  // server's, deliberately mirroring normChar() above, so both tabs match alike.
+  const scopeRow=sel('#findScope'), tabPage=sel('#findTabPage'), tabSite=sel('#findTabSite'),
+        siteMsg=sel('#findSiteMsg'), hitsBox=sel('#findHits'),
+        glossSel=sel('#findGloss'), ctxIn=sel('#findCtx'),
+        divsBox=sel('#findDivs'), chipsBox=sel('#findChips'),
+        rfIn=sel('#findRfIn'), rfScope=sel('#findRfScope'), rfN=sel('#findRfN'),
+        rfList=sel('#findRfList');
+  const API=JUMP_ROOT+'/__dbl/search/', SCOPE_LS='debabel.find.scope.v1',
+        GLOSS_LS='debabel.find.gloss.v1', CTX_LS='debabel.find.ctx.v1',
+        DIVS_LS='debabel.find.divsoff.v1',   // the OFF list, so a new text defaults to on
+        // The "also / not" terms. Persisted like the query itself rather than cleared
+        // with the result list: they are typed content, and retyping them on every edit
+        // of the main query is the thing that makes a refine box not get used. Safe to
+        // persist only because they are always on screen as chips.
+        REFINE_LS='debabel.find.refine.v1',
+        // What the ADD row is set to, so the scope you keep reaching for is the one
+        // already selected next time. The chips carry their own copies.
+        RFSCOPE_LS='debabel.find.rfscope.v1', RFN_LS='debabel.find.rfn.v1',
+        // The query and the ticked columns, so reopening 🔍 comes back to the search you
+        // were reading. Browser Back cannot return you to it — the results live in a
+        // popover, not a history entry — so reopening has to be the way back.
+        Q_LS='debabel.find.q.v1', COLS_LS='debabel.find.cols.v1',
+        // The last result set itself, and whether the window was open when this tab
+        // navigated away. sessionStorage, not local: both answer "I clicked away in THIS
+        // tab", and neither should follow you into a tab you opened for something else.
+        STASH_SS='debabel.find.stash.v1', OPEN_SS='debabel.find.open.v1',
+        STASH_MAX=3000000,   // a 200-hit payload is ~400 KB; the quota is ~5 MB
+        SNIP=120,          // characters kept either side of the match on the hit line
+        CLIP=260,          // …and the cap on a context line, which has no match to centre on
+        GLOSS_DEFAULT='bodhi-esque';   // the one column with English for the whole corpus
+  let scope='page', probe=null, info=null, siteHits=[], siteCur=-1, seq=0, deb=0, poller=0;
+
+  const API_VERSION=8;   // must match site_search.API_VERSION
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  // Never let a missing field become a TypeError: a long-running serve.bat can answer a
+  // freshly built page with an older payload, and `num(undefined)` turned that into a
+  // bogus "Search failed" on any result set big enough to be truncated.
+  const num=n=>(typeof n==='number'&&isFinite(n)?n:0).toLocaleString();
+  function api(path,ms){                       // a dead endpoint must never hang the box
+    const budget=ms||8000, ctl=new AbortController();
+    let timedOut=false;
+    const t=setTimeout(()=>{ timedOut=true; ctl.abort(); },budget);
+    return fetch(API+path,{signal:ctl.signal,cache:'no-store'})
+      // The server says WHY in the body; reporting a bare "HTTP 500" sent you to read a
+      // console that had already swallowed the exception. And an abort must name itself
+      // as our own timeout, or a long first search reads as the server breaking.
+      .then(r=>r.ok?r.json():r.json().then(
+              j=>Promise.reject(new Error((j&&j.error)||('HTTP '+r.status))),
+              ()=>Promise.reject(new Error('HTTP '+r.status))))
+      .catch(e=>Promise.reject(timedOut
+        ? new Error('no answer in '+Math.round(budget/1000)+'s — the server may still be '
+                    +'preparing a column; try again and it will be cached')
+        : e))
+      .finally(()=>clearTimeout(t));
+  }
+  // Exactly one probe per page load. No answer (deployed site, a plain static server, or
+  // dist/ opened as file://) → the tab is never shown and 🔍 stays page-local.
+  function ensureProbe(){
+    if(!probe) probe=api('status',2500)
+      .then(s=>{ if(s&&s.ok){ info=s; scopeRow.hidden=false; } return s; })
+      .catch(()=>null);
+    return probe;
+  }
+
+  function snippet(t,a,b){
+    const s=Math.max(0,a-SNIP), e=Math.min(t.length,b+SNIP);
+    return (s>0?'…':'')+paint(t,s,e,[[a,b,'']].concat(rfSpans(t)))+(e<t.length?'…':'');
+  }
+  const clip=t=>{ t=String(t==null?'':t);
+    return esc(t.length>CLIP?t.slice(0,CLIP)+'…':t); };
+  // The SEARCHED column's context lines. Same clip, but a filter term in one of them is
+  // worth seeing — with a same-text filter that line is often the whole reason the hit
+  // survived, and an unmarked one leaves the reader hunting for it.
+  const clipRf=t=>{ t=String(t==null?'':t); const e=Math.min(t.length,CLIP);
+    return paint(t,0,e,rfSpans(t))+(e<t.length?'…':''); };
+
+  // Build the drop-down of columns that can ride alongside a hit. Defaults to
+  // the bodhi-esque column, falling back to whatever the site actually has if absent.
+  function buildGlossPicker(){
+    const cols=(info&&info.columns)||[];
+    let want=glossSel.value;
+    if(!want){ try{ want=localStorage.getItem(GLOSS_LS); }catch(e){}
+      if(want===null||want===undefined) want=GLOSS_DEFAULT; }
+    glossSel.textContent='';
+    const none=document.createElement('option'); none.value=''; none.textContent='nothing';
+    glossSel.appendChild(none);
+    cols.forEach(c=>{ const o=document.createElement('option');
+      o.value=c.key; o.textContent=c.label||c.key; glossSel.appendChild(o); });
+    glossSel.value = cols.some(c=>c.key===want) ? want
+                   : (cols.some(c=>c.key===GLOSS_DEFAULT) ? GLOSS_DEFAULT : '');
+  }
+  function ctxLines(){
+    const n=parseInt(ctxIn.value,10);
+    return isFinite(n)&&n>=0 ? Math.min(10,n) : 0;
+  }
+
+  // ── the two division filters ──
+  // `divsOff` is which parts of the corpus NOT to search — stored as the off-list so a
+  // text added later is searched by default rather than silently skipped. `showOnly` is
+  // the lighter one: it restricts the RESULT LIST to the divisions you picked, leaving
+  // every count intact, and it resets whenever the query changes because it belongs to
+  // the search you are reading.
+  let divsOff=new Set(), showOnly=new Set();
+  function loadDivsOff(){
+    try{ const raw=localStorage.getItem(DIVS_LS);
+      if(raw) divsOff=new Set(JSON.parse(raw)); }catch(e){ divsOff=new Set(); }
+  }
+  function saveDivsOff(){
+    try{ localStorage.setItem(DIVS_LS,JSON.stringify([...divsOff])); }catch(e){}
+  }
+  const allDivs=()=>((info&&info.divisions)||[]).flatMap(g=>g.divisions.map(d=>d.id));
+  const searchDivs=()=>allDivs().filter(d=>!divsOff.has(d));
+
+  function buildDivTree(){
+    divsBox.textContent='';
+    const groups=(info&&info.divisions)||[];
+    groups.forEach(g=>{
+      const on=g.divisions.filter(d=>!divsOff.has(d.id)).length;
+      divsBox.appendChild(divRow('dv-g',g.label,g.pages,{grp:g.id},on===g.divisions.length,
+                                 on>0&&on<g.divisions.length));
+      g.divisions.forEach(d=>divsBox.appendChild(
+        divRow('dv-d',d.label,d.pages,{div:d.id},!divsOff.has(d.id),false)));
+    });
+  }
+  function divRow(cls,label,n,data,checked,mixed){
+    const l=document.createElement('label'); l.className=cls;
+    const box=document.createElement('input'); box.type='checkbox';
+    box.checked=checked; box.indeterminate=!!mixed;
+    if(data.grp) box.dataset.grp=data.grp; else box.dataset.div=data.div;
+    const nn=document.createElement('span'); nn.className='dv-n'; nn.textContent=num(n);
+    l.append(box,' '+label,nn);
+    return l;
+  }
+  divsBox.addEventListener('change',e=>{
+    const box=e.target;
+    if(box.dataset.grp){
+      const g=((info&&info.divisions)||[]).find(x=>x.id===box.dataset.grp);
+      if(g) g.divisions.forEach(d=>box.checked?divsOff.delete(d.id):divsOff.add(d.id));
+    } else if(box.dataset.div){
+      box.checked?divsOff.delete(box.dataset.div):divsOff.add(box.dataset.div);
+    } else return;
+    saveDivsOff(); buildDivTree(); siteRun();
+  });
+  sel('#findDivsAll').addEventListener('click',()=>{
+    divsOff.clear(); saveDivsOff(); buildDivTree(); siteRun(); });
+  sel('#findDivsNone').addEventListener('click',()=>{
+    divsOff=new Set(allDivs()); saveDivsOff(); buildDivTree(); siteRun(); });
+
+  // Chips list only the divisions this search actually hit, so the filter stays short
+  // and every option is worth clicking.
+  let chipsExpanded=false;
+  const CHIP_CAP=12;      // a broad query hits 35 divisions; that many chips eats the list
+  // Click a chip to see ONLY that division; click again to go back to everything. The
+  // first cut of this toggled a division OFF instead, which meant clicking a small
+  // division you wanted (khs, 1 match) hid the one thing you asked for and left the other
+  // 8,540 passages exactly as they were — indistinguishable from a dead button.
+  function buildChips(r){
+    chipsBox.textContent='';
+    const hits=r.divisions||{}, ids=Object.keys(hits);
+    if(ids.length<2) return;                 // nothing to narrow
+    const meta={}; ((info&&info.divisions)||[])
+      .forEach(g=>g.divisions.forEach(d=>meta[d.id]=d));
+    ids.sort((a,b)=>hits[b].hits-hits[a].hits);
+    // A picked division stays on screen however far down the ranking it sits, or you
+    // could select one and lose the only way to unselect it.
+    const shown=chipsExpanded?ids:ids.filter((id,i)=>i<CHIP_CAP||showOnly.has(id));
+    const head=document.createElement('span'); head.className='chip-lbl';
+    head.textContent=showOnly.size?'Showing only:':'Show only:';
+    chipsBox.appendChild(head);
+    shown.forEach(id=>{
+      const d=meta[id]||{}, b=document.createElement('button');
+      // With nothing picked every division is showing, so every chip reads as active.
+      b.className='chip'+(showOnly.size===0||showOnly.has(id)?' on':'')
+                  +(showOnly.has(id)?' pick':'');
+      b.dataset.div=id;
+      b.title=(d.label||id)+' — click to show only this';
+      b.innerHTML='<b>'+esc(d.short||d.label||id)+'</b><span>'+num(hits[id].hits)+'</span>';
+      b.onclick=()=>{ showOnly.has(id)?showOnly.delete(id):showOnly.add(id); siteRun(); };
+      chipsBox.appendChild(b);
+    });
+    if(ids.length>shown.length || chipsExpanded){
+      const more=document.createElement('button');
+      more.className='chip chip-act';
+      more.textContent=chipsExpanded?'− fewer':'+ '+num(ids.length-shown.length)+' more';
+      more.onclick=()=>{ chipsExpanded=!chipsExpanded; buildChips(r); };
+      chipsBox.appendChild(more);
+    }
+    if(showOnly.size){
+      const clr=document.createElement('button');
+      clr.className='chip chip-act'; clr.textContent='✕ show all';
+      clr.onclick=()=>{ showOnly.clear(); siteRun(); };
+      chipsBox.appendChild(clr);
+    }
+  }
+  // ── the second filter: "also contains" / "but not" ──
+  // A term is {t: text, ex: exclude?, sc: scope, n: radius}. Scope is the decision that
+  // matters here, and it is FOUR values rather than two because the two obvious ones are
+  // both wrong most of the time: a segment is often half a clause, and a "page" runs from
+  // 1 segment to 30,965 — `kn/ja/index.html` is one page holding 547 separate Jātakas, so
+  // a page-scoped filter there asks about all of them at once.
+  //   s  the matched line
+  //   r  within `n` segments either side, clamped to the page
+  //   u  the same sutta / chapter / story — what the ref names before its colon
+  //   p  anywhere on the page
+  // Terms are literal substrings even when the query is a regex: a filter you type to
+  // narrow a list you are reading is not the place to debug a second pattern.
+  const SCOPES=[['s','on the matched line','on the line'],
+                ['r','within ± lines','within ±'],
+                ['u','in the same sutta / section','same section'],
+                ['p','anywhere on the page','same page']];
+  const SCOPE_IDS=new Set(SCOPES.map(x=>x[0]));
+  const RADIUS_DEFAULT=5, RADIUS_MAX=500;
+  const radius=v=>{ const n=parseInt(v,10);
+    return isFinite(n)&&n>=1 ? Math.min(RADIUS_MAX,n) : RADIUS_DEFAULT; };
+  let refine=[];
+  function loadRefine(){
+    try{ const raw=localStorage.getItem(REFINE_LS);
+      refine=raw?JSON.parse(raw).map(r=>({
+        t:String((r&&r.t)||''), ex:!!(r&&r.ex),
+        // The first cut of this had a bare `pg` flag whose label read "in the text".
+        // The unit is what that was trying to mean, so a stored one migrates to `u`
+        // rather than to the page scope it was literally implemented as.
+        sc:(r&&SCOPE_IDS.has(r.sc))?r.sc:((r&&r.pg)?'u':'s'),
+        n:radius(r&&r.n),
+      })).filter(r=>r.t):[]; }
+    catch(e){ refine=[]; }
+  }
+  function saveRefine(){
+    try{ localStorage.setItem(REFINE_LS,JSON.stringify(refine)); }catch(e){}
+  }
+  // The wire form parse_refine() reads: `<sign><scope><digits?>:<text>` per line. The
+  // digits ride only on a radius term, so `+u:x` and `+r12:x` are both one token.
+  const refineParam=()=>refine.map(
+    r=>(r.ex?'-':'+')+r.sc+(r.sc==='r'?String(r.n):'')+':'+r.t).join('\n');
+  function clearRefine(){ refine=[]; saveRefine(); buildRefine(); siteRun(); }
+  function buildRefine(){
+    rfList.textContent='';
+    refine.forEach((r,i)=>{
+      const b=document.createElement('span');
+      b.className='rf'+(r.ex?' ex':'');
+      // Three targets, in the order they get used: flip the sign (by far the commonest —
+      // "no, the other way round"), flip the scope, remove.
+      const sign=document.createElement('button');
+      sign.className='rf-sign'; sign.textContent=r.ex?'−':'+';
+      sign.title=r.ex?'Excluded — click to require it instead'
+                     :'Required — click to exclude it instead';
+      sign.onclick=()=>{ r.ex=!r.ex; saveRefine(); buildRefine(); siteRun(); };
+      const t=document.createElement('span'); t.className='rf-t'; t.textContent=r.t;
+      // A <select>, not a button that cycles: four values is one too many to cycle
+      // through, and the one you want is then always one click away instead of three.
+      const sc=document.createElement('select');
+      sc.className='rf-sel';
+      sc.title='How far from the match this filter is allowed to be';
+      SCOPES.forEach(([id,,short])=>{
+        const o=document.createElement('option'); o.value=id; o.textContent=short;
+        sc.appendChild(o);
+      });
+      sc.value=r.sc;
+      sc.onchange=()=>{ r.sc=sc.value; saveRefine(); buildRefine(); siteRun(); };
+      b.append(sign,t,sc);
+      // The radius is edited IN the chip. Cycling a scope away and back to change a
+      // number is the shape that stops a tunable control from being tuned.
+      if(r.sc==='r'){
+        const n=document.createElement('input');
+        n.className='rf-n'; n.type='number'; n.min='1'; n.max=String(RADIUS_MAX);
+        n.step='1'; n.value=String(r.n);
+        n.title='Segments either side of the match';
+        n.onchange=()=>{ const v=radius(n.value);
+          if(v===r.n){ n.value=String(v); return; }
+          r.n=v; saveRefine(); buildRefine(); siteRun(); };
+        const u=document.createElement('span'); u.className='rf-u'; u.textContent='lines';
+        b.append(n,u);
+      }
+      const x=document.createElement('button');
+      x.className='rf-x'; x.textContent='✕'; x.title='Remove this filter';
+      x.onclick=()=>{ refine.splice(i,1); saveRefine(); buildRefine(); siteRun(); };
+      b.append(x);
+      rfList.appendChild(b);
+    });
+    if(refine.length>1){
+      const clr=document.createElement('button');
+      clr.className='chip chip-act'; clr.textContent='✕ clear filters';
+      clr.onclick=clearRefine;
+      rfList.appendChild(clr);
+    }
+  }
+  function addRefine(){
+    let t=rfIn.value.trim();
+    if(!t) return;
+    // A leading −/-/! commits an exclude straight from the keyboard, the way every search
+    // box that has ever had one behaves. The picker beside it still says what a bare word
+    // will do, so the syntax is a shortcut rather than the only door.
+    let ex=false;
+    if(t[0]==='-'||t[0]==='−'||t[0]==='!'){ ex=true; t=t.slice(1).trim(); }
+    else if(t[0]==='+'){ t=t.slice(1).trim(); }
+    if(!t) return;
+    const sc=SCOPE_IDS.has(rfScope.value)?rfScope.value:'s', n=radius(rfN.value);
+    if(!refine.some(r=>r.t===t&&r.ex===ex&&r.sc===sc&&(sc!=='r'||r.n===n)))
+      refine.push({t:t,ex:ex,sc:sc,n:n});
+    rfIn.value=''; saveRefine(); buildRefine(); siteRun();
+  }
+  // The add row's own scope: the number box exists only for the one scope that has a
+  // number, and both are remembered, so the scope you keep reaching for is preselected.
+  function syncRfScope(){
+    rfN.hidden = rfScope.value!=='r';
+    try{ localStorage.setItem(RFSCOPE_LS,rfScope.value);
+         localStorage.setItem(RFN_LS,String(radius(rfN.value))); }catch(e){}
+  }
+  function restoreRfScope(){
+    try{ const v=localStorage.getItem(RFSCOPE_LS); if(SCOPE_IDS.has(v)) rfScope.value=v;
+         const n=localStorage.getItem(RFN_LS); if(n!==null) rfN.value=String(radius(n)); }
+    catch(e){}
+    rfN.hidden = rfScope.value!=='r';
+  }
+  rfScope.addEventListener('change',syncRfScope);
+  rfN.addEventListener('change',syncRfScope);
+  rfIn.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); addRefine(); }
+    // Backspace on an empty box takes the last chip back, the way a token input does.
+    else if(e.key==='Backspace'&&!rfIn.value&&refine.length){
+      e.preventDefault(); refine.pop(); saveRefine(); buildRefine(); siteRun(); }
+    // Escape empties the box before it closes the window: one Escape, one undo.
+    else if(e.key==='Escape'&&rfIn.value){ e.preventDefault(); e.stopPropagation(); rfIn.value=''; }
+  });
+  rfIn.addEventListener('blur',addRefine);   // a typed-but-uncommitted term is not a filter
+
+  // Where each "must also contain" filter landed, in RAW offsets. The server reports only
+  // the primary span and does not need to report more: the client owns the same
+  // normalization, so it can find the include terms itself. Excludes are never painted —
+  // there is by definition nothing there to look at.
+  function rfSpans(text){
+    if(!refine.length||!text) return [];
+    const o=opts(), n=normStr(String(text),o), out=[];
+    refine.forEach(r=>{
+      if(r.ex) return;
+      const nt=normStr(r.t,o).out;
+      if(!nt) return;
+      let at=n.out.indexOf(nt);
+      while(at>=0&&out.length<64){
+        if(!wordCb.checked||reCb.checked||wordAt(n.out,at,nt.length)){
+          const a=n.map[at], b=n.map[at+nt.length-1];
+          if(a&&b) out.push([a[0],b[1],'rf-mark']);
+        }
+        at=n.out.indexOf(nt,at+nt.length);
+      }
+    });
+    return out;
+  }
+  // Escape t[from..to) and wrap the given spans in <mark>s. Offsets are absolute into the
+  // whole line; the FIRST span listed wins any overlap, which is how the query keeps its
+  // own colour where a filter term sits on top of it.
+  function paint(t,from,to,spans){
+    const use=[];
+    spans.forEach(sp=>{
+      const a=Math.max(from,sp[0]), b=Math.min(to,sp[1]);
+      if(b<=a||use.some(u=>a<u[1]&&b>u[0])) return;
+      use.push([a,b,sp[2]||'']);
+    });
+    use.sort((x,y)=>x[0]-y[0]);
+    let out='', at=from;
+    use.forEach(u=>{ out+=esc(t.slice(at,u[0]))+'<mark'+(u[2]?' class="'+u[2]+'"':'')+'>'
+                          +esc(t.slice(u[0],u[1]))+'</mark>'; at=u[1]; });
+    return out+esc(t.slice(at,to));
+  }
+  function restoreSiteOpts(){
+    try{ const c=localStorage.getItem(CTX_LS); if(c!==null) ctxIn.value=c; }catch(e){}
+    // The division chips travel with the stash, not with the options: they are cleared on
+    // every new query by design, so restoring them is only right when the query they were
+    // clicked against is the one coming back.
+    const st=readStash();
+    if(st && st.show && st.show.length && !showOnly.size && st.q===input.value.trim())
+      st.show.forEach(id=>showOnly.add(id));
+  }
+
+  // ── the results stash: how a search survives you clicking away ──────────────────
+  // A site search costs real seconds of scanning, and until now leaving the page threw
+  // the answer away and re-asked for it. The rendered payload is small enough to keep, so
+  // keep it: reopening 🔍 on the same query repaints from here and never reaches the
+  // server. Keyed by the REQUEST URL, which already encodes every input that can change
+  // the answer — query, columns, fold/fuzzy/regex, gloss, context, divisions, chips.
+  function saveStash(url,r){
+    try{
+      const blob=JSON.stringify({url:url,q:input.value.trim(),show:[...showOnly],at:Date.now(),r:r});
+      if(blob.length>STASH_MAX) sessionStorage.removeItem(STASH_SS);
+      else sessionStorage.setItem(STASH_SS,blob);
+    }catch(e){ try{ sessionStorage.removeItem(STASH_SS); }catch(e2){} }   // quota, private mode
+  }
+  function readStash(){
+    try{ return JSON.parse(sessionStorage.getItem(STASH_SS)||'null'); }catch(e){ return null; }
+  }
+  function markOpen(on){
+    try{ on?sessionStorage.setItem(OPEN_SS,'1'):sessionStorage.removeItem(OPEN_SS); }catch(e){}
+  }
+  function ago(t){
+    const s2=Math.max(0,Math.round((Date.now()-t)/1000));
+    if(s2<45) return 'a moment ago';
+    const m=Math.round(s2/60);
+    if(m<60) return m+' minute'+(m===1?'':'s')+' ago';
+    const h=Math.round(m/60);
+    return h+' hour'+(h===1?'':'s')+' ago';
+  }
+  function saveSiteOpts(){
+    try{ localStorage.setItem(GLOSS_LS,glossSel.value);
+         localStorage.setItem(CTX_LS,String(ctxLines()));
+         localStorage.setItem(Q_LS,input.value);
+         localStorage.setItem(COLS_LS,JSON.stringify(
+           [...colsBox.querySelectorAll('input:checked')].map(c=>c.dataset.col))); }catch(e){}
+  }
+
+  // One hit renders as its own little parallel table: a row per segment, the searched
+  // column left and the gloss right. Server sends `ctx` (always at least the hit itself),
+  // so there is nothing to reassemble here.
+  function hitBody(h){
+    const rows=(h.ctx&&h.ctx.length)?h.ctx:[{seg:h.seg,t:h.text,m:[h.a,h.b]}];
+    const hasG=rows.some(r=>r.g!==undefined);
+    // The server sends `p` for a hit found in a NON-Pāli column: the Pāli is the spine
+    // every column is aligned to, so a translation hit is unreadable without it.
+    const hasP=rows.some(r=>r.p!==undefined);
+    const n=1+(hasP?1:0)+(hasG?1:0);
+    let out='<span class="hit-rows'+(n===2?' two':n===3?' three':'')+'">';
+    rows.forEach(r=>{
+      const dim=r.m?'':' ctx';
+      out+='<span class="hit-cell'+dim+'">'+(r.m?snippet(r.t,r.m[0],r.m[1]):clipRf(r.t))+'</span>';
+      if(hasP) out+='<span class="hit-cell p'+dim+'">'+clip(r.p||'')+'</span>';
+      if(hasG) out+='<span class="hit-cell g'+dim+'">'+clip(r.g||'')+'</span>';
+    });
+    return out+'</span>';
+  }
+  // ── the ref chip: the one thing in a result row that navigates ─────────────────
+  // A site search costs real time to compute, so leaving the page must be a deliberate
+  // act. Default is a NEW TAB (the results stay put); press-and-hold or right-click
+  // offers the other two. It stays a real <a target="_blank"> so ctrl/⌘-click,
+  // middle-click and "copy link address" behave the way every other link does.
+  const HOLD_MS=450;
+  function hitGo(url,seg){
+    const a=document.createElement('a');
+    a.className='hit-go'; a.href=url; a.target='_blank'; a.rel='noopener';
+    a.title='Open '+seg+' in a new tab — press and hold (or right-click) for other ways';
+    const s=document.createElement('span'); s.className='hit-seg'; s.textContent=seg;
+    const i=document.createElement('span'); i.className='hit-go-i';
+    i.textContent='↗'; i.setAttribute('aria-hidden','true');
+    a.append(s,i);
+    let timer=0, held=false;
+    const cancel=()=>{ if(timer){ clearTimeout(timer); timer=0; } };
+    a.addEventListener('pointerdown',e=>{
+      if(e.button!==0) return;
+      held=false; cancel();
+      timer=setTimeout(()=>{ timer=0; held=true; openHitMenu(a,url,seg); },HOLD_MS);
+    });
+    ['pointerup','pointerleave','pointercancel'].forEach(ev=>a.addEventListener(ev,cancel));
+    // The long press already answered; swallow the click the pointerup would otherwise
+    // turn into a navigation.
+    a.addEventListener('click',e=>{ if(held){ e.preventDefault(); held=false; } });
+    a.addEventListener('contextmenu',e=>{ e.preventDefault(); cancel(); openHitMenu(a,url,seg); });
+    return a;
+  }
+  // ── 📋 copy the results ───────────────────────────────────────────────────────
+  // Two modes, because two different things get asked of a result list: a tidy CITATION
+  // list to paste into notes, and "just give me exactly what I am looking at".
+  //
+  // Both copy what is ON SCREEN. The server has already applied the division chips
+  // before the list is rendered, so a copy made with only KN showing contains only KN,
+  // with no separate filtering here to keep in step.
+  //
+  // Written as text/html AND text/plain in one clipboard item: pasted into a document
+  // the refs are real links, pasted into a plain editor it is still readable.
+  let lastRender=null;
+  const COPY_PALI_CAP=80;      // frank's "less than 80 char worth of pali"
+
+  // "mn125:3.44" -> "MN 125:3.44"; with an L24 address -> "MN 125.2.3". The address
+  // already begins with the sutta number, so only the collection is prefixed.
+  function refLabels(h){
+    const seg=String(h.seg||''), book=seg.split(':')[0];
+    const m=/^([a-z-]+)/i.exec(book), raw=m?m[1]:'';
+    // The site writes nikāyas in caps (MN, SN) and KN books title-case (Dhp, Iti, Snp),
+    // so uppercasing everything produced "DHP 1:1.1". The page's own TITLE already
+    // carries the right casing — take it from there rather than keeping a list of which
+    // collections are shouted, which is the sort of list that goes stale unnoticed.
+    const pg=(lastRender&&lastRender.pages[String(h.pid)])||{};
+    const tm=/^\s*([A-Za-z-]+)/.exec(String(pg.title||''));
+    const coll = (tm && tm[1].toLowerCase()===raw.toLowerCase()) ? tm[1] : raw.toUpperCase();
+    const num=book.slice(raw.length);
+    const segRef=coll?(coll+' '+num+(seg.includes(':')?':'+seg.split(':')[1]:'')):seg;
+    // No outline on that page → no L24 address. Inventing one would put a citation in
+    // the clipboard that resolves to nothing, so the seg ref stands in for both.
+    const l24Ref=h.l24?(coll?coll+' '+h.l24:h.l24):segRef;
+    return {l24Ref:l24Ref, segRef:segRef};
+  }
+  // The Pāli around the match, capped. When the hit IS Pāli the span is known and gets
+  // marked; when it is a translation the term is not IN the Pāli, so the matched line is
+  // quoted instead of pretending to highlight a word that is not there.
+  function copySnippet(h){
+    if(h.col==='pali') return clamp(h.text, h.a, h.b);
+    const row=(h.ctx||[]).find(r=>r.m);
+    if(row && row.p!==undefined && row.p!=='') return clamp(row.p, -1, -1);
+    return clamp(h.text, h.a, h.b);
+  }
+  function clamp(t, a, b){
+    t=String(t||'');
+    if(t.length<=COPY_PALI_CAP || a<0)
+      return {t:t.length<=COPY_PALI_CAP?t:t.slice(0,COPY_PALI_CAP)+'…', a:a, b:b};
+    const need=b-a;
+    if(need>=COPY_PALI_CAP) return {t:t.slice(a,a+COPY_PALI_CAP)+'…', a:0, b:COPY_PALI_CAP};
+    let st=Math.max(0, a-Math.floor((COPY_PALI_CAP-need)/2));
+    let en=Math.min(t.length, st+COPY_PALI_CAP);
+    st=Math.max(0, en-COPY_PALI_CAP);
+    const lead=st>0?'…':'', tail=en<t.length?'…':'';
+    return {t:lead+t.slice(st,en)+tail, a:a-st+lead.length, b:b-st+lead.length};
+  }
+  // Absolute, on the origin you are reading — a relative href is useless once pasted.
+  function hitHref(h){
+    const pg=(lastRender&&lastRender.pages[String(h.pid)])||{url:''};
+    try{ return new URL(JUMP_ROOT+'/'+pg.url+'#tr-'+encodeURIComponent(h.seg),
+                        location.href).href; }
+    catch(e){ return ''; }
+  }
+  function conciseCopy(){
+    const res=(lastRender&&lastRender.res)||[];
+    const html=[], text=[];
+    res.forEach(h=>{
+      const {l24Ref, segRef}=refLabels(h), sn=copySnippet(h), url=hitHref(h);
+      const before=esc(sn.t.slice(0, Math.max(0,sn.a)));
+      const hitTxt=sn.a>=0?esc(sn.t.slice(sn.a, sn.b)):'';
+      const after=esc(sn.a>=0?sn.t.slice(sn.b):sn.t);
+      html.push('<p style="margin:0 0 .5em">'
+        +'<a href="'+esc(url).replace(/"/g,'&quot;')+'">'+esc(l24Ref)+'</a>'
+        +' &middot; <span>'+esc(segRef)+'</span><br>'
+        +'<span>'+before+(hitTxt?'<b>'+hitTxt+'</b>':'')+after+'</span></p>');
+      const plain=sn.a>=0
+        ? sn.t.slice(0,sn.a)+'**'+sn.t.slice(sn.a,sn.b)+'**'+sn.t.slice(sn.b)
+        : sn.t;
+      text.push(l24Ref+'  ·  '+segRef+'\n    '+plain+'\n    '+url);
+    });
+    return {html:'<div>'+html.join('\n')+'</div>', text:text.join('\n\n')};
+  }
+  // The same table conventions parallel.html's cpEmit uses for "Copy as table", so a
+  // result list and a page excerpt paste into a document looking like siblings. Its code
+  // is not reusable -- that one walks the viewer's own columns and tree -- but the shape
+  // is, and the shape is the part that matters once it leaves the browser.
+  const CP_TABLE='border-collapse:collapse;width:100%;font-family:Georgia,serif';
+  const CP_HEAD='text-align:left;background:#f2f2f2';
+  const CP_TINT='background:#f2f2f2';
+  const CP_REF='font-size:85%;color:#777777;white-space:nowrap;vertical-align:top';
+  function cpAttr(t){ return esc(t).replace(/"/g,'&quot;'); }
+  // A line with its match marked. `m` is [start,end] into the RAW text, and only the
+  // matched segment of a hit carries one.
+  function cpLine(r){
+    const t=String(r.t==null?'':r.t);
+    if(!r.m) return esc(t);
+    return esc(t.slice(0,r.m[0]))+'<b>'+esc(t.slice(r.m[0],r.m[1]))+'</b>'+esc(t.slice(r.m[1]));
+  }
+  const cpFlat=t=>String(t==null?'':t).replace(/[\t\r\n]+/g,' ').trim();
+
+  function paneCopy(){
+    const res=(lastRender&&lastRender.res)||[], pages=(lastRender&&lastRender.pages)||{};
+    const lbl=(lastRender&&lastRender.lbl)||{};
+    if(!res.length) return {html:'', text:''};
+    // Only offer the columns the list is actually SHOWING. The server sends `p` beside a
+    // translation hit and `g` for the gloss, and either can be absent for the whole run.
+    const rowsOf=h=>(h.ctx&&h.ctx.length)?h.ctx:[{seg:h.seg,t:h.text,m:[h.a,h.b]}];
+    const hasP=res.some(h=>rowsOf(h).some(r=>r.p!==undefined));
+    const hasG=res.some(h=>rowsOf(h).some(r=>r.g!==undefined));
+    const gl=glossSel.value;
+    const heads=['Ref','Match'].concat(hasP?['Pāli']:[], hasG?[lbl[gl]||gl||'Gloss']:[]);
+    const nCol=heads.length;
+    const w=(100/Math.max(1,nCol-1)).toFixed(2)+'%';
+    const H=[], T=[];
+
+    H.push('<table border="1" cellspacing="0" cellpadding="5" style="'+CP_TABLE+'">');
+    H.push('<thead><tr>'+heads.map((h,i)=>'<th'+(i?' width="'+w+'"':'')
+      +' style="'+CP_HEAD+'">'+esc(h)+'</th>').join('')+'</tr></thead><tbody>');
+    T.push(heads.join('\t'));
+
+    let last=null;
+    res.forEach(h=>{
+      // One full-width tinted row per PAGE, the way the screen groups them — and inside
+      // the same table, so a paste arrives as ONE object rather than a stack of little
+      // tables with loose text between them.
+      if(h.pid!==last){
+        last=h.pid;
+        const pg=pages[String(h.pid)]||{url:'',title:'',count:0};
+        const t=(pg.title||pg.url)+' · '+num(pg.count)+' match'+(pg.count===1?'':'es')
+                +' on that page';
+        H.push('<tr><td colspan="'+nCol+'" style="'+CP_TINT+'"><b>'+esc(t)+'</b></td></tr>');
+        T.push('', t);
+      }
+      const rows=rowsOf(h), url=hitHref(h), refs=refLabels(h);
+      rows.forEach(r=>{
+        const isHit=!!r.m;
+        // The ref rides on the matched line only; a context line is not a citation.
+        const ref=isHit
+          ? '<a href="'+cpAttr(url)+'">'+esc(refs.l24Ref)+'</a><br>'
+            +'<span style="font-size:90%">'+esc(refs.segRef)+'</span>'
+            +'<br><span style="font-size:90%">'+esc(lbl[h.col]||h.col)+'</span>'
+          : esc(r.seg||'');
+        // Context lines are dimmed on screen; dim them here too rather than letting them
+        // read as hits.
+        const dim=isHit?'':'color:#777777;';
+        const td=['<td style="'+CP_REF+'">'+ref+'</td>',
+                  '<td width="'+w+'" valign="top" style="'+dim+'vertical-align:top">'
+                    +cpLine(r)+'</td>'];
+        if(hasP) td.push('<td width="'+w+'" valign="top" style="'+dim
+                         +'vertical-align:top">'+esc(r.p||'')+'</td>');
+        if(hasG) td.push('<td width="'+w+'" valign="top" style="'+dim
+                         +'vertical-align:top">'+esc(r.g||'')+'</td>');
+        H.push('<tr>'+td.join('')+'</tr>');
+        const cells=[isHit?refs.segRef:(r.seg||''), cpFlat(r.t)];
+        if(hasP) cells.push(cpFlat(r.p));
+        if(hasG) cells.push(cpFlat(r.g));
+        T.push(cells.join('\t'));
+      });
+    });
+    H.push('</tbody></table>');
+    return {html:H.join(''), text:T.join('\n')};
+  }
+  function writeClipboard(payload){
+    const done=()=>flash('Copied '+((lastRender&&lastRender.res.length)||0)+' result'
+      +(((lastRender&&lastRender.res.length)||0)===1?'':'s'));
+    const fail=e=>flash('Copy failed: '+(e&&e.message||e));
+    try{
+      if(navigator.clipboard && window.ClipboardItem){
+        const item=new ClipboardItem({
+          'text/html': new Blob([payload.html], {type:'text/html'}),
+          'text/plain': new Blob([payload.text], {type:'text/plain'}),
+        });
+        navigator.clipboard.write([item]).then(done, ()=>
+          navigator.clipboard.writeText(payload.text).then(done, fail));
+        return;
+      }
+      if(navigator.clipboard) return void navigator.clipboard.writeText(payload.text)
+        .then(done, fail);
+    }catch(e){ /* fall through to the textarea path */ }
+    // Older browsers, and any context where the async clipboard is refused.
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=payload.text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      const ok=document.execCommand('copy');
+      ta.remove();
+      ok?done():fail(new Error('the browser refused'));
+    }catch(e){ fail(e); }
+  }
+  let flashTimer=0;
+  function flash(msg){
+    clearTimeout(flashTimer);
+    let n=sel('#findCopyNote');
+    if(!n){ n=document.createElement('div'); n.className='find-copy-note';
+            n.id='findCopyNote'; sel('#findCopyWrap').appendChild(n); }
+    n.textContent=msg;
+    flashTimer=setTimeout(()=>{ if(n&&n.parentNode) n.remove(); }, 2600);
+  }
+  let copyMenu=null;
+  function closeCopyMenu(){
+    if(!copyMenu) return;
+    copyMenu.remove(); copyMenu=null;
+    document.removeEventListener('pointerdown',onCopyOutside,true);
+  }
+  function onCopyOutside(e){ if(copyMenu && !copyMenu.contains(e.target)) closeCopyMenu(); }
+  function openCopyMenu(btn){
+    closeCopyMenu();
+    const n=(lastRender&&lastRender.res.length)||0;
+    const m=document.createElement('div');
+    m.className='hit-menu';
+    [['Copy as a reference list',
+      n+' result'+(n===1?'':'s')+' — L24 ref, segment ref, and the Pāli around the match',
+      ()=>writeClipboard(conciseCopy())],
+     ['Copy the results as a table',
+      'every line in the pane below, laid out as one table — TSV into a spreadsheet',
+      ()=>writeClipboard(paneCopy())]]
+      .forEach(([label,note,fn])=>{
+        const b=document.createElement('button');
+        b.textContent=label;
+        const sm=document.createElement('small'); sm.textContent=note; b.appendChild(sm);
+        b.addEventListener('click',()=>{ closeCopyMenu(); fn(); });
+        m.appendChild(b);
+      });
+    document.body.appendChild(m);
+    copyMenu=m;
+    const r=btn.getBoundingClientRect(), mw=m.offsetWidth, mh=m.offsetHeight;
+    m.style.left=Math.max(6,Math.min(r.left,innerWidth-mw-6))+'px';
+    m.style.top=(r.bottom+4+mh<innerHeight ? r.bottom+4 : Math.max(6,r.top-mh-4))+'px';
+    m.querySelector('button').focus();
+    document.addEventListener('pointerdown',onCopyOutside,true);
+  }
+
+  let hitMenu=null;
+  function closeHitMenu(){
+    if(!hitMenu) return;
+    hitMenu.remove(); hitMenu=null;
+    document.removeEventListener('pointerdown',onMenuOutside,true);
+    window.removeEventListener('resize',closeHitMenu);
+    hitsBox.removeEventListener('scroll',closeHitMenu);
+  }
+  function onMenuOutside(e){ if(hitMenu && !hitMenu.contains(e.target)) closeHitMenu(); }
+  function openHitMenu(a,url,seg){
+    closeHitMenu();
+    const m=document.createElement('div');
+    m.className='hit-menu';
+    [['Open '+seg+' in a new tab','these results stay open',
+      ()=>window.open(url,'_blank','noopener')],
+     ['Open in a new window','these results stay open',
+      ()=>window.open(url,'_blank','noopener,popup=yes,width=1200,height=900')],
+     ['Open here, in this window','you lose these search results',
+      ()=>{ location.href=url; }]]
+      .forEach(([label,note,fn])=>{
+        const b=document.createElement('button');
+        b.textContent=label;
+        const sm=document.createElement('small'); sm.textContent=note; b.appendChild(sm);
+        b.addEventListener('click',()=>{ closeHitMenu(); fn(); });
+        m.appendChild(b);
+      });
+    document.body.appendChild(m);
+    hitMenu=m;                       // before measuring: everything below can be torn down
+    const r=a.getBoundingClientRect(), mw=m.offsetWidth, mh=m.offsetHeight;
+    m.style.left=Math.max(6,Math.min(r.left,innerWidth-mw-6))+'px';
+    m.style.top=(r.bottom+4+mh<innerHeight ? r.bottom+4 : Math.max(6,r.top-mh-4))+'px';
+    m.querySelector('button').focus();
+    document.addEventListener('pointerdown',onMenuOutside,true);
+    window.addEventListener('resize',closeHitMenu);
+    hitsBox.addEventListener('scroll',closeHitMenu);
+  }
+
+  function markSel(scroll){
+    siteHits.forEach((a,i)=>a.classList.toggle('sel',i===siteCur));
+    if(scroll && siteHits[siteCur]) siteHits[siteCur].scrollIntoView({block:'nearest'});
+  }
+  function siteButton(label,fn){
+    const b=document.createElement('button'); b.textContent=label; b.onclick=fn; return b;
+  }
+  function mkNote(text){
+    const s=document.createElement('span'); s.className='find-bar-note'; s.textContent=text; return s;
+  }
+  function busy(text){
+    siteMsg.textContent='';
+    const s=document.createElement('span'); s.className='spin';
+    siteMsg.append(s,' '+text);
+  }
+  const colLabel=key=>{
+    const c=((info&&info.columns)||[]).find(x=>x.key===key);
+    return (c&&c.label)||key||'';
+  };
+  // What the server says it is doing, in the reader's words. The waits are real work on
+  // 100 MB blobs, so name the column and say it is a one-off — a bare "searching…" for
+  // fifteen seconds is what made this look broken.
+  function activityText(a){
+    if(!a) return 'Searching…';
+    const lbl=colLabel(a.col), of=a.n>1?' ('+a.i+' of '+a.n+')':'';
+    switch(a.phase){
+      case 'read':   return 'Loading '+lbl+of+'…';
+      case 'cached': return 'Loading prepared '+lbl+of+'…';
+      case 'fold':   return 'Preparing '+lbl+' for '
+        +(a.mode==='fuzzy'?'fuzzy':a.mode==='fold'?'diacritic-folded':'exact')
+        +' matching'+of+' — once per column, then it is cached';
+      case 'scan':   return 'Searching '+lbl+of+'…';
+      case 'prepare':return (a.gloss?'Loading '+lbl+' to show alongside':'Opening '+lbl)+of+'…';
+      default:       return 'Searching…';
+    }
+  }
+  // Poll only while a query is out. The server publishes one activity record per index,
+  // which is enough: queries are serialised by the box (each keystroke supersedes the
+  // last), so there is never a second one to confuse it with.
+  let actTimer=0;
+  function startActivity(){
+    stopActivity();
+    pop.classList.add('busy');
+    hitsBox.classList.toggle('stale',!!hitsBox.firstChild);
+    // 25 s, not the default 8: this poll exists to narrate waits that are longer than
+    // that, and a fold still stalls the process in ~0.3 s bursts. A poller that times out
+    // during the very operation it is describing leaves a silent box and a console full
+    // of aborted-connection tracebacks.
+    const tick=()=>api('status',25000).then(s=>{
+      if(!actTimer) return;
+      if(s&&s.ok) info=s;
+      busy(activityText(s&&s.activity));
+      actTimer=setTimeout(tick,900);
+    }).catch(()=>{ if(actTimer) actTimer=setTimeout(tick,1500); });
+    actTimer=setTimeout(tick,400);       // instant results shouldn't flash a spinner
+  }
+  function stopActivity(){
+    clearTimeout(actTimer); actTimer=0;
+    pop.classList.remove('busy');
+    hitsBox.classList.remove('stale');
+  }
+  // An older `debabel serve` left running under a freshly built page. It answers, so the
+  // tab appears, but its payload predates fields this page reads.
+  function staleServer(){ return !!info && info.api !== API_VERSION; }
+  // WHICH side is behind. The mismatch runs both ways and the fixes are opposite, so
+  // saying "restart serve.bat" for both sent a reader to redo the thing they had just
+  // done. A page carries the API version of the code it was BUILT from; the server
+  // reports the version it is RUNNING.
+  function versionNote(){
+    if(!staleServer()) return '';
+    return info.api < API_VERSION
+      ? 'the preview server is running older code — restart serve.bat'
+      : 'this page was built before the preview server was updated — rebuild the site '
+        + '(or just the homepage, to look at the search box)';
+  }
+  function renderSiteState(){
+    siteMsg.textContent='';
+    if(!info) return;
+    if(info.state==='building'){
+      const p=info.progress||{}, pct=p.total?Math.round(100*p.done/p.total):0;
+      siteMsg.innerHTML='Indexing the site — '+pct+'% ('+num(p.done||0)+' / '+num(p.total||0)
+        +' pages) <span class="find-prog"><i style="width:'+pct+'%"></i></span>';
+      return;
+    }
+    if(info.state==='absent'){
+      siteMsg.append('No site index yet. ', siteButton('Build it (about a minute)',startBuild));
+      if(info.error) siteMsg.append(mkNote(info.error));
+      return;
+    }
+    // Say it on arrival, not only once a search has come back looking wrong.
+    if(staleServer()) siteMsg.append(mkNote(versionNote()));
+  }
+  function startBuild(){
+    siteMsg.textContent='Starting…';
+    api('build',15000).then(s=>{ info=s; renderSiteState(); poll(); })
+      .catch(e=>{ siteMsg.textContent='Could not start the index build: '+e.message; });
+  }
+  function poll(){
+    clearTimeout(poller);
+    poller=setTimeout(()=>api('status',8000).then(s=>{
+      info=s;
+      if(s.state==='building'){ renderSiteState(); poll(); }
+      else { buildColChecks(); buildGlossPicker(); buildDivTree(); renderSiteState(); siteRun(); }
+    }).catch(()=>{}), 700);
+  }
+
+  // `fresh` skips the stash and re-asks the server — what "Search again" does.
+  function siteRun(fresh){
+    const q=input.value.trim();
+    stopActivity();          // whatever the last query was narrating is now moot
+    siteHits=[]; siteCur=-1; hitsBox.textContent=''; closeHitMenu(); lastRender=null;
+    if(!info || info.state!=='ready'){ chipsBox.textContent=''; renderSiteState(); updateSiteCount(null); return; }
+    if(q.length<2){ siteMsg.textContent=q?'Type at least two characters.':''; updateSiteCount(null); return; }
+    const cols=[...colsBox.querySelectorAll('input:checked')].map(c=>c.dataset.col);
+    if(!cols.length){ siteMsg.textContent='Pick at least one column under ⚙.'; updateSiteCount(null); return; }
+    const all=allDivs(), want=searchDivs();
+    if(all.length && !want.length){
+      chipsBox.textContent='';
+      siteMsg.append('Nothing to search — every division is switched off. ',
+                     siteButton('Search everywhere',()=>{
+                       divsOff.clear(); saveDivsOff(); buildDivTree(); siteRun(); }));
+      updateSiteCount(null); return;
+    }
+    // An unrestricted search sends no list at all, so the server skips the filter.
+    const divs=want.length===all.length?'':want.join(',');
+    // Small by construction: it holds only the chips you clicked.
+    const show=[...showOnly].join(',');
+    const url='query?q='+encodeURIComponent(q)+'&cols='+encodeURIComponent(cols.join(','))
+        +'&fold='+(foldCb.checked?1:0)+'&fuzzy='+(fuzzyCb.checked?1:0)
+        +'&re='+(reCb.checked?1:0)+'&word='+(wordCb.checked?1:0)+'&limit=200'
+        +'&gloss='+encodeURIComponent(glossSel.value)+'&ctx='+ctxLines()
+        +'&divs='+encodeURIComponent(divs)+'&show='+encodeURIComponent(show)
+        +'&refine='+encodeURIComponent(refineParam());
+    // Same request as last time → the answer is already here. This is the whole recovery
+    // path: come back to the page, reopen 🔍, and the results are on screen before the
+    // server has been told you exist.
+    const st=fresh?null:readStash();
+    if(st && st.url===url && st.r){
+      saveSiteOpts();
+      try{ renderHits(st.r,st.at); return; }
+      catch(e){ /* a stash this page can no longer render: fall through and re-ask */ }
+    }
+    busy('Searching '+cols.length+' column'+(cols.length===1?'':'s')+'…');
+    startActivity();
+    const my=++seq;
+    saveSiteOpts();
+    api(url, 180000)
+      .catch(e=>{ if(my===seq){ stopActivity(); siteMsg.textContent='Search failed: '+e.message;
+                                updateSiteCount(null); }
+                  return null; })
+      // Rendering is OUTSIDE the fetch's catch on purpose: a bug in here is not a failed
+      // search, and reporting it as one sends you looking at the server.
+      .then(r=>{ if(r===null || my!==seq) return;
+        stopActivity();
+        try{ renderHits(r); saveStash(url,r); }
+        catch(e){ siteMsg.textContent='Could not show the results: '+e.message
+                    +(staleServer()?' — '+versionNote()+'.':'');
+                  updateSiteCount(null); } });
+  }
+  function updateSiteCount(n){
+    countEl.textContent = n===null ? '—' : (n ? (Math.max(siteCur,0)+1)+' / '+n : '0 / 0');
+    prevBtn.disabled=nextBtn.disabled=!n;
+  }
+  // `restoredAt` is set when `r` came out of the stash rather than off the wire: say so,
+  // and give the one button that re-asks. Silently showing an old answer as a live one is
+  // how a search box starts lying about a corpus that has since been rebuilt.
+  function renderHits(r,restoredAt){
+    if(r.error){ input.classList.add('bad'); siteMsg.textContent=r.error; updateSiteCount(null); return; }
+    input.classList.remove('bad');
+    buildChips(r);
+    const res=r.results||[], pages=r.pages||{}, lbl={};
+    (info.columns||[]).forEach(c=>lbl[c.key]=c.label);
+    const np=r.matched_pages||Object.keys(pages).length;
+    // `rows` (matching segments) is what the list shows; `total` counts occurrences, so a
+    // segment holding the query twice must not read as though a row were dropped.
+    const rows=(typeof r.rows==='number')?r.rows:res.length;
+    // With a division picked, the headline still describes the WHOLE search — that is the
+    // point of the filter — so it has to say plainly that the list below is a subset.
+    const picked=[...showOnly].map(id=>{
+      const g=((info&&info.divisions)||[]).flatMap(x=>x.divisions).find(d=>d.id===id);
+      return (g&&(g.short||g.label))||id;
+    });
+    // What the query found before the "also / not" filters. Say the subtraction, not
+    // just the remainder: a bare 86 beside a short list reads as a search that failed,
+    // where "86, filtered down from 1,240" reads as the filter doing its job.
+    const pre=(typeof r.pre_total==='number')?r.pre_total:r.total;
+    const cut=refine.length&&pre>r.total;
+    siteMsg.textContent = r.total
+      ? num(r.total)+' match'+(r.total===1?'':'es')
+        +' across '+num(np)+' page'+(np===1?'':'s')
+        +(cut?', filtered down from '+num(pre):'')
+        +(picked.length?' — listing '+num(res.length)+' from '+picked.join(', ')
+          :(r.truncated?' — showing '+num(res.length)+' of '+num(rows)
+                        +' passages, at most a few per page':''))
+      : (refine.length&&pre
+          ? 'None of the '+num(pre)+' match'+(pre===1?'':'es')+' get past your filters.'
+          : 'No matches anywhere on the site.');
+    // Name the culprit in the zero state rather than leaving a bare 0. When the filters
+    // ate the results, offering fuzzy Pāli would send the reader to the wrong knob
+    // entirely — so the two empty states are different buttons, not one.
+    if(!r.total && refine.length && pre)
+      siteMsg.append(' ', siteButton('Clear the filters',clearRefine));
+    // A Pāli query that finds nothing is usually punctuation or a retroflex away, and
+    // fold only folds the macrons — so offer the superset rather than leave a bare zero.
+    else if(!r.total && !fuzzyCb.checked)
+      siteMsg.append(' ', siteButton('Try fuzzy Pāli (ignores diacritics and punctuation)',
+        ()=>{ fuzzyCb.checked=true; dispatch(); }));
+    if(staleServer()) siteMsg.append(' ', mkNote(versionNote()));
+    if(info.stale) siteMsg.append(' ', siteButton('Site rebuilt since — reindex',startBuild));
+    if(restoredAt) siteMsg.append(' ', mkNote('· the search you left, from '+ago(restoredAt)),
+                                  ' ', siteButton('Search again',()=>siteRun(true)));
+    const frag=document.createDocumentFragment();
+    let last=null;
+    res.forEach(h=>{
+      const pg=pages[String(h.pid)]||{url:'',title:'',count:0};
+      if(h.pid!==last){
+        last=h.pid;
+        const hd=document.createElement('div'); hd.className='hit-page';
+        hd.innerHTML='<b>'+esc(pg.title||pg.url)+'</b> · '+num(pg.count)
+          +' match'+(pg.count===1?'':'es')+' on that page';
+        frag.appendChild(hd);
+      }
+      const box=document.createElement('div');
+      const pl=h.col!=='pali' && (h.ctx||[]).some(r=>r.p!==undefined) ? ' ⟷ Pāli' : '';
+      const gl=pl+(glossSel.value && glossSel.value!==h.col && glossSel.value!=='pali'
+                   ? ' ⟷ '+(lbl[glossSel.value]||glossSel.value) : '');
+      box.className='hit';
+      box.innerHTML='<span class="hit-h"><span class="hit-col">'+esc((lbl[h.col]||h.col)+gl)
+        +'</span></span>'+hitBody(h);
+      // The ref is the only navigating element, and it is built with DOM calls rather than
+      // interpolated into the innerHTML above: a segment key reaches an href here, and
+      // this scope's esc() deliberately leaves quotes alone.
+      box.querySelector('.hit-h').appendChild(
+        hitGo(JUMP_ROOT+'/'+pg.url+'#tr-'+encodeURIComponent(h.seg), h.seg));
+      frag.appendChild(box); siteHits.push(box);
+    });
+    hitsBox.appendChild(frag);
+    lastRender={res:res, pages:pages, lbl:lbl};   // what 📋 copies
+    siteCur=siteHits.length?0:-1; markSel(false);
+    updateSiteCount(siteHits.length);
+  }
+
+  // Site scope opens a real window: the popover is lifted out of the header (whose
+  // z-index:300 + position:fixed make a stacking context a modal cannot escape) and
+  // parked on <body> over a backdrop. Page scope puts it back where the 🔍 button is,
+  // so the dropdown still anchors to the button.
+  let backdrop=null;
+  function asWindow(on){
+    if(on){
+      if(pop.parentNode!==document.body) document.body.appendChild(pop);
+      if(!backdrop){
+        backdrop=document.createElement('div');
+        backdrop.className='find-backdrop';
+        // Clicking the backdrop does NOT close the window. A site search costs real
+        // seconds of scanning, so throwing the results away has to be something you
+        // asked for: ✕, or Esc. This is the same call already made for a result row,
+        // which stopped being a link because any stray click — a dictionary extension's
+        // click-a-word among them — discarded the answer you were reading.
+        backdrop.addEventListener('click',e=>e.stopPropagation());
+        document.body.insertBefore(backdrop,pop);
+      }
+    } else {
+      if(backdrop){ backdrop.remove(); backdrop=null; }
+      if(pop.parentNode===document.body) sel('#findWrap').appendChild(pop);
+    }
+  }
+
+  function setScope(next){
+    scope=next;
+    try{ localStorage.setItem(SCOPE_LS,next); }catch(e){}
+    tabPage.classList.toggle('on',next==='page');
+    tabSite.classList.toggle('on',next==='site');
+    pop.classList.toggle('site',next==='site');
+    asWindow(next==='site');
+    buildColChecks();
+    markOpen(next==='site');       // so a Back lands you back in the results, not on a shut box
+    if(next==='site'){ restoreSiteOpts(); buildGlossPicker(); loadDivsOff(); buildDivTree();
+                       loadRefine(); buildRefine(); restoreRfScope(); }
+    if(next==='site'){
+      if(supported){ hlAll.clear(); hlCur.clear(); }     // leave no highlights on the page
+      if(pgSearch) pgSearch.clear();       // ...and no ring, and no row filter
+      matches=[]; cur=-1;
+      // Switching here IS the request for site search, so a missing index builds itself
+      // rather than making the reader click a second button to get what they asked for.
+      if(info && info.state==='absent' && !info.error) startBuild();
+      else if(info && info.state==='building'){ renderSiteState(); poll(); }
+      else siteRun();
+      input.focus();                    // re-parenting the popover dropped the caret
+    } else {
+      clearTimeout(poller); clearTimeout(deb);
+      hitsBox.textContent=''; siteMsg.textContent=''; siteHits=[]; siteCur=-1; closeHitMenu();
+      pgReveal(); run();
+    }
+  }
+  function dispatch(newQuery){
+    foldCb.disabled=fuzzyCb.checked; foldL.classList.toggle('dim',fuzzyCb.checked);  // fuzzy ⊇ fold
+    // One notion of a word boundary at a time: under a regex the pattern owns the
+    // question, and the server ignores `word` there, so the box must say so too.
+    wordCb.disabled=reCb.checked; wordL.classList.toggle('dim',reCb.checked);
+    // Picking a division applies to the search you were reading, not to the next one.
+    if(newQuery) showOnly.clear();
+    if(scope==='site'){ clearTimeout(deb); deb=setTimeout(siteRun,350); } else run();
+  }
+  function go(d){
+    if(scope==='site'){
+      if(!siteHits.length) return;
+      siteCur=(siteCur+d+siteHits.length)%siteHits.length;
+      markSel(true); updateSiteCount(siteHits.length);
+      return;
+    }
+    if(!matches.length) return;
+    // From -1 (a pgSearch page, which does not pre-select) the first press lands on
+    // match 0 rather than skipping it.
+    cur = cur<0 ? 0 : (cur+d+matches.length)%matches.length;
+    focusCur(true); updateCount(false);
+  }
+
+  function openFind(){
+    pop.classList.add('show');
+    // Reopening is the way back to a search you clicked away from, so restore the last
+    // query when the box is empty. Selected, not appended, so typing still replaces it.
+    if(!input.value){ try{ input.value=localStorage.getItem(Q_LS)||''; }catch(e){} }
+    input.focus(); input.select();
+    let want='page';
+    try{ want=localStorage.getItem(SCOPE_LS)||'page'; }catch(e){}
+    // Only pay for the page-local pass if that is the scope we are heading for: pgReveal()
+    // forces every deferred leaf table on the page, which is real work on the big ones.
+    const pageWork=()=>{ pgReveal(); buildColChecks(); run(); };
+    if(want!=='site') pageWork();
+    // Reveal (and restore) the site tab only once something has answered the probe.
+    ensureProbe().then(()=>{
+      if(want==='site' && !scopeRow.hidden){
+        if(scope!=='site') setScope('site');
+        else { asWindow(true); siteRun(); input.focus(); }   // reopening an already-site box
+      }
+      else if(want==='site') pageWork();      // remembered site, but nothing serves it here
+      else if(scope==='site') siteRun();
+    });
+  }
+  function closeFind(){
+    pop.classList.remove('show'); clearTimeout(deb); clearTimeout(poller);
+    stopActivity(); closeHitMenu(); closeCopyMenu();   // nothing left floating on <body>
+    markOpen(false);                     // closing it IS "I'm done"; don't reopen on a Back
+    asWindow(false);        // put the popover back under 🔍 and drop the dimmer
+    if(supported){ hlAll.clear(); hlCur.clear(); }
+    if(pgSearch) pgSearch.clear();
+  }
+  function toggleFind(){ pop.classList.contains('show')?closeFind():openFind(); }
+  // For a page that wants a shortcut of its own on top of the site-wide "s" — the CBETA
+  // map binds Ctrl/⌘-F, because at 3,000 rows searching IS the way in. Exposed rather
+  // than letting that page reach into this scope.
+  window.dblFindOpen = openFind;
+  window.dblFindClose = closeFind;
+
+  btn.addEventListener('click',toggleFind);
+  sel('#findCopy').addEventListener('click',e=>{
+    e.stopPropagation();
+    copyMenu?closeCopyMenu():openCopyMenu(e.currentTarget);
+  });
+  closeBtn.addEventListener('click',closeFind);
+  optsBtn.addEventListener('click',()=>{ const on=optsBox.classList.toggle('show'); optsBtn.classList.toggle('on',on); });
+  tabPage.addEventListener('click',()=>{ if(scope!=='page') setScope('page'); });
+  tabSite.addEventListener('click',()=>{ if(scope!=='site') setScope('site'); });
+  nextBtn.addEventListener('click',()=>go(1));
+  prevBtn.addEventListener('click',()=>go(-1));
+  input.addEventListener('input',()=>dispatch(true));
+  [foldCb,fuzzyCb,reCb,wordCb,glossSel,ctxIn].forEach(c=>c.addEventListener('change',dispatch));
+  ctxIn.addEventListener('input',dispatch);      // the spinner arrows fire input, not change
+  colsBox.addEventListener('change',dispatch);
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault();
+      // The row is no longer a link — Enter presses the selected row's ref chip, which
+      // means Enter does what a plain click does: opens the sutta in a new tab.
+      if(scope==='site'){ const g=siteHits[siteCur]&&siteHits[siteCur].querySelector('.hit-go');
+                          if(g) g.click(); }
+      else go(e.shiftKey?-1:1); }
+    else if(e.key==='ArrowDown'){ e.preventDefault(); go(1); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); go(-1); }
+    else if(e.key==='Escape'){ e.preventDefault(); closeFind(); btn.focus(); }
+  });
+  // Escape closes the innermost thing first. The menu's guard runs in the CAPTURE phase so
+  // it can stop the event before either of the two Escape→closeFind handlers sees it;
+  // leaving those exactly as they were keeps their existing order intact.
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&copyMenu){ e.stopPropagation(); e.preventDefault(); closeCopyMenu(); return; }
+    if(e.key==='Escape'&&hitMenu){ e.stopPropagation(); e.preventDefault(); closeHitMenu(); }
+  },true);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&pop.classList.contains('show')) closeFind(); });
+  // "s" anywhere outside a text field opens 🔍 search — a bare-key sibling to the 🐇
+  // quick-jump's "/". Shift+"s" yields "S" (won't match), so a capital never triggers it,
+  // and the input guard keeps it inert while typing in any box.
+  // Coming BACK to the page you searched from — Back, or a ref chip opened in this
+  // window — reopens the results you left, painted from the stash without asking the
+  // server. Gated on the navigation TYPE, not just the flag: arriving here by clicking a
+  // hit is a request to READ this sutta, and throwing the search window over it would be
+  // the same accident in the other direction.
+  try{
+    const nav=(performance.getEntriesByType&&performance.getEntriesByType('navigation')[0])||null;
+    const back=nav ? nav.type==='back_forward'
+                   : !!(performance.navigation && performance.navigation.type===2);
+    if(back && sessionStorage.getItem(OPEN_SS)==='1' && !pop.classList.contains('show')) openFind();
+  }catch(e){}
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='s' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const t=e.target, tag=(t.tagName||'').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select' || (t && t.isContentEditable)) return;
+    e.preventDefault(); openFind();
+  });
+})();
 
 
 function ixSetAll(expand){
