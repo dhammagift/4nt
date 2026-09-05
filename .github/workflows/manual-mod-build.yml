@@ -13,9 +13,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Сначала синхронизируем main с upstream
+  # Сначала синхронизируем main с upstream и проверяем, были ли новые коммиты
   sync_main:
     runs-on: ubuntu-latest
+    outputs:
+      repo_updated: ${{ steps.merge_step.outputs.updated }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -35,8 +37,13 @@ jobs:
           git fetch upstream --depth=1
 
       - name: Merge upstream/main into main and push
+        id: merge_step
         run: |
           git checkout main
+          
+          # Запоминаем текущий хэш
+          OLD_HASH=$(git rev-parse HEAD)
+          
           # Попытка fast-forward, иначе создаём merge-коммит
           if git merge --ff-only upstream/main; then
             echo "Fast-forwarded main from upstream"
@@ -44,8 +51,20 @@ jobs:
             git merge upstream/main --no-edit || true
           fi
           git push origin main
+          
+          # Проверяем новый хэш
+          NEW_HASH=$(git rev-parse HEAD)
+          
+          # Сравниваем и передаем результат в outputs
+          if [ "$OLD_HASH" != "$NEW_HASH" ]; then
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "Git repository was updated."
+          else
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "No new commits in Git."
+          fi
 
-  # Затем собираем ветку mod (нуждается на результат sync_main)
+  # Затем собираем ветку mod (опираясь на результат sync_main)
   build_mod:
     needs: sync_main
     runs-on: ubuntu-latest
@@ -67,12 +86,19 @@ jobs:
           # Удаляем всё в рабочей директории, кроме .git
           find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
 
-      - name: Download upstream snapshot
+      - name: Download source (Upstream or Wget fallback)
         run: |
-          wget -qO main.zip https://github.com/frankksutta/s.4nt/archive/refs/heads/main.zip
-          unzip -q main.zip
-          cp -a s.4nt-main/* .
-          rm -rf main.zip s.4nt-main || true
+          if [ "${{ needs.sync_main.outputs.repo_updated }}" = "true" ]; then
+            echo "Source: Git upstream. Downloading zip archive..."
+            wget -qO main.zip https://github.com/frankksutta/s.4nt/archive/refs/heads/main.zip
+            unzip -q main.zip
+            cp -a s.4nt-main/* .
+            rm -rf main.zip s.4nt-main || true
+          else
+            echo "Source: Live site. Fetching via wget..."
+            # -r: рекурсивно, -nH: не создавать папку с именем домена, -np: не подниматься выше корня
+            wget -q -r -nH -np https://s.4nt.org/ || true
+          fi
 
       - name: Prepare external structure
         run: |
@@ -94,7 +120,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Building update from upstream" || echo "No changes to commit"
+          # Если wget скачал то же самое, что уже лежит в ветке, git commit завершится без изменений
+          git commit -m "Building update (Git: ${{ needs.sync_main.outputs.repo_updated }})" || echo "No changes to commit"
           git push origin mod || echo "Push to mod failed"
 
       - name: Checkout main branch
