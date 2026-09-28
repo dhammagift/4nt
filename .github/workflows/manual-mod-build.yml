@@ -110,7 +110,7 @@ jobs:
           #!/usr/bin/env python3
           """BFS-fetch s.4nt.org pages that are referenced only from JS strings (wget -m skips them).
           Seeds are found by scanning every downloaded page; new pages are scanned for further references."""
-          import os, re, sys, urllib.request
+          import os, re, sys, time, urllib.error, urllib.request
           from concurrent.futures import ThreadPoolExecutor
           from urllib.parse import urljoin, urlparse
 
@@ -139,12 +139,22 @@ jobs:
 
           def fetch(url):
               rel, path = local_path(url)
-              try:
-                  req = urllib.request.Request(BASE + rel, headers={"User-Agent": "Wget/1.21"})
-                  with urllib.request.urlopen(req, timeout=60) as r:
-                      body = r.read()
-              except Exception as e:
-                  return url, None, str(e)
+              # Cloudflare now and then resets a connection; a page missed here silently drops out of mod.
+              for attempt in range(4):
+                  try:
+                      req = urllib.request.Request(BASE + rel, headers={"User-Agent": "Wget/1.21"})
+                      with urllib.request.urlopen(req, timeout=60) as r:
+                          body = r.read()
+                      break
+                  except urllib.error.HTTPError as e:
+                      if e.code < 500:
+                          return url, None, str(e)
+                      err = e
+                  except Exception as e:
+                      err = e
+                  time.sleep(2 * (attempt + 1))
+              else:
+                  return url, None, str(err)
               os.makedirs(os.path.dirname(path), exist_ok=True)
               with open(path, "wb") as f:
                   f.write(body)
