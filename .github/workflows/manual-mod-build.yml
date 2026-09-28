@@ -102,43 +102,82 @@ jobs:
 
       # Some sections (tv_ab, taisho, the agamas ma/da/sa/ea…) are linked only from JS objects/strings,
       # so wget -m never follows them. Collect quoted ".../index.html" and ".../" paths from the downloaded
-      # pages, fetch the ones that are missing, repeat until nothing new turns up.
+      # pages and fetch the missing ones (and whatever they reference in turn). A plain fetcher instead of
+      # a second wget: wget -m / -nc re-walks the whole site and stalls for tens of minutes.
       - name: Fetch pages linked only from JS
         run: |
-          cat > /tmp/missing_pages.py <<'PY'
-          import os, re, sys
+          cat > /tmp/fetch_missing.py <<'PY'
+          #!/usr/bin/env python3
+          """BFS-fetch s.4nt.org pages that are referenced only from JS strings (wget -m skips them).
+          Seeds are found by scanning every downloaded page; new pages are scanned for further references."""
+          import os, re, sys, urllib.request
+          from concurrent.futures import ThreadPoolExecutor
           from urllib.parse import urljoin, urlparse
+
           BASE = "https://s.4nt.org/"
           QUOTED = re.compile(r"""["']((?:/|\.\./|\./)?(?:[A-Za-z0-9_.-]+/)+(?:index\.html)?)["']""")
-          missing = set()
-          for dirpath, dirnames, filenames in os.walk("."):
+          root = "."
+
+
+          def local_path(url):
+              rel = urlparse(url).path.lstrip("/")
+              if rel.endswith("index.html"):
+                  rel = rel[: -len("index.html")]
+              return rel, os.path.join(root, rel, "index.html")
+
+
+          def refs(page_url, text):
+              out = set()
+              for ref in QUOTED.findall(text):
+                  u = urlparse(urljoin(page_url, ref))
+                  if u.netloc == "s.4nt.org":
+                      rel, path = local_path(u.geturl())
+                      if not os.path.exists(path):
+                          out.add(BASE + rel)
+              return out
+
+
+          def fetch(url):
+              rel, path = local_path(url)
+              try:
+                  req = urllib.request.Request(BASE + rel, headers={"User-Agent": "Wget/1.21"})
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      body = r.read()
+              except Exception as e:
+                  return url, None, str(e)
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              with open(path, "wb") as f:
+                  f.write(body)
+              return url, body.decode("utf-8", "ignore"), None
+
+
+          seeds = set()
+          for dirpath, dirnames, filenames in os.walk(root):
               dirnames[:] = [d for d in dirnames if d != ".git"]
               for name in filenames:
-                  if not name.endswith(".html"):
-                      continue
-                  path = os.path.join(dirpath, name)
-                  page_url = urljoin(BASE, os.path.relpath(path, ".").replace(os.sep, "/"))
-                  with open(path, encoding="utf-8", errors="ignore") as f:
-                      text = f.read()
-                  for ref in QUOTED.findall(text):
-                      u = urlparse(urljoin(page_url, ref))
-                      if u.netloc != "s.4nt.org":
+                  if name.endswith(".html"):
+                      path = os.path.join(dirpath, name)
+                      with open(path, encoding="utf-8", errors="ignore") as f:
+                          seeds |= refs(urljoin(BASE, os.path.relpath(path, root).replace(os.sep, "/")), f.read())
+          print(f"missing after wget: {len(seeds)}", flush=True)
+
+          seen, queue, ok, failed = set(), seeds, 0, []
+          with ThreadPoolExecutor(8) as pool:
+              while queue:
+                  batch = [u for u in queue if u not in seen]
+                  seen.update(batch)
+                  queue = set()
+                  for url, text, err in pool.map(fetch, batch):
+                      if err:
+                          failed.append(f"{url} {err}")
                           continue
-                      rel = u.path.lstrip("/")
-                      if rel.endswith("index.html"):
-                          rel = rel[: -len("index.html")]
-                      if not os.path.exists(os.path.join(rel, "index.html")):
-                          missing.add(BASE + rel)
-          print("\n".join(sorted(missing)))
+                      ok += 1
+                      queue |= refs(url, text) - seen
+                  print(f"fetched {ok}, failed {len(failed)}, next {len(queue)}", flush=True)
+          for f in failed:
+              print("FAILED", f)
           PY
-          for round in 1 2 3 4 5 6; do
-            python3 /tmp/missing_pages.py > /tmp/missing.txt
-            n=$(grep -c . /tmp/missing.txt || true)
-            echo "Round $round: $n pages missing"
-            [ "$n" -eq 0 ] && break
-            # -nc instead of -m: pages already on disk are parsed locally, not re-downloaded
-            wget -q -r -l inf -p -nH -nc -i /tmp/missing.txt || true
-          done
+          python3 /tmp/fetch_missing.py
 
       - name: Prepare external structure
         run: |
